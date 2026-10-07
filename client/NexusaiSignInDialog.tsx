@@ -91,6 +91,10 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
   const [appliedUrl, setAppliedUrl] = useState('')
   const [serverError, setServerError] = useState('')
   const [applying, setApplying] = useState(false)
+  // Login-page branding, fetched from the server (GET /v1/base/custom, the
+  // same source the web frontend renders from). Empty = show a bare 「登录」
+  // with no hardcoded brand.
+  const [productName, setProductName] = useState('')
   // Opening the dialog IS the intent to sign in: start the attempt once on
   // mount so the captcha form appears straight away, with no extra click.
   const autoStarted = useRef(false)
@@ -102,12 +106,21 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
   const booting = autoStarted.current && attempt === null
   const spinner = <IconLoadingOutlineRegular size={14} className="nexusai-spinner" />
   const serverDirty = serverUrl.trim() !== '' && serverUrl.trim() !== appliedUrl
+  // Brand name from the server fills the {name} slot in the dialog copy; when
+  // the server provides none, the bare variants keep the copy natural.
+  const dialogTitle = productName === ''
+    ? t('loginTitleBare')
+    : t('loginTitle').replace('{name}', productName)
+  const dialogHint = productName === ''
+    ? t('loginHintBare')
+    : t('loginHint').replace('{name}', productName)
 
   useEffect(() => {
     void auth.getBaseUrl().then(url => {
       setServerUrl(url)
       setAppliedUrl(url)
     }, () => undefined)
+    void auth.getBranding().then(branding => setProductName(branding.name), () => undefined)
     if (autoStarted.current) return
     autoStarted.current = true
     const current = getView()
@@ -242,7 +255,7 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
   return (
     <Modal
       open
-      title={t('loginTitle')}
+      title={dialogTitle}
       closeLabel={t('close')}
       onClose={close}
       className="nexusai-dialog"
@@ -267,7 +280,7 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
     >
       <style>{DIALOG_CSS}</style>
       <p className="nexusai-note">
-        {t('loginHint')}
+        {dialogHint}
         {openSettings !== undefined && (
           <button type="button" className="nexusai-link" onClick={() => { close(); openSettings() }}>
             {t('openSettings')}

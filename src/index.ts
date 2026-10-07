@@ -18,6 +18,8 @@ import type {} from '@deepseek-ai/dsh-tools'
 import { Config } from './config'
 import type { Config as ConfigType } from './config'
 import { NexusApiClient } from './nexus/api-client'
+import { SkillHubClient } from './nexus/skillhub'
+import { LocalSkills } from './sync/local-skills'
 import { NexusaiAuthService } from './service/auth'
 import { NexusaiCapabilitiesService } from './service/capabilities'
 import { CustomToolRegistry } from './sync/custom-tools'
@@ -70,6 +72,14 @@ export function apply(ctx: Context, config: ConfigType): void {
     failOnStartupError: config.mcp.failOnStartupError,
   })
   const skills = new SkillSync(ctx, { api, downloadRoot: config.skills.downloadRoot })
+  // SkillHub marketplace: the public catalog the @cocofhu/skillhub plugin also
+  // reads (no auth); endpoints overridable for mirrors/deployments.
+  const skillhub = new SkillHubClient({
+    apiBase: config.skillhub.apiBase,
+    webBase: config.skillhub.webBase,
+    timeoutMs: config.skillhub.timeoutMs,
+    skillsRoot: config.skills.downloadRoot,
+  })
 
   const auth = new NexusaiAuthService(ctx, {
     api,
@@ -80,7 +90,10 @@ export function apply(ctx: Context, config: ConfigType): void {
     authorization: ctx.authorization,
     defaultOrgId: config.defaultOrgId,
   })
-  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, skills })
+  // Local skill files: roots default to our download root; the panel adds the
+  // directories of the skills the registry reports (user/project layers).
+  const localSkills = new LocalSkills([config.skills.downloadRoot])
+  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, skills, skillhub, localSkills })
 
   // A surviving session means the account was logged in before restart;
   // re-register its tools and rewrite its MCP rows without blocking boot.

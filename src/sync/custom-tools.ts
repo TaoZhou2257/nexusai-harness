@@ -112,11 +112,15 @@ export class CustomToolRegistry {
 /** `nexusai__<tool>__<operation>`, slug-safe and capped. */
 function toolPublicName(prefix: string, toolName: string, operation: OpenApiOperation): string {
   const operationPart = operation.operationId ?? `${operation.method}_${operation.path}`
-  return `${prefix}__${slug(toolName)}__${slug(operationPart)}`.slice(0, NAME_LIMIT).replace(/_+$/, '')
+  return `${prefix}__${slugifyTool(toolName)}__${slugifyTool(operationPart)}`.slice(0, NAME_LIMIT).replace(/_+$/, '')
 }
 
-/** Non `[A-Za-z0-9_]` characters fold to underscores. */
-function slug(value: string): string {
+/** Non `[A-Za-z0-9_]` characters fold to underscores. Named `slugifyTool`
+ * rather than `slug`: a bare `slug` here collides with other modules'
+ * helpers once esbuild flattens the bundle, and the collision makes esbuild
+ * rename Remote method parameters — which the Typert gateway reads wire
+ * field names from. */
+function slugifyTool(value: string): string {
   return value.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'x'
 }
 

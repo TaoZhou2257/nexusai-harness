@@ -21,17 +21,22 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-theme"
       ]
-    }
+    },
+    "dshBaseline": "0.2.0-rc.2"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:dsh": "node scripts/check-dsh-version.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
@@ -43,6 +48,7 @@
     "@deepseek-ai/schemastery": "*"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "yaml": "^2.6.0"
   },
   "devDependencies": {

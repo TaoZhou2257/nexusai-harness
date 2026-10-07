@@ -109,8 +109,11 @@ function removeOwnedItems(items: unknown[]): boolean {
     const item = items[index]
     if (!isMap(item) || !item.has('insert')) continue
     const insert = item.get('insert')
-    if (!Array.isArray(insert) || insert.length === 0) continue
-    const owned = insert.every((row: unknown) =>
+    // A parsed document hands back a YAMLSeq node, not a JS array, so this
+    // must go through `isSeq` — `Array.isArray` never matches and the old
+    // rows would pile up on every sync.
+    if (!isSeq(insert) || insert.items.length === 0) continue
+    const owned = insert.items.every((row: unknown) =>
       isMap(row) && typeof row.get('id') === 'string' && OWNED_ID_PATTERN.test(row.get('id') as string))
     if (!owned) continue
     items.splice(index, 1)
@@ -121,8 +124,8 @@ function removeOwnedItems(items: unknown[]): boolean {
 
 /** serverName: `<prefix>-<slug>`, unique, ≤32 chars, `[A-Za-z0-9_-]`. */
 function serverNameOf(prefix: string, server: McpRowInput): string {
-  const slug = server.name.replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
-  const unique = `${prefix}-${slug || 'server'}-${shortId(server.mcpServerId)}`.slice(0, SERVER_NAME_LIMIT)
+  const serverSlug = server.name.replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  const unique = `${prefix}-${serverSlug || 'server'}-${shortId(server.mcpServerId)}`.slice(0, SERVER_NAME_LIMIT)
   return unique.replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+$/, '')
 }
 

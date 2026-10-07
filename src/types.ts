@@ -67,6 +67,12 @@ export interface McpServerSummary {
   readonly name: string
   readonly desc: string
   readonly toolNum: number
+  /** 创建 MCP (bound to published apps) or 导入 MCP (external endpoint). */
+  readonly source: 'created' | 'imported'
+  readonly transport: string
+  readonly url: string
+  /** Whether dsh can host it (streamable HTTP); false = legacy SSE only. */
+  readonly connectable: boolean
 }
 
 /** One custom skill listed by `GET /v1/agent/skill/custom/list`. */
@@ -75,6 +81,83 @@ export interface SkillSummary {
   readonly name: string
   readonly description: string
   readonly author: string
+}
+
+/** One browsable card of the SkillHub marketplace (api.skillhub.cn). */
+export interface SkillHubCard {
+  /**
+   * Unique package identity (`namespace.canonicalName`, e.g.
+   * `@user_814dbe54/anti-fraud`). The marketplace's `slug` is NOT unique —
+   * different publishers reuse it — so list keys, dedupe, install and
+   * installed marking all go through this id.
+   */
+  readonly id: string
+  readonly slug: string
+  readonly name: string
+  readonly description: string
+  /** Display label of the marketplace category. */
+  readonly category: string
+  readonly version: string
+  readonly downloads: number
+  readonly stars: number
+  readonly installs: number
+  readonly owner: string
+  /** Skill page on skillhub.cn. */
+  readonly pageUrl: string
+  /** The skill needs its own API key configured before use
+   * (`labels.requires_api_key`). */
+  readonly requiresApiKey: boolean
+  /** Marketplace pricing marker (`labels.pricing_type`): `paid`/`alipay`/... */
+  readonly pricing: string
+  readonly iconUrl?: string
+}
+
+/** One local skill file behind the 本地 tab: enabled skills come from the
+ * registry, 关闭-ed ones are found on disk (`SKILL.md.disabled`). */
+export interface LocalSkillEntry {
+  readonly name: string
+  readonly description: string
+  /** Absolute path of the instruction file (SKILL.md or SKILL.md.disabled). */
+  readonly path: string
+  readonly enabled: boolean
+}
+
+/** Where one installed SkillHub package landed on disk. */
+export interface SkillHubInstallResult {
+  readonly name: string
+  /** Absolute path of the installed SKILL.md. */
+  readonly path: string
+}
+
+/** One SkillHub listing's full detail (`GET /api/v1/skills/<slug>`), flattened
+ * for the workbench's detail view. */
+export interface SkillHubDetail {
+  /** Unique package identity (canonical name when present). */
+  readonly id: string
+  readonly slug: string
+  readonly name: string
+  readonly summary: string
+  /** Display label of the marketplace category. */
+  readonly category: string
+  readonly subCategories: readonly string[]
+  readonly version: string
+  readonly changelog: string
+  readonly downloads: number
+  readonly stars: number
+  readonly installs: number
+  readonly comments: number
+  readonly versions: number
+  readonly owner: string
+  /** `@owner/name` when the marketplace provides it. */
+  readonly canonicalName: string
+  readonly updatedAt: number
+  readonly source: string
+  readonly pageUrl: string
+  /** The skill needs its own API key configured before use. */
+  readonly requiresApiKey: boolean
+  /** Marketplace pricing marker (`paid`/`alipay`/…), empty when free. */
+  readonly pricing: string
+  readonly iconUrl?: string
 }
 
 /** Outcome of one capability sync: what got registered, and what failed. */

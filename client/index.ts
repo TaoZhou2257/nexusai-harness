@@ -17,17 +17,22 @@
  * @module @toby/dsh-plugin-nexusai/client
  */
 import type { Context } from '@deepseek-ai/cordis'
-// Type-only: the settings slot contracts (`settings.launcher`, `settings.section`)
-// and the ctx.theme merge this plugin registers into.
+// Type-only: the root `main` keyed slot (declared by ui-layout) and the
+// `sidebar.panellist` list (declared by ui-sidebar) this plugin registers
+// into, plus the ctx.theme merge and the settings slot contracts.
+import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { NexusaiLauncher } from './NexusaiLauncher'
+import { NexusaiPanelIcon } from './NexusaiPanelIcon'
 import { NexusaiSection } from './NexusaiSection'
+import { NexusaiWorkbench } from './NexusaiWorkbench'
 import { en, zh, type NexusaiLocaleKey } from './locales'
-import { unwrap, type AuthViewFace, type CapabilitiesRemoteFace, type AuthRemoteFace, type NexusaiSnapshot, type StreamFace } from './face'
+import { unwrap, messageOf, type AuthViewFace, type CapabilitiesRemoteFace, type AuthRemoteFace, type NexusaiSnapshot, type SessionsFace, type SkillsRemoteFace, type SlashSkillFace, type StreamFace } from './face'
 import { TYPERT_REMOTE } from './remote'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -39,6 +44,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'nexusai'
+
+/** The id shared by the sidebar entry, the main workbench panel, and the settings section. */
+export const PANEL_ID = 'nexusai' as MainPanelId
 
 /** Services required to mount the Remote contribution. */
 export const inject = ['slots', 'locale', 'remote']
@@ -58,7 +66,7 @@ export async function apply(ctx: Context): Promise<void> {
 
   const consumer = await ctx.plugin({
     name: 'nexusai-remotes-consumer',
-    inject: ['remote.nexusaiAuth', 'remote.nexusaiCapabilities', 'theme'],
+    inject: ['remote.nexusaiAuth', 'remote.nexusaiCapabilities', 'theme', 'sessions', 'remote.skills'],
     apply(consumer: Context) {
       registerSurfaces(consumer, t)
     },
@@ -77,12 +85,15 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
   const remote = consumer.remote as unknown as {
     nexusaiAuth: AuthRemoteFace
     nexusaiCapabilities: CapabilitiesRemoteFace
+    skills: SkillsRemoteFace
     $stream<T>(options: {
       name: string
       open: (signal: AbortSignal) => unknown
       ended: () => Error
     }): StreamFace<T>
   }
+  // sessions is a client service (not a Remote namespace).
+  const sessions = consumer.sessions as unknown as SessionsFace
 
   // One shared snapshot behind every surface, fed by one reconnect-safe
   // watch stream — the same store pattern the built-in account UI runs.
@@ -119,6 +130,7 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
       getBaseUrl: () => unwrap(remote.nexusaiAuth.getBaseUrl()),
       setBaseUrl: (url: string) => unwrap(remote.nexusaiAuth.setBaseUrl(url)),
       testBaseUrl: (url: string) => unwrap(remote.nexusaiAuth.testBaseUrl(url)),
+      getBranding: () => unwrap(remote.nexusaiAuth.getBranding()),
       status: () => unwrap(remote.nexusaiAuth.status()),
       startSignIn: () => unwrap(remote.nexusaiAuth.startSignIn()),
       submit: (attemptId: string, username: string, password: string, captchaCode: string) =>
@@ -132,8 +144,32 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
       listCustomTools: () => unwrap(remote.nexusaiCapabilities.listCustomTools()),
       listMcpServers: () => unwrap(remote.nexusaiCapabilities.listMcpServers()),
       listSkills: () => unwrap(remote.nexusaiCapabilities.listSkills()),
+      searchSkillHub: (keyword: string, category: string, page: number) => unwrap(remote.nexusaiCapabilities.searchSkillHub(keyword, category, page)),
+      disabledLocalSkills: (roots: string[]) => unwrap(remote.nexusaiCapabilities.disabledLocalSkills(roots)),
+      missingLocalSkills: (paths: string[]) => unwrap(remote.nexusaiCapabilities.missingLocalSkills(paths)),
+      setLocalSkillEnabled: (path: string, enabled: boolean, roots: string[]) => unwrap(remote.nexusaiCapabilities.setLocalSkillEnabled(path, enabled, roots)),
+      removeLocalSkill: (path: string, roots: string[]) => unwrap(remote.nexusaiCapabilities.removeLocalSkill(path, roots)),
+      readLocalSkill: (path: string, roots: string[]) => unwrap(remote.nexusaiCapabilities.readLocalSkill(path, roots)),
+      skillhubDetail: (slug: string) => unwrap(remote.nexusaiCapabilities.skillhubDetail(slug)),
+      skillhubPreview: (slug: string) => unwrap(remote.nexusaiCapabilities.skillhubPreview(slug)),
+      skillhubCategories: () => unwrap(remote.nexusaiCapabilities.skillhubCategories()),
+      installSkillHub: (slug: string) => unwrap(remote.nexusaiCapabilities.installSkillHub(slug)),
       sync: () => unwrap(remote.nexusaiCapabilities.sync()),
       downloadSkill: (skillId: string) => unwrap(remote.nexusaiCapabilities.downloadSkill(skillId)),
+    },
+    // The conversation "/" menu catalog: same Remote, same host service
+    // (SessionSkillCatalog), same isUserInvocable filtering. Cold read on the
+    // host's most-recent session (or the mainView-retained one).
+    slashSkills: {
+      list: async (): Promise<SlashSkillFace[]> => {
+        const state = sessions.list.getSnapshot()
+        const sessionId = Object.values(state.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
+          ?? state.ids[0]
+        if (sessionId === undefined) return []
+        const result = await remote.skills.list({ sessionId })
+        if (!result.ok) throw new Error(messageOf(result.error))
+        return result.value.skills
+      },
     },
     hooks: {
       nexusai: {
@@ -146,6 +182,26 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
       },
     },
   }
+
+  // The workbench panel: a first-class left-menu entry (icon row + full-page
+  // panel), the same pattern the built-in plugin manager uses. The workbench
+  // hosts the 专家/技能/连接器 capability tabs.
+  consumer.slots.inject('main', () => consumer.slots.register({
+    name: 'main',
+    key: PANEL_ID,
+    locale: NS,
+    inject: () => controller,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as never, NexusaiWorkbench as never))
+
+  consumer.slots.inject('sidebar.panellist', () => consumer.slots.register({
+    name: 'sidebar.panellist',
+    id: PANEL_ID,
+    order: 20,
+    label: () => t('panel'),
+    locale: NS,
+    registrant: 'nexusai',
+  }, NexusaiPanelIcon))
 
   // The launcher shadows the built-in account menu (registered at the default
   // priority 0; lowest priority renders, so -1 wins while both stay mounted —

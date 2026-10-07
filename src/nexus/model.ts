@@ -16,6 +16,38 @@ export interface CaptchaResponse {
   readonly b64: string
 }
 
+/** One uploaded image reference in the branding payload (`{key, path}`). */
+export interface CustomImageRef {
+  readonly key?: string
+  readonly path?: string
+}
+
+/**
+ * `GET /v1/base/custom` → `response.LogoCustomInfo` (fields the plugin
+ * consumes): the login-page branding, server-configurable via the admin
+ * 平台配置 settings and the i18n data files.
+ */
+export interface CustomInfoResponse {
+  readonly login?: {
+    readonly welcomeText?: string
+    readonly logo?: CustomImageRef
+    readonly background?: CustomImageRef
+    readonly loginButtonColor?: string
+  }
+  readonly home?: {
+    readonly title?: string
+    readonly logo?: CustomImageRef
+  }
+  readonly tab?: {
+    readonly title?: string
+    readonly logo?: CustomImageRef
+  }
+  readonly about?: {
+    readonly version?: string
+    readonly copyright?: string
+  }
+}
+
 /** `POST /v1/base/login` → `response.Login` (fields the plugin consumes). */
 export interface LoginResponse {
   readonly uid: string
@@ -78,6 +110,32 @@ export interface McpServerDetailResponse {
   readonly desc: string
   readonly sseUrl: string
   readonly streamableUrl: string
+}
+
+/** `GET /v1/mcp/list` → one 导入 MCP server (legacy SSE / streamable endpoint). */
+export interface ImportedMcpServerRow {
+  readonly mcpId: string
+  readonly name: string
+  readonly desc: string
+  readonly from: string
+  readonly transport: string
+  readonly sseUrl: string
+  readonly streamableUrl: string
+  readonly avatar?: { readonly key?: string; readonly path?: string } | null
+}
+
+/** `GET /v1/mcp/list` → `{list: ImportedMcpServerRow[], total}`. */
+export interface ImportedMcpListResponse {
+  readonly list: readonly ImportedMcpServerRow[]
+  readonly total: number
+}
+
+/** `GET /v1/mcp/tool/list?mcpId=` → one imported server's tools. */
+export interface ImportedMcpToolListResponse {
+  readonly tools: readonly {
+    readonly name?: string
+    readonly description?: string
+  }[]
 }
 
 /** `GET /v1/agent/skill/custom/list` → `{list: CustomSkillInfo[], total}`. */

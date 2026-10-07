@@ -23,6 +23,7 @@ import type { NexusApiClient } from '../nexus/api-client'
 import type { EndpointStore } from '../sync/endpoint-store'
 import type { CustomToolRegistry } from '../sync/custom-tools'
 import type { McpRowSync } from '../sync/mcp-rows'
+import { listMcpCatalog } from '../sync/mcp-list'
 import { SESSION_KEY, type SessionStore } from '../sync/session-store'
 import type { AuthView, NexusOrg, NexusSession, SignInAttemptView, SignInPhase } from '../types'
 
@@ -105,6 +106,24 @@ export class NexusaiAuthService extends TypertRemoteService {
   @Remote
   async testBaseUrl(url: string): Promise<void> {
     await this.deps.api.testBaseUrl(url)
+  }
+
+  /**
+   * The login-page branding from the server (the same `GET /v1/base/custom`
+   * the web frontend renders from): `name` is the product title shown on the
+   * login dialog. Empty string when the server doesn't provide one — the
+   * dialog then shows a bare 「登录」 without any hardcoded brand.
+   */
+  @Remote
+  async getBranding(): Promise<{ name: string }> {
+    try {
+      const info = await this.deps.api.customInfo()
+      const name = info.tab?.title ?? info.home?.title ?? ''
+      return { name: name.trim() }
+    } catch {
+      // Branding is cosmetic: never block the login flow on it.
+      return { name: '' }
+    }
   }
 
   /**
@@ -293,17 +312,11 @@ export class NexusaiAuthService extends TypertRemoteService {
       errors.push(`tools: ${(error as Error).message}`)
     }
     try {
-      const servers = await this.deps.api.listMcpServers()
-      const rows = []
-      for (const server of servers.list ?? []) {
-        const detail = await this.deps.api.mcpServerDetail(server.mcpServerId)
-        const url = detail.streamableUrl !== '' ? detail.streamableUrl : detail.sseUrl
-        if (url === '') {
-          errors.push(`mcp server ${server.name}: no sse/streamable url`)
-          continue
-        }
-        rows.push({ mcpServerId: server.mcpServerId, name: server.name, url })
-      }
+      const catalog = await listMcpCatalog(this.deps.api)
+      for (const note of catalog.notes) this.ctx.logger.info('nexusai: %s', note)
+      const rows = catalog.servers
+        .filter(server => server.connectable)
+        .map(server => ({ mcpServerId: server.id, name: server.name, url: server.url }))
       await this.deps.mcp.write(rows)
     } catch (error) {
       errors.push(`mcp: ${(error as Error).message}`)

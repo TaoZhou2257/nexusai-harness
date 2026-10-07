@@ -46,7 +46,7 @@ export class SkillSync {
   /** Download one skill's SKILL.md; returns where it landed. */
   async download(skillId: string, signal?: AbortSignal): Promise<SkillDownloadResult> {
     const detail = await this.options.api.skillDetail(skillId, signal)
-    const name = slug(detail.name || skillId)
+    const name = slugify(detail.name || skillId)
     const directory = join(this.root(), name)
     await mkdir(directory, { recursive: true })
     const markdown = FRONTMATTER_PATTERN.test(detail.skillMarkdown)
@@ -59,8 +59,13 @@ export class SkillSync {
   }
 }
 
-/** Non-alphanumerics fold to dashes; skill names are directory names. */
-function slug(value: string): string {
+/**
+ * Non-alphanumerics fold to dashes; skill names are directory names. Named
+ * `slugify` rather than `slug` on purpose: a module-level `slug` collides with
+ * the Remote method parameter of the same name when esbuild flattens the
+ * bundle, and the gateway reads wire field names off the compiled signature.
+ */
+function slugify(value: string): string {
   return value.replace(/[^A-Za-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'skill'
 }
 

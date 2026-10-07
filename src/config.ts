@@ -33,6 +33,12 @@ export interface Config {
   skills: {
     downloadRoot: string
   }
+  /** SkillHub marketplace endpoints (public catalog, no auth). */
+  skillhub: {
+    apiBase: string
+    webBase: string
+    timeoutMs: number
+  }
   /** Profile user patch file the MCP rows are written to; empty = the `desktop` profile's. */
   profilePatchFile: string
 }
@@ -55,6 +61,11 @@ export const Config: Schema<Config> = z.object({
   }),
   skills: z.object({
     downloadRoot: z.string().default(''),
+  }),
+  skillhub: z.object({
+    apiBase: z.string().default('https://api.skillhub.cn'),
+    webBase: z.string().default('https://skillhub.cn'),
+    timeoutMs: z.natural().default(15_000),
   }),
   profilePatchFile: z.string().default(''),
 })

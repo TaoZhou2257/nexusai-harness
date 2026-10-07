@@ -8,11 +8,12 @@ import type {
   ApiAuthWebRequest,
   ApiResponse,
   CaptchaResponse,
+  CustomInfoResponse,
   CustomToolDetailResponse,
   CustomToolListResponse,
   LoginResponse,
   McpServerDetailResponse,
-  McpServerListResponse,
+  ImportedMcpListResponse, ImportedMcpToolListResponse, McpServerListResponse,
   SkillDetailResponse,
   SkillListResponse,
 } from './model'
@@ -269,6 +270,27 @@ export class NexusApiClient {
     return this.decode<CaptchaResponse>(response, `GET ${requestUrl}`)
   }
 
+  /**
+   * `GET /v1/base/custom` — the login-page branding the web frontend renders
+   * from (guest, no auth): tab/home titles, login welcome text and logos.
+   */
+  async customInfo(signal?: AbortSignal): Promise<CustomInfoResponse> {
+    const requestUrl = this.url('/v1/base/custom')
+    let response: Response
+    try {
+      response = await fetch(requestUrl, {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: this.signalOf(signal),
+      })
+    } catch (error) {
+      if ((error as Error).name === 'TimeoutError') {
+        throw new NexusApiError(`nexusai: request timed out after ${this.options.timeoutMs} ms`, -1)
+      }
+      throw error
+    }
+    return this.decode<CustomInfoResponse>(response, `GET ${requestUrl}`)
+  }
+
   /** `POST /v1/base/login` with the AES-encrypted password; returns the JWT session. */
   async login(username: string, password: string, key: string, code: string): Promise<LoginResponse> {
     const encrypted = encryptPassword(password, this.options.aesKey, this.options.aesIv)
@@ -296,6 +318,16 @@ export class NexusApiClient {
   /** `GET /v1/mcp/server?mcpServerId=`. */
   mcpServerDetail(mcpServerId: string, signal?: AbortSignal): Promise<McpServerDetailResponse> {
     return this.request<McpServerDetailResponse>('/v1/mcp/server', 'GET', { query: { mcpServerId }, signal })
+  }
+
+  /** `GET /v1/mcp/list` — the 导入 MCP servers (separate from `/mcp/server/list`). */
+  listImportedMcpServers(signal?: AbortSignal): Promise<ImportedMcpListResponse> {
+    return this.request<ImportedMcpListResponse>('/v1/mcp/list', 'GET', { signal })
+  }
+
+  /** `GET /v1/mcp/tool/list?mcpId=` — one imported server's tools. */
+  importedMcpTools(mcpId: string, signal?: AbortSignal): Promise<ImportedMcpToolListResponse> {
+    return this.request<ImportedMcpToolListResponse>('/v1/mcp/tool/list', 'GET', { query: { mcpId }, signal })
   }
 
   /** `GET /v1/agent/skill/custom/list`. */
