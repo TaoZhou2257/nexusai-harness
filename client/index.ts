@@ -1,7 +1,6 @@
 /**
  * NexusAI, browser half: the bottom-left account launcher (replacing the
- * built-in DeepSeek account menu) and the NexusAI settings section hosting
- * the capability console. All network stays host-side: every action crosses
+ * built-in DeepSeek account menu). All network stays host-side: every action crosses
  * the `nexusaiAuth` / `nexusaiCapabilities` Remotes mounted from `remote.ts`,
  * and login state arrives push-style over the `nexusaiAuth.watch` stream.
  *
@@ -28,8 +27,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { NexusaiLauncher } from './NexusaiLauncher'
+import { NexusaiBrandMark, NexusaiBrandName } from './NexusaiBrand'
 import { NexusaiPanelIcon } from './NexusaiPanelIcon'
-import { NexusaiSection } from './NexusaiSection'
 import { NexusaiWorkbench } from './NexusaiWorkbench'
 import { en, zh, type NexusaiLocaleKey } from './locales'
 import { unwrap, messageOf, type AuthViewFace, type CapabilitiesRemoteFace, type AuthRemoteFace, type NexusaiSnapshot, type SessionsFace, type SkillsRemoteFace, type SlashSkillFace, type StreamFace } from './face'
@@ -45,7 +44,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'nexusai'
 
-/** The id shared by the sidebar entry, the main workbench panel, and the settings section. */
+/** The id shared by the sidebar entry and the main workbench panel. */
 export const PANEL_ID = 'nexusai' as MainPanelId
 
 /** Services required to mount the Remote contribution. */
@@ -75,8 +74,7 @@ export async function apply(ctx: Context): Promise<void> {
 }
 
 /**
- * Contribute the launcher (bottom-left, shadowing the built-in account menu
- * at a lower priority) and the settings section (capability console), both
+ * Contribute the launcher (bottom-left, shadowing the built-in account menu),
  * reading one shared login projection.
  * @param consumer - fiber whose inject covers the mounted Remote namespaces.
  * @param t - locale resolver bound before the consumer started.
@@ -143,6 +141,7 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
     capabilities: {
       listCustomTools: () => unwrap(remote.nexusaiCapabilities.listCustomTools()),
       listMcpServers: () => unwrap(remote.nexusaiCapabilities.listMcpServers()),
+      listLocalMcpServers: () => unwrap(remote.nexusaiCapabilities.listLocalMcpServers()),
       listSkills: () => unwrap(remote.nexusaiCapabilities.listSkills()),
       searchSkillHub: (keyword: string, category: string, page: number) => unwrap(remote.nexusaiCapabilities.searchSkillHub(keyword, category, page)),
       disabledLocalSkills: (roots: string[]) => unwrap(remote.nexusaiCapabilities.disabledLocalSkills(roots)),
@@ -206,6 +205,24 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
   // The launcher shadows the built-in account menu (registered at the default
   // priority 0; lowest priority renders, so -1 wins while both stay mounted —
   // and if this entry ever abdicates, the built-in menu takes over again).
+  // The shell's brand slots (single, root-scope): the mark and the name come
+  // from the NexusAI server; dsh's own local-build label is their fallback.
+  consumer.slots.inject('sidebar.brand.mark', () => consumer.slots.register({
+    name: 'sidebar.brand.mark',
+    locale: NS,
+    registrant: 'nexusai',
+    inject: () => controller,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as never, NexusaiBrandMark as never))
+
+  consumer.slots.inject('sidebar.brand.name', () => consumer.slots.register({
+    name: 'sidebar.brand.name',
+    locale: NS,
+    registrant: 'nexusai',
+    inject: () => controller,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as never, NexusaiBrandName as never))
+
   consumer.slots.inject('settings.launcher', () => consumer.slots.register({
     name: 'settings.launcher',
     priority: -1,
@@ -214,15 +231,4 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
     inject: () => controller,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as never, NexusaiLauncher as never))
-
-  consumer.slots.inject('settings.section', () => consumer.slots.register({
-    name: 'settings.section',
-    id: 'nexusai',
-    order: 10,
-    label: () => t('nav'),
-    locale: NS,
-    registrant: 'nexusai',
-    inject: () => controller,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as never, NexusaiSection as never))
 }

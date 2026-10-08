@@ -52,6 +52,8 @@ export interface AuthView {
   readonly orgs?: readonly NexusOrg[]
   readonly expiresAt?: number
   readonly attempt: SignInAttemptView | null
+  /** One-shot message code for the surfaces, e.g. a session lost to a 401. */
+  readonly notice?: string
 }
 
 /** One custom tool listed by `GET /v1/tool/custom/list`. */
@@ -73,6 +75,10 @@ export interface McpServerSummary {
   readonly url: string
   /** Whether dsh can host it (streamable HTTP); false = legacy SSE only. */
   readonly connectable: boolean
+  /** Whether this plugin bridged an SSE server's tools into dsh. */
+  readonly bridged: boolean
+  /** Why bridging failed, when it did. */
+  readonly bridgeError?: string
 }
 
 /** One custom skill listed by `GET /v1/agent/skill/custom/list`. */
@@ -110,6 +116,41 @@ export interface SkillHubCard {
   /** Marketplace pricing marker (`labels.pricing_type`): `paid`/`alipay`/... */
   readonly pricing: string
   readonly iconUrl?: string
+}
+
+/** Login-page branding from `GET /v1/base/custom` (all fields optional: an
+ * unconfigured server simply returns nothing for them). */
+export interface Branding {
+  readonly name: string
+  /** Absolute URL of the login-page logo. */
+  readonly logoUrl: string
+  /** Absolute URL of the login-page background image. */
+  readonly backgroundUrl: string
+  readonly welcomeText: string
+  readonly platformDesc: string
+  /** The platform's login-button color, when configured. */
+  readonly buttonColor: string
+  /** Platform version (`about.version`, e.g. `v1.5.0.3`). */
+  readonly version: string
+  readonly copyright: string
+  /** A near-square branding logo suitable for the sidebar mark; '' when the
+   * server only ships wide wordmarks. */
+  readonly markUrl: string
+  /** The dsh build string the shell shows in the sidebar (`0.2.0-rc.2-639ed01`). */
+  readonly dshVersion: string
+}
+
+/** One tool advertised by an MCP server (JSON-Schema input, as MCP returns it). */
+export interface McpSseTool {
+  readonly name: string
+  readonly description: string
+  readonly inputSchema: Record<string, unknown>
+}
+
+/** The flattened outcome of one `tools/call`. */
+export interface McpSseCallResult {
+  readonly text: string
+  readonly isError: boolean
 }
 
 /** One local skill file behind the 本地 tab: enabled skills come from the
@@ -163,7 +204,12 @@ export interface SkillHubDetail {
 /** Outcome of one capability sync: what got registered, and what failed. */
 export interface SyncReport {
   readonly tools: number
+  /** Streamable MCP servers written as mcp-client rows. */
   readonly mcpServers: number
+  /** Legacy-SSE MCP servers bridged into dsh tools by this plugin. */
+  readonly mcpSseServers: number
+  /** Tools those SSE servers contributed. */
+  readonly mcpSseTools: number
   readonly errors: readonly string[]
 }
 

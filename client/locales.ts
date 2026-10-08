@@ -50,6 +50,9 @@ export type NexusaiLocaleKey =
   | 'mcpImported'
   | 'mcpSseOnly'
   | 'mcpSseHint'
+  | 'mcpSseBridged'
+  | 'mcpSseBridgedHint'
+  | 'mcpSseTools'
   | 'moreActions'
   | 'viewContent'
   | 'copyPath'
@@ -101,9 +104,13 @@ export type NexusaiLocaleKey =
   | 'syncing'
   | 'logout'
   | 'loggedInAs'
+  | 'switchOrg'
+  | 'sessionLost'
   | 'expires'
   | 'org'
   | 'signedOutHint'
+  | 'connectorsSignedOut'
+  | 'localConnectorsEmpty'
   | 'tools'
   | 'mcpServers'
   | 'skills'
@@ -157,6 +164,9 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   mcpImported: '导入',
   mcpSseOnly: 'SSE 未接入',
   mcpSseHint: '该 MCP 是 legacy SSE 连接，dsh 暂不支持，未注册为工具',
+  mcpSseBridged: 'SSE 已桥接',
+  mcpSseBridgedHint: '该 MCP 走 legacy SSE：已由本插件桥接为 dsh 工具，agent 可直接调用',
+  mcpSseTools: 'SSE 桥接工具',
   moreActions: '更多操作',
   viewContent: '查看技能内容',
   copyPath: '复制技能路径',
@@ -210,9 +220,13 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   syncing: '同步中…',
   logout: '登出',
   loggedInAs: '已登录',
+  switchOrg: '切换组织',
+  sessionLost: '登录状态已失效（Token 过期或被服务器拒绝），请重新登录。',
   expires: '有效期至',
   org: '组织',
   signedOutHint: '登录账号后，可在这里管理同步过来的自定义工具、MCP 服务与技能。',
+  connectorsSignedOut: '登录后可同步 NexusAI 的 MCP 服务（创建与导入）。',
+  localConnectorsEmpty: '本机还没有配置本地 MCP 服务（可在配置文件里添加 mcp-client 行）。',
   tools: '自定义工具',
   mcpServers: 'MCP 服务',
   skills: '技能',
@@ -267,6 +281,9 @@ export const en: Record<NexusaiLocaleKey, string> = {
   mcpImported: 'Imported',
   mcpSseOnly: 'SSE only',
   mcpSseHint: 'This MCP uses legacy SSE, which dsh does not support; it is not registered as tools.',
+  mcpSseBridged: 'SSE bridged',
+  mcpSseBridgedHint: 'Legacy-SSE MCP bridged into dsh tools by this plugin — the agent can call them.',
+  mcpSseTools: 'SSE bridged tools',
   moreActions: 'More actions',
   viewContent: 'View skill content',
   copyPath: 'Copy skill path',
@@ -320,9 +337,13 @@ export const en: Record<NexusaiLocaleKey, string> = {
   syncing: 'Syncing…',
   logout: 'Sign out',
   loggedInAs: 'Signed in',
+  switchOrg: 'Switch organization',
+  sessionLost: 'Your session expired or was rejected by the server — please sign in again.',
   expires: 'Valid until',
   org: 'Organization',
   signedOutHint: 'Sign in to manage the synced custom tools, MCP servers, and skills here.',
+  connectorsSignedOut: 'Sign in to sync the NexusAI MCP servers (created and imported).',
+  localConnectorsEmpty: 'No local MCP server configured on this machine yet (add an mcp-client row to the profile).',
   tools: 'Custom tools',
   mcpServers: 'MCP servers',
   skills: 'Skills',

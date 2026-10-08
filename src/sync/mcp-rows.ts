@@ -77,6 +77,43 @@ export class McpRowSync {
     return rows.length
   }
 
+  /** Locally configured mcp-client rows for the panel's 本地 tab: every
+   * mcp-client insert whose id this plugin does not own (ours are the 远程
+   * ones, written from the NexusAI catalog). */
+  async list(): Promise<Array<{ id: string; name: string; transport: string; url: string }>> {
+    const patchFile = this.patchFile()
+    const text = await readPatchText(patchFile)
+    const document = parsePatchDocument(text, patchFile)
+    if (!isSeq(document.contents)) return []
+    const rows: Array<{ id: string; name: string; transport: string; url: string }> = []
+    for (const item of document.contents.items) {
+      if (!isMap(item) || !item.has('insert')) continue
+      const insert = item.get('insert')
+      if (!isSeq(insert)) continue
+      for (const row of insert.items) {
+        if (!isMap(row)) continue
+        const id = row.get('id')
+        if (typeof id !== 'string' || id === '' || OWNED_ID_PATTERN.test(id)) continue
+        if (row.get('name') !== '@deepseek-ai/dsh-mcp-client') continue
+        const config = row.get('config')
+        const read = (key: string): string => {
+          if (!isMap(config)) return ''
+          const value = config.get(key)
+          return typeof value === 'string' ? value : ''
+        }
+        const command = read('command')
+        const url = read('url') !== '' ? read('url') : command
+        rows.push({
+          id,
+          name: read('serverName') !== '' ? read('serverName') : id,
+          transport: read('transport'),
+          url,
+        })
+      }
+    }
+    return rows
+  }
+
   /** Remove every owned row (logout). */
   async clear(): Promise<void> {
     const patchFile = this.patchFile()

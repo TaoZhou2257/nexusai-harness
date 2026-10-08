@@ -1,0 +1,13 @@
+# 把下面的内容**追加**到 <用户目录>\.dsh\profiles\desktop\cordis.patch.yml 的末尾，
+# 然后重启应用。它做两件事：配置 nexusai 插件（服务器地址 + 登录载荷解密密钥），
+# 并隐藏官方的 DeepSeek 账号登录界面（用 NexusAI 登录替代）。
+
+- id: ui-settings-account
+  disabled: true
+- insert:
+    - id: nexusai
+      name: '@toby/dsh-plugin-nexusai'
+      config:
+        baseUrl: 'http://agent.nexusai.net.cn:8081'
+        aesKey: 'f5Su3GhNMM1rndyp'
+        aesIv: 'sdf4ddfsFD86Vdf2'

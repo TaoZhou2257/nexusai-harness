@@ -274,6 +274,16 @@ export class NexusApiClient {
    * `GET /v1/base/custom` — the login-page branding the web frontend renders
    * from (guest, no auth): tab/home titles, login welcome text and logos.
    */
+  /** Absolute URL for a branding asset path (the server serves images under
+   * the same `/service/api` prefix as the API). */
+  assetUrl(path: string | undefined): string {
+    const value = (path ?? '').trim()
+    if (value === '') return ''
+    if (/^https?:\/\//i.test(value)) return value
+    const suffix = value.startsWith('/') ? value : `/${value}`
+    return `${this.base.replace(/\/$/, '')}${API_PREFIX}${suffix}`
+  }
+
   async customInfo(signal?: AbortSignal): Promise<CustomInfoResponse> {
     const requestUrl = this.url('/v1/base/custom')
     let response: Response

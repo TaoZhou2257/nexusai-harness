@@ -20,6 +20,7 @@ import type { Config as ConfigType } from './config'
 import { NexusApiClient } from './nexus/api-client'
 import { SkillHubClient } from './nexus/skillhub'
 import { LocalSkills } from './sync/local-skills'
+import { McpSseToolRegistry } from './sync/mcp-tools'
 import { NexusaiAuthService } from './service/auth'
 import { NexusaiCapabilitiesService } from './service/capabilities'
 import { CustomToolRegistry } from './sync/custom-tools'
@@ -71,6 +72,12 @@ export function apply(ctx: Context, config: ConfigType): void {
     toolCallTimeoutMs: config.mcp.toolCallTimeoutMs,
     failOnStartupError: config.mcp.failOnStartupError,
   })
+  // Legacy-SSE MCP servers: dsh's mcp-client hosts stdio and streamable-http
+  // only, so this registry bridges the SSE ones into ordinary dsh tools.
+  const mcpSse = new McpSseToolRegistry(ctx, {
+    toolNamePrefix: config.mcp.serverNamePrefix,
+    timeoutMs: config.mcp.toolCallTimeoutMs,
+  })
   const skills = new SkillSync(ctx, { api, downloadRoot: config.skills.downloadRoot })
   // SkillHub marketplace: the public catalog the @cocofhu/skillhub plugin also
   // reads (no auth); endpoints overridable for mirrors/deployments.
@@ -87,13 +94,14 @@ export function apply(ctx: Context, config: ConfigType): void {
     endpoint,
     tools,
     mcp,
+    mcpSse,
     authorization: ctx.authorization,
     defaultOrgId: config.defaultOrgId,
   })
   // Local skill files: roots default to our download root; the panel adds the
   // directories of the skills the registry reports (user/project layers).
   const localSkills = new LocalSkills([config.skills.downloadRoot])
-  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, skills, skillhub, localSkills })
+  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, mcpSse, skills, skillhub, localSkills })
 
   // A surviving session means the account was logged in before restart;
   // re-register its tools and rewrite its MCP rows without blocking boot.

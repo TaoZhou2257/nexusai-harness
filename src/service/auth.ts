@@ -17,13 +17,20 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { AuthorizationService, AuthorizationSession } from '@deepseek-ai/dsh-authorization'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { createRequire } from 'node:module'
+import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { LoginResponse } from '../nexus/model'
+import type { Branding } from '../types'
 import { normalizeBaseUrl } from '../nexus/api-client'
 import type { NexusApiClient } from '../nexus/api-client'
 import type { EndpointStore } from '../sync/endpoint-store'
 import type { CustomToolRegistry } from '../sync/custom-tools'
 import type { McpRowSync } from '../sync/mcp-rows'
 import { listMcpCatalog } from '../sync/mcp-list'
+import type { McpSseToolRegistry } from '../sync/mcp-tools'
 import { SESSION_KEY, type SessionStore } from '../sync/session-store'
 import type { AuthView, NexusOrg, NexusSession, SignInAttemptView, SignInPhase } from '../types'
 
@@ -52,6 +59,7 @@ export interface NexusaiAuthServiceOptions {
   readonly endpoint: EndpointStore
   readonly tools: CustomToolRegistry
   readonly mcp: McpRowSync
+  readonly mcpSse: McpSseToolRegistry
   /** The dsh authorization seam this service registers its login flow with. */
   readonly authorization: AuthorizationService
   /** Org chosen when the account has none configured. */
@@ -64,6 +72,10 @@ export class NexusaiAuthService extends TypertRemoteService {
   private attempt: Attempt | undefined
   private readonly listeners = new Set<() => void>()
   private closed = false
+  /** Set while `logout()` runs, so the record event does not double-handle it. */
+  private deliberateSignOut = false
+  /** A one-shot message for the surfaces (empty = nothing to say). */
+  private notice = ''
 
   constructor(ctx: Context, deps: NexusaiAuthServiceOptions) {
     super(ctx, 'nexusaiAuth')
@@ -81,8 +93,21 @@ export class NexusaiAuthService extends TypertRemoteService {
     // record write (login commit, org switch, silent token refresh) reloads it.
     ctx.on('credentials/record-updated', (key: CredentialKey) => {
       if (key !== SESSION_KEY) return
+      const hadSession = this.deps.store.read() !== undefined
       this.deps.store.invalidate()
-      void this.deps.store.load().then(() => this.changed(), () => this.changed())
+      void this.deps.store.load().then(session => {
+        // The stored session vanished under us (expired token, a 401 from
+        // another server): finish the sign-out the way `logout()` does, so no
+        // stale tools/MCP rows survive it, and say why. A deliberate logout
+        // sets the flag and handles both itself.
+        if (hadSession && session === undefined && !this.deliberateSignOut) {
+          void this.sessionLost()
+          return
+        }
+        // A live session means any earlier loss notice is stale.
+        if (session !== undefined) this.notice = ''
+        this.changed()
+      }, () => this.changed())
     })
     ctx.effect(() => () => {
       this.closed = true
@@ -115,14 +140,30 @@ export class NexusaiAuthService extends TypertRemoteService {
    * dialog then shows a bare 「登录」 without any hardcoded brand.
    */
   @Remote
-  async getBranding(): Promise<{ name: string }> {
+  async getBranding(): Promise<Branding> {
     try {
       const info = await this.deps.api.customInfo()
-      const name = info.tab?.title ?? info.home?.title ?? ''
-      return { name: name.trim() }
+      const name = (info.tab?.title ?? info.home?.title ?? '').trim()
+      return {
+        name,
+        // Login-page assets come from the same admin 平台配置 as the name.
+        logoUrl: this.deps.api.assetUrl(info.login?.logo?.path),
+        backgroundUrl: this.deps.api.assetUrl(info.login?.background?.path),
+        welcomeText: (info.login?.welcomeText ?? '').trim(),
+        platformDesc: (info.login?.platformDesc ?? '').trim(),
+        buttonColor: (info.login?.loginButtonColor ?? '').trim(),
+        version: (info.about?.version ?? '').trim(),
+        copyright: (info.about?.copyright ?? '').trim(),
+        markUrl: await pickSquareLogo(this.deps.api, [
+          info.tab?.logo?.path,
+          info.home?.logo?.path,
+          info.login?.logo?.path,
+        ]),
+        dshVersion: dshClientVersion(),
+      }
     } catch {
       // Branding is cosmetic: never block the login flow on it.
-      return { name: '' }
+      return { name: '', logoUrl: '', backgroundUrl: '', welcomeText: '', platformDesc: '', buttonColor: '', version: '', copyright: '', markUrl: '', dshVersion: dshClientVersion() }
     }
   }
 
@@ -244,9 +285,30 @@ export class NexusaiAuthService extends TypertRemoteService {
   /** Drop the session record, unregister tools, remove the MCP insert rows. */
   @Remote
   async logout(): Promise<void> {
+    this.deliberateSignOut = true
     await this.deps.tools.clear()
     await this.deps.mcp.clear()
+    await this.deps.mcpSse.clear()
     await this.deps.store.persist(undefined)
+    this.notice = ''
+    this.deliberateSignOut = false
+    this.changed()
+  }
+
+  /**
+   * A session the user did not give up (401 / expired): clear every
+   * registration the old session produced and leave a notice the surfaces can
+   * show — the alternative is a silent drop back to 「登录」.
+   */
+  private async sessionLost(): Promise<void> {
+    this.notice = 'nexusai: session-lost'
+    try {
+      await this.deps.tools.clear()
+      await this.deps.mcp.clear()
+      await this.deps.mcpSse.clear()
+    } catch {
+      // Cleanup is best-effort: the projection must still report signed-out.
+    }
     this.changed()
   }
 
@@ -318,6 +380,9 @@ export class NexusaiAuthService extends TypertRemoteService {
         .filter(server => server.connectable)
         .map(server => ({ mcpServerId: server.id, name: server.name, url: server.url }))
       await this.deps.mcp.write(rows)
+      const sse = catalog.servers.filter(server => !server.connectable && server.transport === 'sse')
+      const bridged = await this.deps.mcpSse.sync(sse.map(server => ({ id: server.id, name: server.name, url: server.url })))
+      errors.push(...bridged.errors)
     } catch (error) {
       errors.push(`mcp: ${(error as Error).message}`)
     }
@@ -336,6 +401,7 @@ export class NexusaiAuthService extends TypertRemoteService {
       orgs: session?.orgs,
       expiresAt: session?.expiresAt,
       attempt: this.attempt?.view ?? null,
+      ...(this.notice !== '' ? { notice: this.notice } : {}),
     }
   }
 
@@ -392,5 +458,88 @@ function buildSession(response: LoginResponse, defaultOrgId: string): NexusSessi
     expiresAt: normalizeExpiry(response.expiresAt),
     orgId: pickOrg(orgs, defaultOrgId),
     orgs,
+  }
+}
+
+/**
+ * Pick a branding image that works as a 24px sidebar mark: the server ships
+ * wide wordmarks for most slots, so each candidate's pixel aspect is measured
+ * and the first near-square one wins; '' when none qualifies.
+ */
+async function pickSquareLogo(api: NexusApiClient, candidates: readonly (string | undefined)[]): Promise<string> {
+  for (const candidate of candidates) {
+    const url = api.assetUrl(candidate)
+    if (url === '') continue
+    const size = await pngSize(url)
+    if (size === undefined) continue
+    const ratio = size.width / size.height
+    if (ratio >= 0.8 && ratio <= 1.25) return url
+  }
+  return ''
+}
+
+/** PNG width/height from the IHDR chunk of the first bytes, without decoding. */
+async function pngSize(url: string): Promise<{ width: number; height: number } | undefined> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(8_000) })
+    if (!response.ok) return undefined
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.length < 24 || bytes[0] !== 0x89 || bytes[1] !== 0x50) return undefined
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    return { width: view.getUint32(16), height: view.getUint32(20) }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The dsh build string the shell prints in the sidebar. The client bundle gets
+ * it through a build-time define we cannot see, so it is reconstructed here:
+ * the injected variables when the host carries them, else the installed
+ * sidebar package's version, else the checkout's git commit when the dev home
+ * still points into a repository.
+ */
+function dshClientVersion(): string {
+  const env = process.env
+  const injected = env.DSH_CLIENT_VERSION
+  if (injected !== undefined && injected !== '') {
+    // The desktop injects the version but not the commit into the host, so the
+    // checkout's short hash fills the suffix the shell prints in dev builds.
+    const commit = env.DSH_CLIENT_COMMIT_HASH !== undefined && env.DSH_CLIENT_COMMIT_HASH !== ''
+      ? env.DSH_CLIENT_COMMIT_HASH
+      : commitHashFromRepo()
+    return injected
+      + (commit === '' ? '' : `-${commit}`)
+      + (env.DSH_CLIENT_GIT_DIRTY === 'true' ? '-dirty' : '')
+  }
+  let version = ''
+  try {
+    const resolved = createRequire(import.meta.url)('@deepseek-ai/dsh-client-ui-sidebar/package.json') as { version?: string }
+    version = resolved.version ?? ''
+  } catch {
+    version = ''
+  }
+  if (version === '') return ''
+  const commit = commitHashFromRepo()
+  return version + (commit === '' ? '' : `-${commit}`)
+}
+
+/** The checkout's short commit hash: walk up from the dsh home until a `.git`
+ * entry appears (a packaged install has none, and returns ''). */
+function commitHashFromRepo(): string {
+  try {
+    let directory = resolveDshHome()
+    for (let depth = 0; depth < 8; depth++) {
+      if (existsSync(join(directory, '.git'))) {
+        // Seven characters, the abbreviation dsh's own build prints.
+        return execFileSync('git', ['-C', directory, 'rev-parse', '--short=7', 'HEAD'], { encoding: 'utf8', timeout: 5_000 }).trim()
+      }
+      const parent = resolve(directory, '..')
+      if (parent === directory) break
+      directory = parent
+    }
+    return ''
+  } catch {
+    return ''
   }
 }

@@ -30,6 +30,8 @@ export interface CustomImageRef {
 export interface CustomInfoResponse {
   readonly login?: {
     readonly welcomeText?: string
+    /** Longer platform description shown under the welcome line; often empty. */
+    readonly platformDesc?: string
     readonly logo?: CustomImageRef
     readonly background?: CustomImageRef
     readonly loginButtonColor?: string

@@ -6,6 +6,11 @@
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
+  "files": [
+    "lib",
+    "README.md",
+    "HANDOFF.md"
+  ],
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",

@@ -33,6 +33,8 @@ export interface AuthViewFace {
     captchaB64?: string
     message?: string
   }
+  /** One-shot message code from the host (e.g. a session lost to a 401). */
+  notice?: string
 }
 
 /** The wire face of `nexusaiAuth` as this half consumes it. */
@@ -40,7 +42,7 @@ export interface AuthRemoteFace {
   getBaseUrl(): Promise<RemoteAnswer<string>>
   setBaseUrl(url: string): Promise<RemoteAnswer<void>>
   testBaseUrl(url: string): Promise<RemoteAnswer<void>>
-  getBranding(): Promise<RemoteAnswer<{ name: string }>>
+  getBranding(): Promise<RemoteAnswer<BrandingFace>>
   status(): Promise<RemoteAnswer<AuthViewFace>>
   startSignIn(): Promise<RemoteAnswer<AuthViewFace>>
   submit(attemptId: string, username: string, password: string, captchaCode: string): Promise<RemoteAnswer<AuthViewFace>>
@@ -54,7 +56,8 @@ export interface AuthRemoteFace {
 /** The wire face of `nexusaiCapabilities` as this half consumes it. */
 export interface CapabilitiesRemoteFace {
   listCustomTools(): Promise<RemoteAnswer<{ customToolId: string; name: string; description: string }[]>>
-  listMcpServers(): Promise<RemoteAnswer<{ mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean }[]>>
+  listLocalMcpServers(): Promise<RemoteAnswer<{ id: string; name: string; transport: string; url: string }[]>>
+  listMcpServers(): Promise<RemoteAnswer<{ mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>>
   listSkills(): Promise<RemoteAnswer<{ skillId: string; name: string; description: string; author: string }[]>>
   searchSkillHub(keyword: string, category: string, page: number): Promise<RemoteAnswer<{ cards: SkillHubCardFace[]; total: number }>>
   disabledLocalSkills(roots: string[]): Promise<RemoteAnswer<LocalSkillEntryFace[]>>
@@ -66,7 +69,7 @@ export interface CapabilitiesRemoteFace {
   skillhubPreview(slug: string): Promise<RemoteAnswer<string>>
   skillhubCategories(): Promise<RemoteAnswer<{ key: string; label: string }[]>>
   installSkillHub(slug: string): Promise<RemoteAnswer<{ name: string; path: string }>>
-  sync(): Promise<RemoteAnswer<{ tools: number; mcpServers: number; errors: string[] }>>
+  sync(): Promise<RemoteAnswer<{ tools: number; mcpServers: number; mcpSseServers: number; mcpSseTools: number; errors: string[] }>>
   downloadSkill(skillId: string): Promise<RemoteAnswer<{ name: string; path: string }>>
 }
 
@@ -111,7 +114,7 @@ export interface NexusaiAuthOps {
   getBaseUrl(): Promise<string>
   setBaseUrl(url: string): Promise<void>
   testBaseUrl(url: string): Promise<void>
-  getBranding(): Promise<{ name: string }>
+  getBranding(): Promise<BrandingFace>
   status(): Promise<AuthViewFace>
   startSignIn(): Promise<AuthViewFace>
   submit(attemptId: string, username: string, password: string, captchaCode: string): Promise<AuthViewFace>
@@ -123,7 +126,8 @@ export interface NexusaiAuthOps {
 
 export interface NexusaiCapabilitiesOps {
   listCustomTools(): Promise<{ customToolId: string; name: string; description: string }[]>
-  listMcpServers(): Promise<{ mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean }[]>
+  listLocalMcpServers(): Promise<{ id: string; name: string; transport: string; url: string }[]>
+  listMcpServers(): Promise<{ mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>
   listSkills(): Promise<{ skillId: string; name: string; description: string; author: string }[]>
   searchSkillHub(keyword: string, category: string, page: number): Promise<{ cards: SkillHubCardFace[]; total: number }>
   disabledLocalSkills(roots: string[]): Promise<LocalSkillEntryFace[]>
@@ -135,7 +139,7 @@ export interface NexusaiCapabilitiesOps {
   skillhubPreview(slug: string): Promise<string>
   skillhubCategories(): Promise<{ key: string; label: string }[]>
   installSkillHub(slug: string): Promise<{ name: string; path: string }>
-  sync(): Promise<{ tools: number; mcpServers: number; errors: string[] }>
+  sync(): Promise<{ tools: number; mcpServers: number; mcpSseServers: number; mcpSseTools: number; errors: string[] }>
   downloadSkill(skillId: string): Promise<{ name: string; path: string }>
 }
 
@@ -156,6 +160,22 @@ export interface SkillHubCardFace {
   readonly requiresApiKey: boolean
   readonly pricing: string
   readonly iconUrl?: string
+}
+
+/** Login-page branding (`GET /v1/base/custom`): name, logo, version, … */
+export interface BrandingFace {
+  readonly name: string
+  readonly logoUrl: string
+  readonly backgroundUrl: string
+  readonly welcomeText: string
+  readonly platformDesc: string
+  readonly buttonColor: string
+  readonly version: string
+  readonly copyright: string
+  /** Near-square branding logo for the sidebar mark ('' = use the default). */
+  readonly markUrl: string
+  /** The dsh build string shown under the sidebar brand name. */
+  readonly dshVersion: string
 }
 
 /** One local skill file (enabled entries come from the registry, 关闭-ed

@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, IconCheckCircleOutlineRegular, IconLoadingOutlineRegular, IconShieldOutlineRegular, IconWarningOutlineRegular, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { NexusaiLocaleKey } from './locales'
+import type { BrandingFace } from './face'
 import type { AuthViewFace, NexusaiAuthOps } from './face'
 
 /** Phases in which the attempt is still running and owns the dialog. */
@@ -36,6 +37,11 @@ export interface NexusaiSignInDialogProps {
 const DIALOG_CSS = `
 .nexusai-dialog { max-height: 100%; }
 .nexusai-dialog-content { min-height: 0; flex: 1; overflow-y: auto; }
+.nexusai-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 4px 0 14px; }
+.nexusai-logo { max-width: 76%; max-height: 44px; width: auto; height: auto; object-fit: contain; }
+.nexusai-welcome { margin: 0; font-size: 13px; line-height: 19px; text-align: center; color: var(--dsw-alias-label-secondary); }
+.nexusai-version { margin: 14px 0 0; font-size: 12px; line-height: 17px; text-align: center;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); }
 .nexusai-note { margin: 0 0 14px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
 .nexusai-link { border: 0; padding: 0 0 0 6px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
 .nexusai-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
@@ -95,6 +101,9 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
   // same source the web frontend renders from). Empty = show a bare 「登录」
   // with no hardcoded brand.
   const [productName, setProductName] = useState('')
+  // The richer login-page branding from the same endpoint: logo, welcome line,
+  // platform button color, version (about.version) and copyright.
+  const [branding, setBranding] = useState<BrandingFace | undefined>(undefined)
   // Opening the dialog IS the intent to sign in: start the attempt once on
   // mount so the captcha form appears straight away, with no extra click.
   const autoStarted = useRef(false)
@@ -114,13 +123,20 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
   const dialogHint = productName === ''
     ? t('loginHintBare')
     : t('loginHint').replace('{name}', productName)
+  const welcome = (branding?.welcomeText ?? '').trim()
+  // Version only (the platform's copyright line stays out of the dialog).
+  const versionLine = (branding?.version ?? '').trim()
+  // The platform configures its own login-button color; honor it when present.
+  const loginButtonStyle = (branding?.buttonColor ?? '') !== ''
+    ? { backgroundColor: branding?.buttonColor, borderColor: branding?.buttonColor }
+    : undefined
 
   useEffect(() => {
     void auth.getBaseUrl().then(url => {
       setServerUrl(url)
       setAppliedUrl(url)
     }, () => undefined)
-    void auth.getBranding().then(branding => setProductName(branding.name), () => undefined)
+    void refreshBranding()
     if (autoStarted.current) return
     autoStarted.current = true
     const current = getView()
@@ -155,6 +171,19 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
   }, [view?.loggedIn])
 
   /** Apply the edited server URL: connectivity test first, then save. */
+  /** Pull the login-page branding of the address currently in effect. Called on
+   * mount and again after 应用 — the dialog must show the new server's title,
+   * logo, system name and version without being closed and reopened. */
+  const refreshBranding = async (): Promise<void> => {
+    try {
+      const info = await auth.getBranding()
+      setProductName(info.name)
+      setBranding(info)
+    } catch {
+      // Branding is cosmetic; keep whatever we had.
+    }
+  }
+
   const applyServer = async (): Promise<void> => {
     const target = serverUrl.trim()
     if (target === '' || target === appliedUrl || applying) return
@@ -164,6 +193,8 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
       await auth.testBaseUrl(target)
       await auth.setBaseUrl(target)
       setAppliedUrl(target)
+      // The new server brings its own branding (title/logo/name/version).
+      await refreshBranding()
       const current = getView()
       const currentAttempt = current?.attempt ?? null
       if (currentAttempt?.phase === 'waiting-input') {
@@ -267,18 +298,29 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
             : <Button variant="outline" disabled={busy} onClick={close}>{t('close')}</Button>}
           {running
             ? (
-                <Button variant="primary" disabled={busy || !waiting} onClick={() => { void submit() }}>
+                <Button variant="primary" style={loginButtonStyle} disabled={busy || !waiting} onClick={() => { void submit() }}>
                   {busy ? spinner : null}
                   {t('login')}
                 </Button>
               )
             : (
-                <Button variant="primary" disabled={busy} onClick={() => { void startSignIn() }}>{t('login')}</Button>
+                <Button variant="primary" style={loginButtonStyle} disabled={busy} onClick={() => { void startSignIn() }}>{t('login')}</Button>
               )}
         </div>
       )}
     >
       <style>{DIALOG_CSS}</style>
+      {branding !== undefined && branding.logoUrl !== '' && (
+        <div className="nexusai-brand">
+          <img
+            className="nexusai-logo"
+            src={branding.logoUrl}
+            alt={productName}
+            onError={event => { event.currentTarget.style.display = 'none' }}
+          />
+          {welcome !== '' && <p className="nexusai-welcome">{welcome}</p>}
+        </div>
+      )}
       <p className="nexusai-note">
         {dialogHint}
         {openSettings !== undefined && (
@@ -354,6 +396,8 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
       {serverError !== '' && (
         <p className="nexusai-alert is-error" role="alert"><IconWarningOutlineRegular size={14} />{serverError}</p>
       )}
+      {/* Platform version from `about` in the same branding payload. */}
+      {versionLine !== '' && <p className="nexusai-version">{versionLine}</p>}
     </Modal>
   )
 }

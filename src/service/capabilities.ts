@@ -10,6 +10,7 @@ import type { SkillHubClient } from '../nexus/skillhub'
 import type { CustomToolRegistry } from '../sync/custom-tools'
 import type { McpRowSync } from '../sync/mcp-rows'
 import { listMcpCatalog } from '../sync/mcp-list'
+import type { McpSseServerInput, McpSseToolRegistry } from '../sync/mcp-tools'
 import type { SkillSync } from '../sync/skills'
 import type { LocalSkillEntry, McpServerSummary, SkillDownloadResult, SkillHubCard, SkillHubDetail, SkillHubInstallResult, SkillSummary, SyncReport } from '../types'
 import type { LocalSkills } from '../sync/local-skills'
@@ -23,6 +24,8 @@ export interface NexusaiCapabilitiesServiceOptions {
   /** SkillHub marketplace client (api.skillhub.cn). */
   readonly skillhub: SkillHubClient
   readonly localSkills: LocalSkills
+  /** Bridge for legacy-SSE MCP servers (dsh cannot host that transport). */
+  readonly mcpSse: McpSseToolRegistry
 }
 
 /** Capability listing and sync face for the sidebar panel. */
@@ -52,16 +55,29 @@ export class NexusaiCapabilitiesService extends TypertRemoteService {
   @Remote
   async listMcpServers(): Promise<McpServerSummary[]> {
     const catalog = await listMcpCatalog(this.deps.api)
-    return catalog.servers.map(server => ({
-      mcpServerId: server.id,
-      name: server.name,
-      desc: server.desc,
-      toolNum: server.toolNum,
-      source: server.source,
-      transport: server.transport,
-      url: server.url,
-      connectable: server.connectable,
-    }))
+    const bridge = new Map(this.deps.mcpSse.list().map(summary => [summary.id, summary]))
+    return catalog.servers.map(server => {
+      const bridged = bridge.get(server.id)
+      return {
+        mcpServerId: server.id,
+        name: server.name,
+        desc: server.desc,
+        // SSE servers report the tools the bridge actually registered.
+        toolNum: bridged !== undefined ? bridged.toolNames.length : server.toolNum,
+        source: server.source,
+        transport: server.transport,
+        url: server.url,
+        connectable: server.connectable,
+        bridged: bridged !== undefined && bridged.error === undefined,
+        ...(bridged?.error !== undefined ? { bridgeError: bridged.error } : {}),
+      }
+    })
+  }
+
+  /** Locally configured MCP servers (the profile's own mcp-client rows). */
+  @Remote
+  async listLocalMcpServers(): Promise<{ id: string; name: string; transport: string; url: string }[]> {
+    return this.deps.mcp.list()
   }
 
   /** Custom skills of the active org. */
@@ -135,9 +151,21 @@ export class NexusaiCapabilitiesService extends TypertRemoteService {
   /** Re-fetch everything and (re-)register tools plus MCP rows. */
   @Remote
   async sync(): Promise<SyncReport> {
-    const report = await this.deps.tools.sync()
-    const errors = [...report.errors]
+    // Each capability stands alone: a failing custom-tool sync must not stop
+    // the MCP rows or the SSE bridge from being applied.
+    let tools = 0
+    const errors: string[] = []
+    try {
+      const report = await this.deps.tools.sync()
+      tools = report.tools
+      errors.push(...report.errors)
+    } catch (error) {
+      errors.push(`tools: ${(error as Error).message}`)
+    }
     let servers = 0
+    let sseServers = 0
+    let sseTools = 0
+    let sse: McpSseServerInput[] = []
     try {
       const catalog = await listMcpCatalog(this.deps.api)
       for (const note of catalog.notes) this.ctx.logger.info('nexusai: %s', note)
@@ -145,10 +173,23 @@ export class NexusaiCapabilitiesService extends TypertRemoteService {
         .filter(server => server.connectable)
         .map(server => ({ mcpServerId: server.id, name: server.name, url: server.url }))
       servers = await this.deps.mcp.write(rows)
+      sse = catalog.servers
+        .filter(server => !server.connectable && server.transport === 'sse')
+        .map(server => ({ id: server.id, name: server.name, url: server.url }))
     } catch (error) {
       errors.push(`mcp: ${(error as Error).message}`)
     }
-    return { tools: report.tools, mcpServers: servers, errors }
+    try {
+      // Legacy-SSE servers cannot ride the mcp-client rows; bridge them into
+      // ordinary dsh tools instead so the agent can actually call them.
+      const bridged = await this.deps.mcpSse.sync(sse)
+      for (const issue of bridged.errors) errors.push(issue)
+      sseServers = bridged.servers
+      sseTools = bridged.tools
+    } catch (error) {
+      errors.push(`mcp sse: ${(error as Error).message}`)
+    }
+    return { tools, mcpServers: servers, mcpSseServers: sseServers, mcpSseTools: sseTools, errors }
   }
 
   /** Download one skill's SKILL.md into the user skills root. */

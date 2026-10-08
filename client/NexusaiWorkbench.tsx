@@ -39,6 +39,8 @@ export interface NexusaiWorkbenchProps {
 
 interface ToolCard { name: string; description: string }
 interface SkillCard { skillId: string; name: string; description: string; author: string }
+interface LocalConnector { id: string; name: string; transport: string; url: string }
+
 interface ConnectorCard {
   name: string
   desc: string
@@ -46,6 +48,8 @@ interface ConnectorCard {
   source: 'created' | 'imported'
   transport: string
   connectable: boolean
+  /** True when this plugin bridged an SSE server's tools into dsh. */
+  bridged: boolean
 }
 
 /** The 专家 · 技能 · 连接器 workbench (main panel). */
@@ -58,6 +62,10 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   const [tools, setTools] = useState<ToolCard[]>([])
   const [skills, setSkills] = useState<SkillCard[]>([])
   const [connectors, setConnectors] = useState<ConnectorCard[]>([])
+  // 连接器 has the same two sources as 技能: 本地 (this machine's own
+  // mcp-client rows) and 远程获取 (the NexusAI catalog).
+  const [connectorSource, setConnectorSource] = useState<'local' | 'remote'>('remote')
+  const [localConnectors, setLocalConnectors] = useState<LocalConnector[]>([])
   const [downloaded, setDownloaded] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -113,10 +121,13 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   const [hubPreviewMode, setHubPreviewMode] = useState<'preview' | 'code'>('preview')
   const [hubSummaryExpanded, setHubSummaryExpanded] = useState(false)
 
+  // The brand name belongs to the address currently in effect, so it is read
+  // again whenever the session flips (a fresh sign-in may be a different
+  // server) — not just on mount.
   useEffect(() => {
     void auth?.getBranding().then(branding => setProductName(branding.name), () => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [signedIn])
 
   /** Re-measure the category row: overflow at all, and reachable ends. */
   const measureChips = (): void => {
@@ -404,6 +415,15 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
 
   const spinner = <IconLoadingOutlineRegular size={14} className="nexusai-spinner" />
 
+  const loadLocalConnectors = async (): Promise<void> => {
+    if (capabilities === undefined) return
+    try {
+      setLocalConnectors(await capabilities.listLocalMcpServers())
+    } catch {
+      setLocalConnectors([])
+    }
+  }
+
   const loadLists = async (): Promise<void> => {
     if (capabilities === undefined) return
     setLoading(true)
@@ -422,13 +442,38 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
     }
   }
 
+  // A sign-out (or sign-in) can hide the active tab / source; fall back to one
+  // that is still there instead of rendering a hidden view.
   useEffect(() => {
-    if (!signedIn || capabilities === undefined) return
-    void loadLists()
+    if (!visibleTabs.includes(activeTab)) setActiveTab('skills')
+    if (!visibleSources.includes(skillSource)) setSkillSource('local')
+    if (!visibleConnectorSources.includes(connectorSource)) setConnectorSource('local')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn])
 
-  if (!signedIn || auth === undefined || capabilities === undefined) {
+  useEffect(() => {
+    if (capabilities === undefined) return
+    void loadLocalConnectors()
+    if (!signedIn) {
+      // NexusAI-backed lists are meaningless without a session; the local
+      // catalog and the marketplace still load.
+      setTools([])
+      setSkills([])
+      setConnectors([])
+      setDownloaded({})
+      void loadSlashSkills()
+      if (hubCards === undefined) void enterHub()
+      return
+    }
+    void loadLists()
+    // Switching the organization re-syncs the host; reload the lists too.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn, view?.orgId])
+
+  // Signed out the panel still works: 本地 skills and the SkillHub marketplace
+  // need no account, so only the NexusAI-backed pieces (专家 tab, 远程获取,
+  // synced connector data) step aside.
+  if (capabilities === undefined) {
     return (
       <section className="nexusai-wb">
         <style>{WORKBENCH_CSS}</style>
@@ -468,10 +513,19 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   }
   // Capability tabs carry the live counts (the page title row above the
   // source tabs used to repeat them, so it is gone).
+  // 专家 (NexusAI tools) and 远程获取 (the NexusAI catalog) need the account;
+  // everything else is local or the public marketplace.
+  const visibleTabs: readonly TabKey[] = signedIn ? TABS : TABS.filter(key => key !== 'experts')
+  const visibleSources: readonly ('local' | 'skillhub' | 'remote')[] = signedIn
+    ? (['local', 'skillhub', 'remote'] as const)
+    : (['local', 'skillhub'] as const)
+  const visibleConnectorSources: readonly ('local' | 'remote')[] = signedIn
+    ? (['local', 'remote'] as const)
+    : (['local'] as const)
   const tabLabel: Record<TabKey, string> = {
     experts: `${resolve('tabExperts')} (${tools.length})`,
     skills: `${resolve('tabSkills')} (${sourceCount[skillSource]})`,
-    connectors: `${resolve('tabConnectors')} (${connectors.length})`,
+    connectors: `${resolve('tabConnectors')} (${connectorSource === 'local' ? localConnectors.length : connectors.length})`,
   }
 
   const grid = (children: ReactNode) => (
@@ -486,7 +540,7 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
 
   const capHeader = (
     <header className="cap-header">
-      {TABS.map(key => (
+      {visibleTabs.map(key => (
         <button
           key={key}
           className={`cap-tab ${activeTab === key ? 'active' : ''}`}
@@ -499,6 +553,7 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
               void loadSlashSkills()
               if (hubCards === undefined) void enterHub()
             }
+            if (key === 'connectors') void loadLocalConnectors()
           }}
         >
           {TAB_ICONS[key]}
@@ -570,16 +625,8 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
               <div className="hub-detail-header">
                 <span className="hub-detail-icon" aria-hidden>{entry.name.charAt(0).toUpperCase()}</span>
                 <div className="hub-detail-head">
+                  {/* 详情页不放启用/关闭开关：开关只在卡片上（用户要求）。 */}
                   <h2 className="hub-detail-title" title={entry.name}>{entry.name}</h2>
-                  <div className="hub-detail-actions">
-                    <Switch
-                      checked={entry.enabled}
-                      disabled={localBusy === entry.path}
-                      label={entry.enabled ? resolve('disableSkill') : resolve('enableSkill')}
-                      onChange={() => { void toggleLocal(entry) }}
-                    />
-                    <span className="muted">{entry.enabled ? resolve('disableSkill') : resolve('enableSkill')}</span>
-                  </div>
                 </div>
               </div>
               <div className="hub-detail-meta">
@@ -793,7 +840,7 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
               ['remote', productName !== ''
                 ? `${resolve('sourceRemote')} · ${productName}`
                 : resolve('sourceRemote')],
-            ] as const).map(([key, label]) => (
+            ] as const).filter(([key]) => visibleSources.includes(key)).map(([key, label]) => (
               <button
                 key={key}
                 className={`source-tab ${skillSource === key ? 'active' : ''}`}
@@ -837,7 +884,6 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
                         <span className="mark" aria-hidden>{entry.name.charAt(0).toUpperCase()}</span>
                         <span className="card-title">
                           <strong title={entry.name}>{entry.name}</strong>
-                          {!entry.enabled && <small className="local-off-tag">{resolve('skillDisabled')}</small>}
                         </span>
                         {/* Hover actions: 启用/关闭 switch + "…" menu (the
                             reference product's installed-skill affordances).
@@ -1065,8 +1111,56 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
           )}
         </>
       ) : (
-        <div className="tab-scroll">
-          {connectors.length === 0
+        <>
+          {/* 连接器 sources, the same shape as 技能: 本地 = this machine's own
+              mcp-client rows, 远程获取 = the NexusAI catalog. */}
+          <div className="nexusai-source-tabs" role="tablist">
+            {([
+              ['local', `${resolve('sourceLocal')} (${localConnectors.length})`],
+              ['remote', productName !== ''
+                ? `${resolve('sourceRemote')} · ${productName} (${connectors.length})`
+                : `${resolve('sourceRemote')} (${connectors.length})`],
+            ] as const).filter(([key]) => visibleConnectorSources.includes(key)).map(([key, label]) => (
+              <button
+                key={key}
+                className={`source-tab ${connectorSource === key ? 'active' : ''}`}
+                aria-selected={connectorSource === key}
+                onClick={() => {
+                  setConnectorSource(key)
+                  if (key === 'local') void loadLocalConnectors()
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="tab-scroll">
+          {connectorSource === 'local' ? (
+            localConnectors.length === 0
+              ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('localConnectorsEmpty')}</p></div>
+              : grid(localConnectors.map(server => (
+                <article key={server.id} className="card">
+                  <div className="card-top">
+                    <span className="mark" aria-hidden>{server.name.charAt(0).toUpperCase()}</span>
+                    <span className="card-title">
+                      <strong title={server.name}>{server.name}</strong>
+                      <small>{server.transport || 'mcp'}</small>
+                    </span>
+                  </div>
+                  <p className="muted path" title={server.url}>{server.url || '—'}</p>
+                </article>
+              )))
+          ) : !signedIn
+            ? (
+                <div className="nexusai-empty">
+                  <strong>{resolve('signedOutTitle')}</strong>
+                  <p className="muted">{resolve('connectorsSignedOut')}</p>
+                  <div className="empty-actions">
+                    <Button variant="primary" onClick={() => { setDialogOpen(true) }}>{resolve('login')}</Button>
+                  </div>
+                </div>
+              )
+            : connectors.length === 0
             ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyHintSync')}</p></div>
             : grid(connectors.map(server => (
               <article key={server.name} className="card">
@@ -1081,15 +1175,21 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
                     </small>
                   </span>
                   {!server.connectable && (
-                    <span className="mcp-flag" title={resolve('mcpSseHint')}>{resolve('mcpSseOnly')}</span>
+                    server.bridged
+                      ? <span className="mcp-flag is-on" title={resolve('mcpSseBridgedHint')}>{resolve('mcpSseBridged')}</span>
+                      : <span className="mcp-flag" title={resolve('mcpSseHint')}>{resolve('mcpSseOnly')}</span>
                   )}
                 </div>
                 <p className="muted clamp">{server.desc || '—'}</p>
               </article>
             )))}
-        </div>
+          </div>
+        </>
       )}
       </div>
+      {dialogOpen && auth !== undefined && (
+        <NexusaiSignInDialog auth={auth} getView={() => snapshot?.view} t={resolve} close={() => { setDialogOpen(false) }} />
+      )}
     </section>
   )
 }
@@ -1373,6 +1473,12 @@ const WORKBENCH_CSS = `
   border-radius: 12px; overflow: hidden; background: var(--dsw-alias-interactive-bg-hover); font-weight: 600; }
 .hub-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .hub-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+/* 本地技能的启用开关：只改配色——打开时是产品自己的绿色胶囊 + 白旋钮；
+ * 尺寸/位移沿用 dsh 原生（36x20、旋钮 16、位移 16px），状态挂 ARIA 属性
+ * 而不是 CSS module 的哈希类名。 */
+.local-card [role='switch'][aria-checked='true'] { background: #00c29a; }
+.local-card [role='switch'][aria-checked='true'] > span { background: #ffffff; }
+.local-card [role='switch'][aria-checked='true'] > span { transform: translateX(16px); }
 .local-card { cursor: pointer; }
 .local-card.is-off { opacity: 0.62; }
 .local-card .local-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex: none; }
@@ -1381,8 +1487,8 @@ const WORKBENCH_CSS = `
 .local-more:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .mcp-flag { flex: none; margin-left: auto; padding: 1px 7px; border-radius: 5px; font-size: 11px;
   color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-interactive-bg-hover); }
-.local-off-tag { display: inline-block; margin-top: 2px; padding: 1px 6px; border-radius: 5px; font-size: 11px;
-  color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-interactive-bg-hover); }
+.mcp-flag.is-on { color: var(--dsw-alias-state-success-primary, #2a9d5c);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #2a9d5c) 12%, transparent); }
 .hub-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-title-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .hub-key { flex: none; display: inline-flex; align-items: center; color: var(--dsw-alias-state-warning-primary, #c04100); }

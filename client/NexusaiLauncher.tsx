@@ -7,7 +7,7 @@
  * the captcha dialog.
  */
 import { useState, type ReactNode } from 'react'
-import { IconRefreshOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, IconRefreshOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { NexusaiSignInDialog } from './NexusaiSignInDialog'
 import type { NexusaiLocaleKey } from './locales'
 import type { NexusaiAuthOps, NexusaiCapabilitiesOps, NexusaiSnapshot } from './face'
@@ -30,11 +30,31 @@ export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabili
   const [dialogOpen, setDialogOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Organization switcher, sitting right after the account name.
+  const [orgMenuOpen, setOrgMenuOpen] = useState(false)
+  const [orgBusy, setOrgBusy] = useState(false)
 
   const view = snapshot?.view
   const signedIn = view?.loggedIn === true
   const name = view?.nickname || view?.username || ''
   const initial = name.slice(0, 1).toUpperCase()
+  const orgs = view?.orgs ?? []
+  // Host-side notice codes map to localized copy (e.g. a session lost to a 401).
+  const notice = view?.notice === 'nexusai: session-lost' ? resolve('sessionLost') : ''
+  const currentOrg = orgs.find(org => org.id === view?.orgId)
+
+  const switchOrg = async (orgId: string): Promise<void> => {
+    if (auth === undefined || orgId === view?.orgId) return
+    setOrgBusy(true)
+    setError('')
+    try {
+      await auth.selectOrg(orgId)
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setOrgBusy(false)
+    }
+  }
 
   const runSync = async (): Promise<void> => {
     if (capabilities === undefined) return
@@ -66,7 +86,8 @@ export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabili
   const trigger = (
     <button
       type="button"
-      aria-label={resolve('menu')}
+      aria-label={signedIn ? `${resolve('signedInAs')}${name}` : resolve('login')}
+      title={signedIn ? `${resolve('signedInAs')}${name}` : resolve('login')}
       aria-haspopup={signedIn ? 'menu' : 'dialog'}
       aria-expanded={signedIn ? menuOpen : undefined}
       onClick={() => {
@@ -83,8 +104,48 @@ export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabili
       </span>
       {wide === true && (
         <span style={labelStyle}>
-          {signedIn ? `${resolve('signedInAs')}${name}` : resolve('login')}
+          {/* Signed in: just the account name; the tooltip carries the state. */}
+          {signedIn ? name : resolve('login')}
         </span>
+      )}
+      {/* Organization: a chip right after the name that switches orgs (the
+          host re-syncs tools/MCP for the picked org). */}
+      {signedIn && wide === true && currentOrg !== undefined && (
+        orgs.length > 1
+          ? (
+              <Menu
+                open={orgMenuOpen}
+                side="top"
+                portal
+                autoFocus
+                anchor={(
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={resolve('switchOrg')}
+                    aria-haspopup="menu"
+                    aria-expanded={orgMenuOpen}
+                    title={`${resolve('switchOrg')}：${currentOrg.name}`}
+                    style={orgChipStyle}
+                    onClick={event => { event.stopPropagation(); setOrgMenuOpen(value => !value) }}
+                    onKeyDown={event => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setOrgMenuOpen(value => !value)
+                    }}
+                  >
+                    {orgBusy ? '…' : currentOrg.name}
+                    <IconChevronDownOutlineRegular size={12} />
+                  </span>
+                )}
+                selectedId={view?.orgId}
+                items={orgs.map(org => ({ id: org.id, label: org.name }))}
+                onSelect={id => { setOrgMenuOpen(false); void switchOrg(id) }}
+                onClose={() => { setOrgMenuOpen(false) }}
+              />
+            )
+          : <span style={orgNameStyle} title={currentOrg.name}>{currentOrg.name}</span>
       )}
     </button>
   )
@@ -94,6 +155,7 @@ export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabili
       <>
         {trigger}
         {error !== '' && wide === true && <div style={errorStyle} role="alert">{error}</div>}
+        {error === '' && notice !== '' && wide === true && <div style={errorStyle} role="alert">{notice}</div>}
         {dialogOpen && auth !== undefined && (
           <NexusaiSignInDialog
             auth={auth}
@@ -166,6 +228,34 @@ const labelStyle: React.CSSProperties = {
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
   fontSize: 13,
+}
+
+const orgChipStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 2,
+  flexShrink: 0,
+  maxWidth: 120,
+  padding: '1px 6px',
+  borderRadius: 999,
+  background: 'var(--dsw-alias-interactive-bg-hover)',
+  color: 'var(--dsw-alias-label-secondary)',
+  fontSize: 12,
+  lineHeight: '16px',
+  cursor: 'pointer',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const orgNameStyle: React.CSSProperties = {
+  flexShrink: 0,
+  maxWidth: 120,
+  color: 'var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary))',
+  fontSize: 12,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 const errorStyle: React.CSSProperties = {
