@@ -21,6 +21,9 @@ export type NexusaiLocaleKey =
   | 'localEmptyHint'
   | 'skillhubHint'
   | 'skillhubSearchPlaceholder'
+  | 'localSearchPlaceholder'
+  | 'remoteSearchPlaceholder'
+  | 'noMatchHint'
   | 'skillhubEmptyHint'
   | 'openInSkillHub'
   | 'search'
@@ -94,14 +97,16 @@ export type NexusaiLocaleKey =
   | 'login'
   | 'refreshCaptcha'
   | 'cancel'
+  | 'cancelAction'
   | 'cancelled'
   | 'close'
   | 'loading'
   | 'menu'
   | 'signedInAs'
   | 'openSettings'
-  | 'sync'
-  | 'syncing'
+  | 'signOutIdle'
+  | 'signOutRunning'
+  | 'signOutUnknown'
   | 'logout'
   | 'loggedInAs'
   | 'switchOrg'
@@ -129,7 +134,7 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   tabSkillsDesc: '浏览 {name} 技能包并下载到本地。',
   tabConnectorsDesc: '来自 {name} 的 MCP 服务及其可用工具。',
   emptyTitle: '这里还没有内容',
-  emptyHintSync: '可在左下角菜单或设置页同步能力后再查看',
+  emptyHintSync: '登录后会自动同步；若仍为空，可在左下角切换组织或重新登录后再看',
   toolsUnit: '个工具',
   sourceLocal: '本地',
   sourceSkillHub: 'SkillHub',
@@ -137,6 +142,9 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   localEmptyHint: '尚未安装技能，可先从「远程获取」获取。',
   skillhubHint: '搜索 SkillHub 技能市场（skillhub.cn）并查看技能详情。',
   skillhubSearchPlaceholder: '搜索技能',
+  localSearchPlaceholder: '搜索本地技能',
+  remoteSearchPlaceholder: '搜索远程技能',
+  noMatchHint: '没有匹配的技能，换个关键词试试。',
   skillhubEmptyHint: '没有匹配的技能，换个关键词试试。',
   installed: '已安装',
   installedMark: '已安装',
@@ -210,14 +218,16 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   login: '登录',
   refreshCaptcha: '换一张',
   cancel: '取消登录',
+  cancelAction: '取消',
   cancelled: '已取消登录',
   close: '关闭',
   loading: '加载中…',
   menu: 'NexusAI 账号',
   signedInAs: '已登录：',
   openSettings: '打开设置',
-  sync: '同步能力',
-  syncing: '同步中…',
+  signOutIdle: '退出登录不会丢失任何数据，你仍可以登录此账号。',
+  signOutRunning: '当前有任务正在执行，退出登录会打断它们。确定退出登录？',
+  signOutUnknown: '暂时无法确认任务状态，退出登录可能会打断正在执行的任务，是否继续？',
   logout: '登出',
   loggedInAs: '已登录',
   switchOrg: '切换组织',
@@ -246,7 +256,7 @@ export const en: Record<NexusaiLocaleKey, string> = {
   tabSkillsDesc: 'Browse {name} skill packages and download them locally.',
   tabConnectorsDesc: 'MCP services from {name} and their available tools.',
   emptyTitle: 'Nothing here yet',
-  emptyHintSync: 'Sync capabilities from the bottom-left menu or the settings page, then check again.',
+  emptyHintSync: 'Capabilities sync automatically after sign-in; if this stays empty, switch organization from the bottom-left or sign in again.',
   toolsUnit: 'tools',
   sourceLocal: 'Local',
   sourceSkillHub: 'SkillHub',
@@ -254,6 +264,9 @@ export const en: Record<NexusaiLocaleKey, string> = {
   localEmptyHint: 'No skills installed yet — get them from the Remote tab.',
   skillhubHint: 'Search the SkillHub marketplace (skillhub.cn) and open a skill page.',
   skillhubSearchPlaceholder: 'Search skills',
+  localSearchPlaceholder: 'Search local skills',
+  remoteSearchPlaceholder: 'Search remote skills',
+  noMatchHint: 'No matching skills — try another keyword.',
   skillhubEmptyHint: 'No matching skills — try another keyword.',
   installed: 'Installed',
   installedMark: 'Installed',
@@ -327,14 +340,16 @@ export const en: Record<NexusaiLocaleKey, string> = {
   login: 'Sign in',
   refreshCaptcha: 'New image',
   cancel: 'Cancel sign-in',
+  cancelAction: 'Cancel',
   cancelled: 'Sign-in cancelled',
   close: 'Close',
   loading: 'Loading…',
   menu: 'NexusAI account',
   signedInAs: 'Signed in: ',
   openSettings: 'Open settings',
-  sync: 'Sync capabilities',
-  syncing: 'Syncing…',
+  signOutIdle: 'Signing out will not delete any data. You can sign in to this account again.',
+  signOutRunning: 'Tasks are currently running. Signing out will interrupt them. Sign out now?',
+  signOutUnknown: 'Could not check running tasks. Signing out may interrupt tasks using this account. Continue?',
   logout: 'Sign out',
   loggedInAs: 'Signed in',
   switchOrg: 'Switch organization',

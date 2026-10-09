@@ -170,6 +170,17 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
         return result.value.skills
       },
     },
+    // Local (non-Remote) reads the surfaces take off dsh client services.
+    runtime: {
+      // Sign-out interrupts the work a running session is doing, so the
+      // launcher asks first — reading the live session list is the local
+      // equivalent of the built-in account menu's running-task query.
+      hasRunningTasks: (): boolean | 'unknown' => {
+        const state = sessions.list.getSnapshot()
+        if (state.phase !== 'ready') return 'unknown'
+        return Object.values(state.byId).some(row => row.running)
+      },
+    },
     hooks: {
       nexusai: {
         getSnapshot: () => snapshot,

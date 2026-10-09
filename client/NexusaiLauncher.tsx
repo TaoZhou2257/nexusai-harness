@@ -4,26 +4,30 @@
  * mirrors the built-in account button — avatar disc plus label, collapsing to
  * a rail disc when the sidebar hides labels — and opens a `Menu side="top"`
  * with the NexusAI actions. Signed out, the menu offers sign-in, which opens
- * the captcha dialog.
+ * the captcha dialog. Sign-out asks first, reporting whether tasks are running
+ * (the built-in account menu's own confirmation, kept because signing out
+ * drops the tools and MCP rows those tasks may be using).
  */
 import { useState, type ReactNode } from 'react'
-import { IconChevronDownOutlineRegular, IconRefreshOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconChevronDownOutlineRegular, IconLoadingOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { NexusaiSignInDialog } from './NexusaiSignInDialog'
 import type { NexusaiLocaleKey } from './locales'
-import type { NexusaiAuthOps, NexusaiCapabilitiesOps, NexusaiSnapshot } from './face'
+import type { NexusaiAuthOps, NexusaiRuntimeOps, NexusaiSnapshot } from './face'
 
 /** The launcher's spread props: owner geometry, framework hooks, and the inject controller. */
 export interface NexusaiLauncherProps {
   readonly wide?: boolean
   readonly openSettings?: () => void
+  /** Effective Settings key labels and accessible combination, from the settings shell. */
+  readonly settingsShortcut?: { readonly keys: readonly string[]; readonly aria?: string | undefined }
   readonly useNexusai?: (selector: (snapshot: NexusaiSnapshot) => NexusaiSnapshot) => NexusaiSnapshot
   readonly auth?: NexusaiAuthOps
-  readonly capabilities?: NexusaiCapabilitiesOps
+  readonly runtime?: NexusaiRuntimeOps
   readonly t?: (key: NexusaiLocaleKey) => string
 }
 
 /** The bottom-left NexusAI account launcher. */
-export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabilities, t }: NexusaiLauncherProps): ReactNode {
+export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexusai, auth, runtime, t }: NexusaiLauncherProps): ReactNode {
   const resolve = (key: NexusaiLocaleKey) => t?.(key) ?? key
   const snapshot = useNexusai?.(value => value)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -33,6 +37,10 @@ export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabili
   // Organization switcher, sitting right after the account name.
   const [orgMenuOpen, setOrgMenuOpen] = useState(false)
   const [orgBusy, setOrgBusy] = useState(false)
+  // Sign-out confirmation: undefined = closed, otherwise the task impact
+  // sampled when the menu item was chosen.
+  const [signOutImpact, setSignOutImpact] = useState<boolean | 'unknown'>()
+  const [signOutError, setSignOutError] = useState('')
 
   const view = snapshot?.view
   const signedIn = view?.loggedIn === true
@@ -56,28 +64,28 @@ export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabili
     }
   }
 
-  const runSync = async (): Promise<void> => {
-    if (capabilities === undefined) return
-    setBusy(true)
-    setError('')
-    try {
-      const report = await capabilities.sync()
-      if (report.errors.length > 0) setError(report.errors[0])
-    } catch (cause) {
-      setError(errorMessage(cause))
-    } finally {
-      setBusy(false)
-    }
+  // Sample the task impact when the action is chosen rather than while the
+  // dialog is open: the copy describes the moment of the request, and a task
+  // starting mid-confirmation cannot make the report untrue.
+  const requestSignOut = (): void => {
+    setMenuOpen(false)
+    setSignOutError('')
+    setSignOutImpact(runtime?.hasRunningTasks() ?? false)
   }
 
-  const runLogout = async (): Promise<void> => {
+  const dismissSignOut = (): void => {
+    if (!busy) setSignOutImpact(undefined)
+  }
+
+  const confirmSignOut = async (): Promise<void> => {
     if (auth === undefined) return
     setBusy(true)
-    setError('')
+    setSignOutError('')
     try {
       await auth.logout()
+      setSignOutImpact(undefined)
     } catch (cause) {
-      setError(errorMessage(cause))
+      setSignOutError(errorMessage(cause))
     } finally {
       setBusy(false)
     }
@@ -178,22 +186,70 @@ export function NexusaiLauncher({ wide, openSettings, useNexusai, auth, capabili
         autoFocus
         anchor={trigger}
         items={[
-          { id: 'openSettings', label: resolve('openSettings'), icon: <IconSettingsOutlineMedium size={16} /> },
-          { id: 'sync', label: busy ? resolve('syncing') : resolve('sync'), icon: <IconRefreshOutlineRegular size={16} />, disabled: busy },
+          {
+            id: 'openSettings',
+            label: resolve('openSettings'),
+            icon: <IconSettingsOutlineMedium size={16} />,
+            ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }),
+          },
           { id: 'logout', label: resolve('logout'), disabled: busy },
         ]}
         onSelect={id => {
           setMenuOpen(false)
           if (id === 'openSettings') openSettings?.()
-          if (id === 'sync') void runSync()
-          if (id === 'logout') void runLogout()
+          if (id === 'logout') requestSignOut()
         }}
         onClose={() => { setMenuOpen(false) }}
       />
+      {signOutImpact !== undefined && (
+        <Modal
+          open
+          title={resolve('logout')}
+          closeLabel={resolve('close')}
+          onClose={dismissSignOut}
+          className="nexusai-confirm"
+          footer={(
+            <div className="nexusai-actions">
+              <Button variant="outline" disabled={busy} onClick={dismissSignOut}>{resolve('cancelAction')}</Button>
+              <Button variant="primary" disabled={busy} onClick={() => { void confirmSignOut() }}>
+                {busy ? <IconLoadingOutlineRegular size={14} className="nexusai-spinner" /> : null}
+                {resolve('logout')}
+              </Button>
+            </div>
+          )}
+        >
+          <style>{CONFIRM_CSS}</style>
+          <p className="nexusai-note">
+            {resolve(signOutImpact === 'unknown'
+              ? 'signOutUnknown'
+              : signOutImpact ? 'signOutRunning' : 'signOutIdle')}
+          </p>
+          {signOutError !== '' && (
+            <p className="nexusai-alert is-error" role="alert">{signOutError}</p>
+          )}
+        </Modal>
+      )}
       {error !== '' && wide === true && <div style={errorStyle} role="alert">{error}</div>}
     </>
   )
 }
+
+/**
+ * Confirmation measurements only. The `nexusai-note` / `nexusai-alert` /
+ * `nexusai-actions` rules are declared by the sign-in dialog's stylesheet;
+ * the duplicates here keep this dialog self-contained (the launcher renders
+ * with no other NexusAI surface on screen).
+ */
+const CONFIRM_CSS = `
+.nexusai-confirm { width: 360px; max-width: calc(100vw - 32px); }
+.nexusai-note { margin: 0 0 14px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
+.nexusai-alert { display: flex; flex-shrink: 0; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.nexusai-alert.is-error { color: var(--dsw-alias-state-error-primary, #d33); background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #d33) 10%, transparent); }
+.nexusai-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+@keyframes nexusai-spin { to { transform: rotate(360deg); } }
+.nexusai-spinner { flex: none; animation: nexusai-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .nexusai-spinner { animation: none; } }
+`
 
 const triggerStyle: React.CSSProperties = {
   display: 'flex',
@@ -208,7 +264,8 @@ const triggerStyle: React.CSSProperties = {
   textAlign: 'left',
 }
 
-const avatarStyle: React.CSSProperties = {
+/** The avatar disc. `cornerShape` is newer than the CSS typings, hence the widening. */
+const avatarStyle: React.CSSProperties & { cornerShape?: string } = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -216,6 +273,9 @@ const avatarStyle: React.CSSProperties = {
   width: 32,
   height: 32,
   borderRadius: '50%',
+  // dsh sets `corner-shape: superellipse(1.5)` at the root and the property
+  // inherits, so a 50% radius paints a squircle unless it is reset here.
+  cornerShape: 'round',
   background: 'var(--dsw-alias-bg-skeleton, rgba(128, 128, 128, 0.2))',
   color: 'inherit',
   fontSize: 14,

@@ -79,6 +79,10 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   // (fetched, downloadable).
   const [skillSource, setSkillSource] = useState<'local' | 'skillhub' | 'remote'>('remote')
   const [slashList, setSlashList] = useState<SlashSkillFace[]>([])
+  // One query per skill source: the box searches whatever list is on screen
+  // (本地 / SkillHub / 远程获取), not always the marketplace.
+  const [localQuery, setLocalQuery] = useState('')
+  const [remoteQuery, setRemoteQuery] = useState('')
   const [slashLoading, setSlashLoading] = useState(false)
   // 本地 tab: 关闭-ed skills live on disk only (`SKILL.md.disabled`), plus the
   // per-card switch / hover "…" actions, and the local skill detail view.
@@ -333,6 +337,31 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
     return [...enabled, ...pending, ...localDisabled].sort((left, right) => left.name.localeCompare(right.name))
   }
   const localList = localEntries()
+  const matchesQuery = (text: string, query: string): boolean =>
+    query.trim() === '' || text.toLowerCase().includes(query.trim().toLowerCase())
+  const localMatches = localQuery.trim() === ''
+    ? localList
+    : localList.filter(entry => matchesQuery(`${entry.name} ${entry.description} ${entry.path}`, localQuery))
+  const remoteMatches = remoteQuery.trim() === ''
+    ? skills
+    : skills.filter(skill => matchesQuery(`${skill.name} ${skill.description} ${skill.author}`, remoteQuery))
+  const searchValue = skillSource === 'skillhub' ? hubKeyword : skillSource === 'local' ? localQuery : remoteQuery
+  // 远程来源的占位符与来源标签同样拼接动态品牌名（品牌为空则退回纯文案）。
+  const remotePlaceholder = resolve('remoteSearchPlaceholder')
+  const searchPlaceholder = skillSource === 'skillhub'
+    ? resolve('skillhubSearchPlaceholder')
+    : skillSource === 'local'
+      ? resolve('localSearchPlaceholder')
+      : productName === '' ? remotePlaceholder : `${remotePlaceholder} · ${productName}`
+  const onSearchChange = (value: string): void => {
+    if (skillSource === 'skillhub') setHubKeyword(value)
+    else if (skillSource === 'local') setLocalQuery(value)
+    else setRemoteQuery(value)
+  }
+  const onSearchEnter = (): void => {
+    // Only the marketplace search hits the server; the other two filter locally.
+    if (skillSource === 'skillhub') hubRefresh(hubKeyword, hubCategory)
+  }
 
   const loadDisabledLocal = async (): Promise<void> => {
     if (capabilities === undefined) return
@@ -569,18 +598,11 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
           <Input
             className="hub-search-input"
             icon={<IconSearchOutlineRegular size={16} />}
-            value={hubKeyword}
-            placeholder={resolve('skillhubSearchPlaceholder')}
-            onChange={event => setHubKeyword(event.target.value)}
+            value={searchValue}
+            placeholder={searchPlaceholder}
+            onChange={event => { onSearchChange(event.target.value) }}
             onKeyDown={event => {
-              if (event.key !== 'Enter') return
-              if (skillSource !== 'skillhub') {
-                setSkillSource('skillhub')
-                if (hubCategories.length === 0) {
-                  void capabilities.skillhubCategories().then(setHubCategories, () => undefined)
-                }
-              }
-              hubRefresh(hubKeyword, hubCategory)
+              if (event.key === 'Enter') onSearchEnter()
             }}
           />
           <Button
@@ -859,11 +881,13 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
           </div>
           {skillSource === 'local' ? (
             <div className="tab-scroll">
-              {slashLoading && localList.length === 0 ? (
+              {slashLoading && localMatches.length === 0 ? (
                 <div className="nexusai-loading">{spinner}{resolve('loading')}</div>
               ) : localList.length === 0
                 ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('localEmptyHint')}</p></div>
-                : grid(localList.map(entry => {
+                : localMatches.length === 0
+                ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('noMatchHint')}</p></div>
+                : grid(localMatches.map(entry => {
                   const busy = localBusy !== '' && localBusy === entry.path
                   return (
                     <article
@@ -1085,7 +1109,9 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
             <div className="tab-scroll">
               {skills.length === 0
                 ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyHintSync')}</p></div>
-                : grid(skills.map(skill => (
+                : remoteMatches.length === 0
+                ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('noMatchHint')}</p></div>
+                : grid(remoteMatches.map(skill => (
                   <article key={skill.skillId} className="card">
                     <div className="card-top">
                       <span className="mark" aria-hidden>{skill.name.charAt(0).toUpperCase()}</span>
@@ -1343,9 +1369,18 @@ function renderMarkdown(text: string): ReactNode {
 
 /** Panel styling following workdsh's capability panels (host --dsw-alias-* tokens). */
 const WORKBENCH_CSS = `
-.nexusai-wb { height: 100%; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; overflow: hidden;
+.nexusai-wb { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;
   background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary);
   font: 14px/22px "PingFang SC", "Microsoft YaHei", sans-serif; }
+/* This panel's content reaches the window's top-left corner — the class the
+   frame's own entry pages (插件管理 etc.) belong to — so it must stay clear of
+   the window chrome. The frame publishes both insets for exactly that: the
+   fixed top band (48px on macOS), and, while the sidebar is collapsed and its
+   traffic lights plus reopen/New Session controls sit in the corner, the inline
+   band they occupy (160px). Unpublished (i.e. a browser tab, or the sidebar
+   expanded) both fall back to this panel's own 24px inset. */
+.nexusai-wb { padding: calc(24px + var(--dsh-frame-top-clearance, 0px)) 24px 24px;
+  padding-inline-start: max(24px, var(--dsh-frame-leading-clearance, 0px)); }
 .nexusai-wb .wb-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .nexusai-wb .tab-scroll, .nexusai-wb .hub-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .nexusai-wb .cap-header, .nexusai-wb .nexusai-source-tabs,

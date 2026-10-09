@@ -78,11 +78,21 @@ export interface SessionsFace {
   list: {
     getSnapshot(): {
       ids: readonly string[]
-      byId: Readonly<Record<string, { id: string; retainedBy: Readonly<Record<string, number>> }>>
+      byId: Readonly<Record<string, { id: string; running: boolean; retainedBy: Readonly<Record<string, number>> }>>
       phase: 'pending' | 'ready'
     }
   }
   create(): Promise<{ id: string }>
+}
+
+/** Reads the surfaces take straight off dsh client services (no Remote hop). */
+export interface NexusaiRuntimeOps {
+  /**
+   * Whether any session currently runs a task, for the sign-out confirmation.
+   * 'unknown' before the host session list arrives — the caller then warns
+   * without asserting that nothing is running.
+   */
+  hasRunningTasks(): boolean | 'unknown'
 }
 
 /** One skill from the conversation "/" menu catalog (`remote.skills.list`). */
