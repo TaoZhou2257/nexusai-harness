@@ -12,7 +12,7 @@
  *
  * CommonJS on purpose: no build step, no module-format surprises under Electron.
  */
-const { app, BrowserWindow, shell, screen } = require('electron')
+const { app, BrowserWindow, Menu, shell, screen } = require('electron')
 const { spawn } = require('node:child_process')
 const {
   cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync,
@@ -94,6 +94,41 @@ function materializeProfile(home) {
   return target
 }
 
+/**
+ * Install a deliberately small menu.
+ *
+ * The default Electron menu carries Reload / Force Reload / Toggle DevTools,
+ * and a reload tears down the page that dsh's host is attached to (a documented
+ * way to break the running app). So the menu keeps only what a user needs to
+ * quit, edit text and resize — and no reload accelerator exists at all.
+ */
+function installMenu() {
+  const reloadKeys = [
+    { key: 'r', meta: true }, { key: 'r', control: true },
+    { key: 'F5' }, { key: 'r', meta: true, shift: true }, { key: 'r', control: true, shift: true },
+  ]
+  const template = [
+    ...(process.platform === 'darwin'
+      ? [{ role: 'appMenu' }]
+      : []),
+    { role: 'editMenu' },
+    { role: 'viewMenu', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { role: 'windowMenu' },
+  ]
+  const menu = Menu.buildFromTemplate(template)
+  // Belt and braces: roles are the only accelerators above, but strip any reload
+  // accelerator that a future Electron default might sneak in.
+  for (const item of menu.items) {
+    const strip = entry => {
+      if (entry.accelerator && reloadKeys.some(k => entry.accelerator.toLowerCase().includes(k.key.toLowerCase()))) entry.accelerator = undefined
+      if (Array.isArray(entry.submenu?.items)) entry.submenu.items.forEach(strip)
+    }
+    strip(item)
+  }
+  Menu.setApplicationMenu(menu)
+  console.log(`menu: minimal installed (${menu.items.length} top-level, no reload)`)
+}
+
 function openWindow(url) {
   const { workAreaSize } = screen.getPrimaryDisplay()
   const width = Math.min(1440, Math.max(960, workAreaSize.width - 160))
@@ -110,6 +145,15 @@ function openWindow(url) {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   })
   window.on('page-title-updated', event => { event.preventDefault(); window.setTitle(APP_NAME) })
+  // A keyboard reload would drop the page dsh's host is attached to, so those
+  // keys are swallowed before Chromium can act on them.
+  window.webContents.on('before-input-event', (event, input) => {
+    const pressed = input.type === 'keyDown' || input.type === 'keyRawDown'
+    const modifier = input.meta || input.control
+    const isReload = (modifier && input.key.toLowerCase() === 'r') || input.key === 'F5'
+    const isDevTools = modifier && input.alt && input.key.toLowerCase() === 'i'
+    if (pressed && (isReload || isDevTools)) event.preventDefault()
+  })
   window.webContents.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith('https://') || target.startsWith('http://')) void shell.openExternal(target)
     return { action: 'deny' }
@@ -117,6 +161,34 @@ function openWindow(url) {
   void window.loadURL(url).then(() => window.show())
   window.on('closed', () => { mainWindow = undefined })
   mainWindow = window
+}
+
+/**
+ * Show what went wrong instead of vanishing.
+ *
+ * dsh runs as a child process, so its failure is invisible to a packaged user
+ * (no terminal). A window carrying the captured output is what makes a first-run
+ * failure reportable at all.
+ */
+function showFailure(detail) {
+  const text = String(detail || 'unknown error')
+  process.stderr.write(`${APP_NAME} failed: ${text}\n`)
+  const html = `<!doctype html><meta charset="utf-8"><title>${APP_NAME}</title>
+<style>body{margin:0;padding:32px;font:13px/1.6 -apple-system,Segoe UI,sans-serif;background:#111113;color:#e8e8ea}
+h1{font-size:15px;margin:0 0 12px}p{margin:0 0 16px;color:#a0a0a8}
+pre{white-space:pre-wrap;word-break:break-word;background:#1a1a1d;border-radius:8px;padding:14px;max-height:50vh;overflow:auto;font-size:12px}</style>
+<h1>${APP_NAME} 启动失败</h1>
+<p>内置运行时没有起来。把下面的信息发给维护者，或先删掉用户目录下的 dsh-home 再试一次。</p>
+<pre>${text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</pre>`
+  const window = new BrowserWindow({
+    width: 720, height: 480, center: true, title: APP_NAME,
+    backgroundColor: '#111113',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  })
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  mainWindow = window
+  window.on('closed', () => { if (mainWindow === window) mainWindow = undefined })
+  return window
 }
 
 let runtime
@@ -154,10 +226,13 @@ function startRuntime(home, profileDir) {
   }
   child.stdout.on('data', consume)
   child.stderr.on('data', chunk => process.stderr.write(chunk))
-  child.once('error', cause => { if (!quitting) throw cause })
+  child.once('error', cause => {
+    if (!quitting) showFailure(`spawn failed: ${cause && cause.message ? cause.message : String(cause)}`)
+  })
   child.once('exit', code => {
     runtime = undefined
-    if (!quitting && code !== 0) app.quit()
+    // A non-zero exit before the ready line means the runtime never came up.
+    if (!quitting && code !== 0) showFailure(ready ? `runtime exited with ${String(code)}` : `runtime exited with ${String(code)} before it was ready\n\n${output.slice(-4000)}`)
   })
 }
 
@@ -182,11 +257,11 @@ if (!app.requestSingleInstanceLock()) {
     if (!mainWindow) { app.relaunch(); app.quit() }
   })
   app.whenReady().then(() => {
+    installMenu()
     const home = runtimeHome()
     const profile = materializeProfile(home)
     startRuntime(home, profile)
   }).catch(cause => {
-    process.stderr.write(`${APP_NAME} failed to start: ${cause && cause.stack ? cause.stack : String(cause)}\n`)
-    app.quit()
+    showFailure(cause && cause.stack ? cause.stack : String(cause))
   })
 }
