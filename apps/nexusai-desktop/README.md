@@ -97,6 +97,15 @@ dialog opens once, a moment after the shell settles. Closing it is remembered fo
 the session. (`scripts/check-auto-signin.mjs <port>` checks this over CDP against
 a running instance.)
 
+**First run shows the product, not dsh's onboarding popup.** dsh displays a
+preview notice until the user acknowledges it, keeping the acknowledged version
+in `ui-settings-general.welcomeNoticeVersion` and comparing it for *exact
+equality*. The bundled patch therefore carries that acknowledgement, and
+`prepare-runtime.mjs` reads the version out of the installed
+`dsh-client-ui-settings-models` bundle rather than hardcoding it — when dsh is
+upgraded, a new notice version means the popup returns once, which is the
+intended behaviour and not a bug.
+
 ## v1.0 status
 
 Verified on macOS (arm64): `prepare:runtime` composes the profile with the plugin
