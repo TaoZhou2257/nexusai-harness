@@ -14,6 +14,8 @@ name: build
 on:
   push:
     branches: [master, main, v1.0]
+    # A tag publishes the release below; branch pushes only produce artifacts.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -85,3 +87,38 @@ jobs:
           name: nexusai-builder-win-x64
           path: apps/nexusai-desktop/dist/*.exe
           if-no-files-found: error
+
+  # Artifacts are per-run build output; a Release is the versioned download
+  # people actually look for. Both installers from this run are attached to the
+  # tag that triggered it.
+  release:
+    name: Release (tag only)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [mac, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish installers to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -la release-assets
+          notes="内置 dsh 的 NexusAI 桌面端，**未签名**安装包。
+
+          - macOS (arm64)：\`NexusAgent Builder-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
+          - Windows (x64)：\`NexusAgent Builder Setup *.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
+
+          首次启动会在用户目录下生成 dsh home（macOS：\`~/Library/Application Support/NexusAgent Builder/dsh-home\`；Windows：\`%APPDATA%\\NexusAgent Builder\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
+          # Filenames contain spaces; a glob keeps each match as one word, so it
+          # is correct here where an unquoted variable would split.
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "NexusAgent Builder $GITHUB_REF_NAME" \
+            --notes "$notes" \
+            release-assets/*.dmg release-assets/*.exe
