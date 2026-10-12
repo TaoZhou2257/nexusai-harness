@@ -72,7 +72,13 @@ const pinnedPnpm = plugin.packageManager?.startsWith('pnpm@')
 
 const say = message => console.log(`\n==> ${message}`)
 const run = (command, commandArgs, options = {}) => {
-  execFileSync(command, commandArgs, { stdio: 'inherit', ...options })
+  execFileSync(command, commandArgs, {
+    stdio: 'inherit',
+    // On Windows `npm` and `corepack` are `.cmd` shims, which execFileSync
+    // cannot launch without a shell.
+    shell: process.platform === 'win32',
+    ...options,
+  })
 }
 /** pnpm through corepack so the pinned version in package.json is the one used. */
 const pnpm = (commandArgs, cwd) => run('corepack', ['pnpm', ...commandArgs], { cwd })
@@ -118,7 +124,9 @@ if (!skipPluginBuild) run('node', [join(PLUGIN_ROOT, 'scripts', 'build.mjs')], {
 mkdirSync(CACHE, { recursive: true })
 for (const stale of [join(CACHE, 'toby-dsh-plugin-nexusai-0.1.0.tgz')]) rmSync(stale, { force: true })
 const packedName = execFileSync('npm', ['pack', '--pack-destination', CACHE, '--silent'], {
-  cwd: PLUGIN_ROOT, encoding: 'utf8',
+  cwd: PLUGIN_ROOT,
+  encoding: 'utf8',
+  shell: process.platform === 'win32',
 }).trim().split('\n').pop()
 const pluginTarball = packedName.startsWith('toby-dsh-plugin-nexusai')
   ? packedName
