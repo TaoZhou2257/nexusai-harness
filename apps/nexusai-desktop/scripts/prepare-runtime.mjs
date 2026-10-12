@@ -39,7 +39,7 @@ const CACHE = join(BUILD, 'package-cache')
 /** The dsh profile this bundle activates; the shell resolves the same name. */
 const PROFILE_NAME = 'nexusai'
 
-const args = process.argv.slice(2)
+const args = process.argv.slice(2).filter(argument => argument !== '--')
 const argValue = name => {
   const hit = args.find(a => a.startsWith(`--${name}=`))
   return hit === undefined ? undefined : hit.slice(`--${name}=`.length)
@@ -66,9 +66,13 @@ if (target === undefined) {
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const dshVersion = readJson(join(PLUGIN_ROOT, 'upstream.json')).version
 const plugin = readJson(join(PLUGIN_ROOT, 'package.json'))
-const pinnedPnpm = plugin.packageManager?.startsWith('pnpm@')
-  ? plugin.packageManager.slice('pnpm@'.length)
-  : readJson(join(UPSTREAM_DIR, 'package.json')).packageManager.slice('pnpm@'.length)
+const app = readJson(join(APP_ROOT, 'package.json'))
+// This app declares the pinned pnpm itself. Never fall back to the dsh checkout:
+// CI deliberately does not check the submodule out, so `upstream/package.json`
+// may not exist there (that ENOENT was the first CI failure).
+const pinnedPnpm = app.packageManager?.startsWith('pnpm@')
+  ? app.packageManager.slice('pnpm@'.length)
+  : '11.7.0'
 
 const say = message => console.log(`\n==> ${message}`)
 const run = (command, commandArgs, options = {}) => {
