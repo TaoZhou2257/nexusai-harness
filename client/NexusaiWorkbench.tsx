@@ -1,9 +1,9 @@
 /**
  * The NexusAI workbench panel: one sidebar entry (专家 · 技能 · 连接器) with
  * three capability tabs — 专家 (custom tools), 技能 (skills), 连接器 (MCP
- * servers) — styled after workdsh's capability panels (cap-header with
- * cap-tabs, section head with h1 + border-bottom, card grid on the host's
- * --dsw-alias-* tokens, centered empty states).
+ * servers) — laid out like the reference product's capability panels
+ * (cap-header with cap-tabs, section head with h1 + border-bottom, card grid on
+ * the host's --dsw-alias-* tokens, centered empty states).
  *
  * Signed out, the tabs hide and the page shows the sign-in CTA; signed in,
  * all three lists load once and the 同步能力 action refreshes them.
@@ -14,7 +14,6 @@ import { NexusaiSignInDialog } from './NexusaiSignInDialog'
 import type { NexusaiLocaleKey } from './locales'
 import type { ConnectorAuthorRequestFace, ConnectorBundleSummaryFace, ConnectorToolsResultFace, LocalSkillEntryFace, LocalSkillInstallRequestFace, NexusaiAuthOps, NexusaiCapabilitiesOps, NexusaiSnapshot, SkillHubCardFace, SkillHubDetailFace, SlashSkillFace, SlashSkillsOps } from './face'
 
-/** The three capability tabs, in workdsh's order. */
 /** The three capability tabs, in the reference product's order. Labels come
  * from the locale dictionary (`tabExperts`/`tabSkills`/`tabConnectors`). */
 const TABS = ['experts', 'skills', 'connectors'] as const
@@ -2719,7 +2718,7 @@ function renderMarkdown(text: string): ReactNode {
   return blocks
 }
 
-/** Panel styling following workdsh's capability panels (host --dsw-alias-* tokens). */
+/** Panel styling following the reference product's capability panels (host --dsw-alias-* tokens). */
 const WORKBENCH_CSS = `
 .nexusai-wb { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;
   background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary);
