@@ -86,19 +86,21 @@ host-native and where dsh's own packaging would refuse to cross-build anyway.
 
 ## Window placement
 
-The window is positioned explicitly against the display's *work area* (menu bar
-and Dock already excluded) rather than with Electron's `center: true`, which
-measured 41 px above the real middle on macOS.
+Default size is **1200×800** (clamped to the display), positioned explicitly
+against the display's *work area* — menu bar and Dock already excluded — rather
+than with Electron's `center: true`, which measured 41 px above the real middle
+on macOS.
 
 | value | result |
 |---|---|
-| `center` (default) | middle of the work area, 160 px of air on each side |
+| `center` (default) | middle of the work area |
 | `bottom` | same size, bottom edge resting on the Dock |
 | `fill` | the whole work area |
 
 Pick it with `NEXUSAI_WINDOW_PLACEMENT=…` when running from a shell, or — for the
 installed app, which has no shell — by writing the single word into
-`<home>/window-placement`. The chosen value and its source are logged at startup.
+`<home>/window-placement`. The chosen value and its source are logged at startup,
+as is the resulting geometry.
 
 ## Runtime diagnostics
 

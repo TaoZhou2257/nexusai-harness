@@ -219,6 +219,17 @@ function installMenu() {
 }
 
 /**
+ * Default window size, in points.
+ *
+ * Matches the reference editor window this product is used alongside, which is
+ * taller and narrower than the proportion-derived size that was here before —
+ * the extra height is what makes the workbench's card grid comfortable. It is
+ * clamped to the display, so a small screen still gets a usable window.
+ */
+const DEFAULT_WIDTH = 1200
+const DEFAULT_HEIGHT = 800
+
+/**
  * Where the window goes on screen.
  *
  * Positioned explicitly rather than with `center: true`: measured on macOS the
@@ -227,17 +238,17 @@ function installMenu() {
  * `workArea` already excludes the menu bar and the Dock, so `bottom` rests the
  * window on the Dock rather than under it.
  *
- * - `center` — middle of the work area, 160 px of air on each side (default);
+ * - `center` — middle of the work area (default);
  * - `bottom` — same size, bottom edge on the Dock;
  * - `fill` — the whole work area (tallest it can be without going under chrome).
  */
 function windowBounds() {
   const { workArea } = screen.getPrimaryDisplay()
   const placement = windowPlacement
-  const width = Math.min(1440, Math.max(960, workArea.width - 160))
+  const width = Math.min(DEFAULT_WIDTH, workArea.width)
   const height = placement === 'fill'
-    ? Math.min(960, workArea.height)
-    : Math.min(960, Math.max(640, workArea.height - 160))
+    ? workArea.height
+    : Math.min(DEFAULT_HEIGHT, workArea.height)
   const x = Math.round(workArea.x + (workArea.width - width) / 2)
   const y = placement === 'center'
     ? Math.round(workArea.y + (workArea.height - height) / 2)
