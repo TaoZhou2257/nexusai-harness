@@ -8,6 +8,7 @@
   "main": "src/main.cjs",
   "scripts": {
     "prepare:runtime": "node scripts/prepare-runtime.mjs",
+    "make:icons": "node scripts/make-icons.mjs",
     "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "start": "electron .",
     "dist:mac": "node scripts/prepare-runtime.mjs --target=mac-arm64 && electron-builder --config electron-builder.config.cjs --mac --arm64",

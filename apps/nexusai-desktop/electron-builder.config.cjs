@@ -37,10 +37,13 @@ module.exports = {
     // Developer ID.
     identity: null,
     category: 'public.app-category.developer-tools',
+    // Both icons are generated from resources/icon.svg by scripts/make-icons.mjs.
+    icon: join(__dirname, 'resources', 'icon.icns'),
     target: [{ target: 'dmg', arch: ['arm64'] }],
   },
   dmg: { title: 'NexusAgent Builder' },
   win: {
+    icon: join(__dirname, 'resources', 'icon.ico'),
     target: [{ target: 'nsis', arch: ['x64'] }],
   },
   nsis: {

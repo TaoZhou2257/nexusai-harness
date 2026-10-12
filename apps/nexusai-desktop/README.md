@@ -48,8 +48,14 @@ cp .env.example .env               # NEXUSAI_BASE_URL + NEXUSAI_AES_KEY/IV — s
 pnpm run prepare:runtime           # → build/profile, build/runtime-version.txt
 pnpm run smoke:runtime             # headless: proves the bundle boots
 pnpm start                         # run the shell from source
+pnpm run make:icons                # only when resources/icon.svg changes (macOS tools)
 pnpm run dist:mac                  # → dist/NexusAgent Builder-<version>-arm64.dmg (unsigned)
 ```
+
+**Icons** — `resources/icon.svg` is the source of truth; `pnpm run make:icons`
+derives `icon.png` (1024), `icon.icns` and `icon.ico` from it with macOS's
+`qlmanage`/`sips`/`iconutil`. The generated binaries are committed on purpose so
+the Windows runner (which cannot run those tools) still packages the real icon.
 
 `prepare:runtime` is the only step that touches the network: it packs the plugin
 (`npm pack`) and installs the profile with pnpm. `--target=win-x64` runs the same
