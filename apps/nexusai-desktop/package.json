@@ -1,0 +1,23 @@
+{
+  "name": "@toby/nexusai-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NexusAgent Builder — thin Electron carrier around a bundled dsh profile",
+  "license": "MIT",
+  "packageManager": "pnpm@11.7.0",
+  "main": "src/main.cjs",
+  "scripts": {
+    "prepare:runtime": "node scripts/prepare-runtime.mjs",
+    "smoke:runtime": "node scripts/smoke-runtime.mjs",
+    "start": "electron .",
+    "dist:mac": "node scripts/prepare-runtime.mjs --target=mac-arm64 && electron-builder --config electron-builder.config.cjs --mac --arm64",
+    "dist:mac:x64": "node scripts/prepare-runtime.mjs --target=mac-x64 && electron-builder --config electron-builder.config.cjs --mac --x64",
+    "dist:win": "node scripts/prepare-runtime.mjs --target=win-x64 && electron-builder --config electron-builder.config.cjs --win --x64",
+    "dist:win:dir": "node scripts/prepare-runtime.mjs --target=win-x64 && electron-builder --config electron-builder.config.cjs --win --x64 --dir"
+  },
+  "devDependencies": {
+    "@electron/get": "^5.1.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.0.12"
+  }
+}

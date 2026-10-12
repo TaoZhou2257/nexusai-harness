@@ -1,0 +1,87 @@
+name: build
+
+# Builds the NexusAgent Builder carrier for both platforms. Every step is
+# host-native on the runner it runs on — the whole point of using CI for Windows
+# is that dsh's packaging refuses to cross-build Windows from macOS, and pnpm
+# must resolve Windows native optional dependencies on Windows.
+#
+# Required repository secrets:
+#   NEXUSAI_BASE_URL   e.g. http://agent.nexusai.net.cn:8081
+#   NEXUSAI_AES_KEY    login-payload decryption key
+#   NEXUSAI_AES_IV     login-payload decryption IV
+# They are baked into the bundled profile patch, so never commit them.
+
+on:
+  push:
+    branches: [master, main, v1.0]
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  mac:
+    name: macOS (arm64, unsigned dmg)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        # No submodule checkout: the bundle is built from the dsh version pinned
+        # in upstream.json, which CI reads directly.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable the pinned pnpm
+        run: corepack enable
+      - name: Install plugin dependencies
+        run: npm ci
+      - name: Install carrier dependencies
+        working-directory: apps/nexusai-desktop
+        run: pnpm install
+      - name: Prepare the bundled runtime
+        working-directory: apps/nexusai-desktop
+        env:
+          NEXUSAI_BASE_URL: ${{ secrets.NEXUSAI_BASE_URL }}
+          NEXUSAI_AES_KEY: ${{ secrets.NEXUSAI_AES_KEY }}
+          NEXUSAI_AES_IV: ${{ secrets.NEXUSAI_AES_IV }}
+        run: pnpm run prepare:runtime
+      - name: Package (dmg, unsigned)
+        working-directory: apps/nexusai-desktop
+        run: pnpm exec electron-builder --config electron-builder.config.cjs --mac --arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexusai-builder-mac-arm64
+          path: apps/nexusai-desktop/dist/*.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Windows (x64, unsigned nsis)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable the pinned pnpm
+        run: corepack enable
+      - name: Install plugin dependencies
+        run: npm ci
+      - name: Install carrier dependencies
+        working-directory: apps/nexusai-desktop
+        run: pnpm install
+      - name: Prepare the bundled runtime
+        working-directory: apps/nexusai-desktop
+        env:
+          NEXUSAI_BASE_URL: ${{ secrets.NEXUSAI_BASE_URL }}
+          NEXUSAI_AES_KEY: ${{ secrets.NEXUSAI_AES_KEY }}
+          NEXUSAI_AES_IV: ${{ secrets.NEXUSAI_AES_IV }}
+        run: pnpm run prepare:runtime -- --target=win-x64
+      - name: Package (nsis, unsigned)
+        working-directory: apps/nexusai-desktop
+        run: pnpm exec electron-builder --config electron-builder.config.cjs --win --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexusai-builder-win-x64
+          path: apps/nexusai-desktop/dist/*.exe
+          if-no-files-found: error

@@ -1,0 +1,10 @@
+# Built runtime + packaging output
+build/
+dist/
+node_modules/
+
+# Local secrets for the bundled profile (server address + login-payload keys).
+# Copy .env.example and fill it in; CI supplies the same names as secrets.
+.env
+# The template itself is tracked (the repo-level rules ignore `.env.*`).
+!.env.example

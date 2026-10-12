@@ -1,0 +1,82 @@
+# NexusAgent Builder — the carrier app
+
+A thin Electron shell that ships one self-contained desktop app: **dsh (version
+pinned by `../../upstream.json`) + this repo's NexusAI plugin**, already wired,
+so a user installs one thing and signs in.
+
+```
+apps/nexusai-desktop/
+  src/main.cjs                 the whole shell (~180 lines, CommonJS, no build step)
+  scripts/prepare-runtime.mjs  builds build/profile (dsh + plugin) for a target
+  scripts/smoke-runtime.mjs    headless check: boots the bundled runtime, waits for the web URL
+  scripts/after-pack.cjs       copies the runtime into the packaged app
+  electron-builder.config.cjs  unsigned dmg / nsis, no auto-update
+```
+
+## How it works
+
+```
+  launch ─▶ materialize profile ─▶ spawn bundled dsh ─▶ read token URL ─▶ open window
+             <userData>/dsh-home    Electron-as-Node      127.0.0.1:<port>    centered
+```
+
+1. **Home** — everything lives in `<userData>/dsh-home` (`~/Library/Application
+   Support/NexusAgent Builder/dsh-home` on macOS, `%APPDATA%\NexusAgent
+   Builder\dsh-home` on Windows). `NEXUSAI_DSH_HOME` overrides it, which is how
+   the smoke tests and a second instance stay out of the way.
+2. **Profile** — the bundle carries `build/profile`, a plain pnpm project:
+   `@deepseek-ai/dsh` at `upstream.json`'s version, the two official bundles it
+   activates, and this repo's plugin tarball. On first launch (and whenever
+   `runtime-version.txt` changes) the shell copies the small manifest files into
+   the home and links `node_modules` at the bundle, so a launch never copies
+   hundreds of megabytes. A `node_modules` the app did not create is refused
+   rather than clobbered.
+3. **Runtime** — the app's own Electron binary doubles as Node
+   (`ELECTRON_RUN_AS_NODE=1`), so there is no second runtime to ship. dsh is
+   started as `dsh --profile nexusai --no-open`.
+4. **Ready line** — the shell watches stdout for
+   `dsh web: http://127.0.0.1:<port>/?token=…` and opens a centered window on
+   exactly that URL. Nothing else is parsed, so a dsh change to that one line is
+   the only thing that can break this seam.
+
+## Building
+
+```bash
+cd apps/nexusai-desktop
+pnpm install                       # electron + electron-builder (use ELECTRON_MIRROR on this network)
+cp .env.example .env               # NEXUSAI_BASE_URL + NEXUSAI_AES_KEY/IV — secrets stay out of git
+pnpm run prepare:runtime           # → build/profile, build/runtime-version.txt
+pnpm run smoke:runtime             # headless: proves the bundle boots
+pnpm start                         # run the shell from source
+pnpm run dist:mac                  # → dist/NexusAgent Builder-<version>-arm64.dmg (unsigned)
+```
+
+`prepare:runtime` is the only step that touches the network: it packs the plugin
+(`npm pack`) and installs the profile with pnpm. `--target=win-x64` runs the same
+steps for Windows — pnpm's `supportedArchitectures` is what makes the Windows
+native optional dependencies resolve correctly, so this is the one place a
+cross-target build is even attempted. **In practice the Windows bundle is built
+on Windows** (`.github/workflows/build.yml`), because that is where everything is
+host-native and where dsh's own packaging would refuse to cross-build anyway.
+
+## Two traps worth knowing
+
+- **`node_modules` cannot ride in `extraResources`.** electron-builder routes any
+  directory containing `node_modules` through its app-file copier, which copies
+  the *declared dependency tree*; a pnpm-installed flat profile comes out empty
+  and the app ships without its runtime, silently. The runtime is copied by the
+  `afterPack` hook with a plain recursive `cpSync` instead
+  (`scripts/after-pack.cjs`).
+- **`@electron/get` must be a single major (v5).** electron-builder 26 imports
+  `ElectronDownloadCacheMode` from it, which older majors do not export — the DMG
+  step then dies with `Cannot read properties of undefined (reading 'ReadWrite')`.
+  `pnpm-workspace.yaml` pins it via `overrides`.
+
+## v1.0 status
+
+Verified on macOS (arm64): `prepare:runtime` composes the profile with the plugin
+row present, `smoke:runtime` reaches the web URL, the packaged `.app` boots from a
+clean home and opens its window, and the DMG mounts with the full runtime inside.
+**Not yet verified:** the Windows installer (needs a run of the `windows` CI job),
+branding/iconography, and first-run UX polish — those are deliberate, tracked
+follow-ups rather than blockers for the architecture itself.

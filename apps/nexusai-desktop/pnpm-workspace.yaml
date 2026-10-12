@@ -1,0 +1,17 @@
+packages:
+  - .
+
+# electron-builder 26 imports `ElectronDownloadCacheMode` from `@electron/get`,
+# which older majors do not export (the DMG tool download then dies with
+# "Cannot read properties of undefined"). Forcing one major fixes it — the same
+# pin dsh's own desktop package carries.
+overrides:
+  '@electron/get': ^5.1.0
+
+# pnpm 11 blocks dependency lifecycle scripts until they are reviewed here.
+# Electron's own postinstall is what unpacks the Electron binary, so it must
+# run; electron-winstaller's script only picks a bundled 7-Zip and we ship NSIS
+# instead — the same call dsh's own checkout makes.
+allowBuilds:
+  electron: true
+  electron-winstaller: false

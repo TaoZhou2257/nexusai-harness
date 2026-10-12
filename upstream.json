@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
+  "commit": "639ed015397290b3745d163aafe02ffee4aa3f84",
+  "version": "0.2.0-rc.2",
+  "tag": "dsh-v0.2.0-rc.2",
+  "releasePolicy": "pinned-after-compatibility-validation",
+  "note": "dsh is a developer preview; the plugin baseline (scripts/check-dsh-version.mjs) must match this version. Bump upstream.json + the submodule commit together."
+}

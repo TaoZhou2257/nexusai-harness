@@ -1,25 +1,23 @@
-# HANDOFF — 交接摘要（2026-10-10 · 删长时间运行模式）
+# HANDOFF — 交接摘要（2026-10-12 · v1.0 carrier）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图），不是推理。
 
-## 本次交接（2026-10-10）
+## 本次交接（2026-10-12，`v1.0` 分支）
 
-**改了什么**：按用户拍板删除了「长时间运行模式」整个功能。原因：dsh 的 MCP 客户端只有**一个**超时字段（`toolCallTimeoutMs`），且无 `progress`/`_meta.progressToken` 处理 —— 开关无法在运行时生效，只是插件侧的一纸声明。长任务现在直接填大「超时」。
+**做了什么**：把仓库改成「workdsh 式」的开发/打包架构 —— **一个仓库全带走**：dsh 以 submodule 锁版本封装在内，插件保持在仓库根，新增薄 Electron 壳 `apps/nexusai-desktop`，一条命令出未签名安装包。
 
-- host：删 `src/sync/connector-prefs.ts` 整文件（`mcp-connector-prefs.json` 不再产生）；`types.ts` / `connector-rows.ts`（去掉 `CONNECTOR_LONG_RUNNING_SECONDS`）/ `connector-author.ts` / `capabilities.ts` / `index.ts` 同步清字段与接线
-- client：删表单里的 Switch 开关行、`face.ts` 两个 `longRunning` 类型字段、中英文 2 个语言键（`connectorLongRunning` / `connectorLongRunningHint`）
-- 套件 `scripts/verify/connector-authoring.mjs`：删开关断言，超时断言保留（原样写、编辑只动数字、非数字拒绝）
-- HANDOFF：§3.7 连接设置、坑 B7、§13 变更表三处已更新
+- `upstream.json` + `upstream/`（git submodule，锁定 commit `639ed015` = dsh `0.2.0-rc.2`）
+- `apps/nexusai-desktop/`：`src/main.cjs` 薄壳（~180 行，CJS 无构建步骤）、`scripts/prepare-runtime.mjs`（生成 `build/profile`）、`scripts/smoke-runtime.mjs`（无 GUI 冒烟）、`scripts/after-pack.cjs`（把运行时拷进包）、`electron-builder.config.cjs`
+- `.github/workflows/build.yml`：macOS + Windows 两个 job，各自宿主原生构建，产物传 Actions artifact
+- 新增远端 `github` → `https://github.com/TaoZhou2257/nexusai-harness.git`（原有 `origin` 是阿里云 Codeup，保留）
 
-**保留的行为**：超时（秒，默认 60，`toolCallTimeoutMs` / 桥预算原样写入；`connectorTimeoutMs()` 是唯一换算处）、SSE 请求头、打开/关闭、编辑/删除、桥接全部不动。
+**架构（3 句话）**：内置 profile 是**普通 pnpm 工程** —— `@deepseek-ai/dsh`（按 upstream.json 版本从 npm 装）+ 两个官方 bundle + 本插件 tgz；运行时用**应用自己的 Electron 当 Node**（`ELECTRON_RUN_AS_NODE=1`），所以只发一个运行时；壳 spawn `dsh --profile nexusai --no-open`，读到 `dsh web: http://127.0.0.1:<port>/?token=…` 就开居中窗口。
 
-**验证**：`npx tsc --noEmit` 0 错误；`node scripts/build.mjs` 两个产物；`npm run check:dsh` ok（0.2.0-rc.2）；`connector-authoring.mjs` 63 例全绿；`local-skills-paths.mjs` 16 例全绿。**未做**：桌面端 UI 回归（本次纯删除，理论不影响 UI，但按流程标准应跑一次 CDP 走查）。
+**已验证（macOS arm64 真机）**：`prepare:runtime` 组合出 profile 且含插件行；`smoke:runtime` 到达 web URL；**打包版 `.app` 从干净 home 启动并开窗**；DMG（237MB）挂载正常、`Resources/nexusai-runtime/profile/node_modules` 里 CLI 在位。
 
-**卡在哪**：无阻塞。Windows 试用包计划暂停（dsh 拒绝 macOS 交叉构建 `win-x64`，需 Windows 构建机 + VS Build Tools；交付物已备在 `dist/windows-trial/`，含 STATUS.md 说明）。
+**未验证**：Windows 安装包（要跑一次 CI 的 `windows` job）；品牌/图标（现为 Electron 默认）；首启交互打磨。**红线提醒**：`dist/windows-trial/nexusai.patch.yml` 仍是 git 跟踪状态且含 AES key —— 推到公开 GitHub 前必须先处理（见 §11）。
 
-**下一步建议**：
-1. 跑一次 `pnpm run start:desktop` + CDP 走查，确认连接器创建弹窗只剩「超时」一项、创建/编辑/调用全链路正常（§8 标准流程）。
-2. 之后回到待办（§11）：正式产品化（自有 Electron 壳 + 构建期组装 profile）、SSE 桥接凭据跟进、agent 实调自定义工具等。
+**卡在哪**：无技术阻塞。**等你决策**：是否把含密钥的文件从仓库移除后再推 GitHub（推公开仓库=密钥进入公网且不可撤回）。
 
 ## 0. 这是什么
 
@@ -178,7 +176,14 @@ scripts/
   dev/install-into-dsh.mjs  新机器接线（构建 + 软链 + patch 行，幂等）
   dev/brand-dev-app.mjs     dev 包改名 + 换访达/Dock 图标（取服务端品牌，幂等）
   dev/{center-window.mjs,start-desktop.sh,watch-window.sh}  窗口摆放（macOS 专属，需辅助功能权限）
-dist/windows-trial/         Windows 试用包（一键脚本 + 离线插件包 + 说明；未实测）
+upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit 639ed015 = 0.2.0-rc.2）
+apps/nexusai-desktop/       **v1.0 carrier**：薄 Electron 壳 + 运行时准备 + electron-builder（未签名）
+  src/main.cjs              壳：home → 预置 profile → spawn 内置 dsh（Electron-as-Node）→ 读 token URL → 开居中窗
+  scripts/prepare-runtime.mjs  npm pack 插件 + pnpm 装 profile（含 supportedArchitectures 与 allowBuilds）
+  scripts/smoke-runtime.mjs    无 GUI 冒烟：起内置运行时并等 `dsh web:` 行（CI 用）
+  scripts/after-pack.cjs       把 build/profile 拷进包（见 §7 坑：extraResources 带不动 node_modules）
+.github/workflows/build.yml  mac + win 两个 job，各自宿主原生构建，产物传 artifact
+dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 carrier 取代；含密钥的文件待处理
 ```
 
 ## 6. 红线（重复一遍，最常见的事故源）
@@ -283,8 +288,10 @@ node scripts/dev/brand-dev-app.mjs             # 改 dev 包应用名 + 访达�
 
 | 优先级 | 任务 | 状态 |
 |---|---|---|
-| 暂缓 | **发行版/产品化**：薄载体（自有 Electron 壳 ≈250 行 + 构建期组装 profile + electron-builder；macOS 本机出、Windows 走 CI windows runner）+ 插件自带 `dsh.bundle.patch` 与配置表单；产物目标 ~500MB；品牌 NexusAgent Builder、占位图标、不签名、窗口默认居中 | ⏸ 用户暂缓 |
-| 暂缓 | Windows 试用包实测 | ⏸ 用户暂缓 |
+| **高** | **推 GitHub 前先处理密钥**：`dist/windows-trial/nexusai.patch.yml` 被 git 跟踪且含 AES key/iv。公开仓库 = 密钥进公网（不可撤回）。建议 `git rm --cached` 该文件 + 改 server 端密钥（历史里仍有旧值）；运行时配置本就改成从 env/`.env` 生成（carrier 已如此） | 🔴 等决策 |
+| 高 | 跑 CI 的 `windows` job 验证 NSIS 产物（本机无法产出）；需先在仓库配 3 个 secret（`NEXUSAI_BASE_URL`/`NEXUSAI_AES_KEY`/`NEXUSAI_AES_IV`） | ⬜ |
+| 中 | carrier 品牌/图标（现为 Electron 默认图标与 `NexusAgent Builder` 名）；首启交互打磨 | ⬜ |
+| 中 | carrier 产物精简：内置 profile 现 ~490MB（含 python 工具链与未用的官方 bundle），可裁剪 | ⬜ |
 | 暂缓 | SSE 桥接的凭据跟进（智能问数需 token：服务端 `mcp_start` 换取 / 插件配置默认 token） | ⏸ 用户暂缓 |
 | 暂缓 | agent 实调 NexusAI 自定义工具（MCP 侧已验过整条链路） | ⏸ 用户暂缓 |
 | 杂 | 「删除技能」是否改移入废纸篓；`package.json` 的 `types` 指向不存在的 d.ts | ⏸ 用户暂缓 |
@@ -303,6 +310,7 @@ node scripts/dev/brand-dev-app.mjs             # 改 dev 包应用名 + 访达�
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-12 | **v1.0 carrier（workdsh 式架构）**：dsh 以 submodule 锁版本封装进仓库（`upstream.json` + `upstream/`）；新增 `apps/nexusai-desktop` 薄壳（Electron-as-Node 跑内置 dsh）+ `prepare-runtime`（按版本装 dsh 进 profile）+ `after-pack` + `smoke-runtime`；`.github/workflows/build.yml` 出 mac/win 未签名包 | macOS 真机：profile 组合通过、无 GUI 冒烟到达 web URL、**打包版 .app 从干净 home 启动开窗**、DMG 237MB 挂载含完整运行时 |
 | 10-10 | **删除「长时间运行模式」**（用户拍板：dsh 只有一个超时字段、无进度重置，开关无法在运行时生效）：移除 `sync/connector-prefs.ts` 整个存储、表单开关 UI、2 个语言键、`CONNECTOR_LONG_RUNNING_SECONDS`；超时保持「秒，默认 60，原样写」 | tsc + build + check:dsh + 套件全绿（长任务 = 直接填大超时） |
 | 10-09 | **＋添加技能**：两项菜单（查找技能 → 切 SkillHub+聚焦搜索框 / 上传技能 → 文件夹·zip·md 弹窗，校验 + 同名覆盖） | 三路径真机上装并确认出现在本地列表；拒绝路径（无 SKILL.md / 无前置信息 / 中文名）逐个核对；覆盖安装后磁盘内容替换、旧文件移除 |
 | 10-09 | 导入技能弹窗按参考图重做（虚线拖拽区 + 自动安装开关 + 文件要求），新增拖拽上传与文件夹展开 | 真实拖拽事件：高亮 → 拖入 .zip 装上、拖入 .md 装上；自动安装勾选后免点安装；同名时仍停下确认 |
