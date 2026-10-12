@@ -8,11 +8,11 @@
  * Signed out, the tabs hide and the page shows the sign-in CTA; signed in,
  * all three lists load once and the 同步能力 action refreshes them.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Button, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconDownloadOutlineRegular, IconLinkOutlineMedium, IconLoadingOutlineRegular, IconNewChatOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, IconSparkleMedium, IconUserOutlineMedium, IconWarningOutlineRegular, Input, Menu, Switch, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react'
+import { Button, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconDownloadOutlineRegular, IconLinkOutlineMedium, IconLoadingOutlineRegular, IconNewChatOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, IconSparkleMedium, IconUserOutlineMedium, IconQuestionOutlineRegular, IconWarningOutlineRegular, Input, Checkbox, Menu, Modal, Switch, Tooltip, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import { NexusaiSignInDialog } from './NexusaiSignInDialog'
 import type { NexusaiLocaleKey } from './locales'
-import type { LocalSkillEntryFace, NexusaiAuthOps, NexusaiCapabilitiesOps, NexusaiSnapshot, SkillHubCardFace, SkillHubDetailFace, SlashSkillFace, SlashSkillsOps } from './face'
+import type { ConnectorAuthorRequestFace, ConnectorBundleSummaryFace, ConnectorToolsResultFace, LocalSkillEntryFace, LocalSkillInstallRequestFace, NexusaiAuthOps, NexusaiCapabilitiesOps, NexusaiSnapshot, SkillHubCardFace, SkillHubDetailFace, SlashSkillFace, SlashSkillsOps } from './face'
 
 /** The three capability tabs, in workdsh's order. */
 /** The three capability tabs, in the reference product's order. Labels come
@@ -39,17 +39,43 @@ export interface NexusaiWorkbenchProps {
 
 interface ToolCard { name: string; description: string }
 interface SkillCard { skillId: string; name: string; description: string; author: string }
-interface LocalConnector { id: string; name: string; transport: string; url: string }
+/** One 本地 connector card: a patch row (with the raw config the editor needs)
+ * or a custom SSE connector's bridge state. */
+interface LocalConnector {
+  id: string
+  name: string
+  transport: string
+  url: string
+  serverName?: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  headers?: Record<string, string>
+  enabled: boolean
+  connected: boolean
+  toolCount: number
+  /** Per-call budget in seconds as stored (0 = the 60 s default). */
+  timeoutSeconds?: number
+  bridgeError?: string
+}
+type LocalConnectorRow = LocalConnector
 
 interface ConnectorCard {
+  /** Catalogue id; the host derives the row's serverName from it. */
+  id?: string
+  mcpServerId: string
   name: string
   desc: string
   toolNum: number
   source: 'created' | 'imported'
   transport: string
+  url: string
   connectable: boolean
   /** True when this plugin bridged an SSE server's tools into dsh. */
   bridged: boolean
+  /** Whether its tools are registered right now, and how many. */
+  connected?: boolean
+  toolCount?: number
 }
 
 /** The 专家 · 技能 · 连接器 workbench (main panel). */
@@ -65,7 +91,38 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   // 连接器 has the same two sources as 技能: 本地 (this machine's own
   // mcp-client rows) and 远程获取 (the NexusAI catalog).
   const [connectorSource, setConnectorSource] = useState<'local' | 'remote'>('remote')
-  const [localConnectors, setLocalConnectors] = useState<LocalConnector[]>([])
+  const [localConnectors, setLocalConnectors] = useState<LocalConnectorRow[]>([])
+  // 连接器 search, one query per source (same shape as 技能).
+  const [localConnectorQuery, setLocalConnectorQuery] = useState('')
+  const [remoteConnectorQuery, setRemoteConnectorQuery] = useState('')
+  // 自定义连接器: a four-item menu, then one dialog per route.
+  const [addConnectorOpen, setAddConnectorOpen] = useState(false)
+  const [connectorDialog, setConnectorDialog] = useState<'quick' | 'json' | 'bundle' | undefined>(undefined)
+  /** Which of the two bundle labels opened the dialog (DXT / MCPB — the same format). */
+  const [bundleRoute, setBundleRoute] = useState<'dxt' | 'mcpb'>('mcpb')
+  const [connectorBusy, setConnectorBusy] = useState(false)
+  // 连接器详情：which connector is open, its tools, and its card's "…" menu.
+  const [connectorDetail, setConnectorDetail] = useState<{ id: string; name: string; transport: string; url: string; source: 'local' | 'remote'; authored: boolean } | undefined>(undefined)
+  const [connectorToolList, setConnectorToolList] = useState<ConnectorToolsResultFace | undefined>(undefined)
+  const [connectorDetailLoading, setConnectorDetailLoading] = useState(false)
+  const [connectorMenuId, setConnectorMenuId] = useState('')
+  /** The connector an open dialog is editing ('' when adding a new one). */
+  const [editTarget, setEditTarget] = useState('')
+  const [connectorConfirmRemove, setConnectorConfirmRemove] = useState('')
+  const [copiedTool, setCopiedTool] = useState('')
+  const [connectorError, setConnectorError] = useState('')
+  const [quickForm, setQuickForm] = useState({
+    name: '', transport: 'stdio', command: '', args: '', env: '', url: '', headers: '',
+    // 超时（秒）；空串表示默认 60 秒
+    timeoutSeconds: '',
+  })
+  const [connectorJson, setConnectorJson] = useState('')
+  const [bundlePath, setBundlePath] = useState('')
+  const [bundleSummary, setBundleSummary] = useState<ConnectorBundleSummaryFace | undefined>(undefined)
+  const [bundleValues, setBundleValues] = useState<Record<string, string>>({})
+  const connectorFileInput = useRef<HTMLInputElement | null>(null)
+  const fieldFileInput = useRef<HTMLInputElement | null>(null)
+  const fieldFileTarget = useRef('')
   const [downloaded, setDownloaded] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -124,6 +181,32 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   const [hubPreviewLoading, setHubPreviewLoading] = useState(false)
   const [hubPreviewMode, setHubPreviewMode] = useState<'preview' | 'code'>('preview')
   const [hubSummaryExpanded, setHubSummaryExpanded] = useState(false)
+
+  // ＋添加技能: a two-item menu (查找技能 / 上传技能) plus the upload dialog.
+  // The dialog stays open on failure so a retry needs no reopening; a name
+  // that already exists comes back as `exists` and only 覆盖安装 re-sends.
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [uploadPicked, setUploadPicked] = useState('')
+  // What a staged upload came from: a host path (the desktop panel) or an
+  // in-memory request (a drop, or a pick without the path bridge). The 覆盖安装
+  // retry re-sends the same one.
+  const [uploadSource, setUploadSource] = useState<UploadSource | undefined>(undefined)
+  const [uploadExists, setUploadExists] = useState('')
+  // 非高风险自动安装: a staged upload starts installing on its own. An existing
+  // skill name still stops for the 覆盖安装 confirmation.
+  const [uploadAuto, setUploadAuto] = useState(false)
+  const [uploadDragging, setUploadDragging] = useState(false)
+  // A successful install reads back as a panel-level notice (the dialog is
+  // closed by then): what was installed, and where the 本地 list shows it.
+  const [notice, setNotice] = useState('')
+  const fileInput = useRef<HTMLInputElement | null>(null)
+  // 查找技能 hands the cursor to the search box; the token re-runs the focus
+  // effect even when the source was already SkillHub.
+  const searchInput = useRef<HTMLInputElement | null>(null)
+  const [searchFocus, setSearchFocus] = useState(0)
 
   // The brand name belongs to the address currently in effect, so it is read
   // again whenever the session flips (a fresh sign-in may be a different
@@ -227,6 +310,409 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
       setHubInstalling('')
     }
   }
+
+  // ＋添加技能 → 查找技能: the marketplace is the search surface, so the source
+  // switches there and the cursor lands in its box (the token re-runs the
+  // focus effect even when SkillHub was already selected).
+  const findSkill = (): void => {
+    setAddMenuOpen(false)
+    setSkillSource('skillhub')
+    void enterHub()
+    setSearchFocus(value => value + 1)
+  }
+
+  const startUpload = (): void => {
+    setAddMenuOpen(false)
+    setUploadOpen(true)
+    setUploadError('')
+    setUploadPicked('')
+    setUploadExists('')
+    setUploadSource(undefined)
+  }
+
+  const closeUpload = (): void => {
+    if (uploadBusy) return
+    setUploadOpen(false)
+  }
+
+  /** Stage one upload. With 非高风险自动安装 on it installs straight away; an
+   * existing name still stops at the 覆盖安装 confirmation either way. */
+  const stageUpload = (label: string, source: UploadSource): void => {
+    setUploadPicked(label)
+    setUploadSource(source)
+    if (uploadAuto) void submitUpload(false, source)
+  }
+
+  /** Reset the previous attempt's outcome before a new pick or drop. */
+  const clearUploadAttempt = (): void => {
+    setUploadError('')
+    setUploadExists('')
+    setUploadSource(undefined)
+    setUploadPicked('')
+  }
+
+  /** Send a staged upload. `overwrite` is the dialog's explicit second attempt
+   * after the host reported that the skill directory already exists. */
+  const submitUpload = async (overwrite: boolean, source: UploadSource | undefined = uploadSource): Promise<void> => {
+    if (capabilities === undefined || source === undefined) return
+    setUploadBusy(true)
+    setUploadError('')
+    try {
+      const result = source.kind === 'path'
+        ? await capabilities.installUploadedPath(source.path, overwrite)
+        : await capabilities.installUploadedSkill(source.request, overwrite)
+      if (!result.installed) {
+        setUploadExists(result.name)
+        return
+      }
+      setUploadOpen(false)
+      setUploadExists('')
+      setUploadSource(undefined)
+      setNotice(`${resolve('uploadDone')}：${result.name}`)
+      setSkillSource('local')
+      // The registry discovers a new skill directory on its own; a few silent
+      // reads put it in the 本地 list without the user leaving the tab.
+      refreshLocalUntilSettled()
+    } catch (cause) {
+      setUploadError((cause as { message?: string })?.message ?? String(cause))
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
+  /** A skill folder — picked through the directory picker or dropped on the
+   * zone. The SKILL.md and name checks run here so the dialog answers
+   * immediately; the host re-validates everything before writing. */
+  const stageFolder = async (entries: readonly DroppedEntry[]): Promise<void> => {
+    clearUploadAttempt()
+    if (entries.length === 0) return
+    const paths = entries.map(entry => entry.path)
+    if (!paths.some(path => path.split('/').includes('SKILL.md'))) {
+      setUploadError(resolve('uploadNoSkillFile'))
+      return
+    }
+    if (entries.reduce((sum, entry) => sum + entry.file.size, 0) > MAX_UPLOAD_BYTES) {
+      setUploadError(resolve('uploadTooLarge'))
+      return
+    }
+    try {
+      // Read every file once; the SKILL.md text also feeds the name check, so
+      // an unusable bundle is refused before anything is sent.
+      const read = await Promise.all(entries.map(async entry => ({
+        path: entry.path,
+        bytes: new Uint8Array(await entry.file.arrayBuffer()),
+      })))
+      const skill = read.find(entry => entry.path.split('/').includes('SKILL.md'))
+      const front = skill === undefined ? { name: '', description: '' } : frontmatterOf(new TextDecoder().decode(skill.bytes))
+      if (front.name === '' || front.description === '') {
+        setUploadError(resolve('uploadBadMarkdown'))
+        return
+      }
+      if (!SKILL_NAME.test(front.name)) {
+        setUploadError(`${resolve('uploadBadName')}：${front.name}`)
+        return
+      }
+      stageUpload(paths[0]?.split('/')[0] ?? '', {
+        kind: 'request',
+        request: {
+          kind: 'folder',
+          name: front.name,
+          files: read.map(entry => ({ path: entry.path, base64: base64Of(entry.bytes) })),
+        },
+      })
+    } catch (cause) {
+      setUploadError((cause as { message?: string })?.message ?? String(cause))
+    }
+  }
+
+  /** A single picked or dropped file — the one 「点击上传」 entry. The desktop
+   * bridge knows the pick's real path, and a path is strictly more informative
+   * than its bytes: the host can then recognise a folder's SKILL.md, a .zip or
+   * a .md without the panel needing a second, folder-only button. Without the
+   * bridge (a browser) the bytes are all we have. */
+  const stagePickedFile = async (file: File): Promise<void> => {
+    const path = hostPathOf(file)
+    if (path !== '') {
+      clearUploadAttempt()
+      stageUpload(file.name, { kind: 'path', path })
+      return
+    }
+    await stageFile(file)
+  }
+
+  /** A single .zip or .md. The zip is validated on the host (it is unzipped
+   * there); the markdown's front matter is checked here. */
+  const stageFile = async (file: File): Promise<void> => {
+    clearUploadAttempt()
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadError(resolve('uploadTooLarge'))
+      return
+    }
+    if (!/\.zip$/i.test(file.name) && !/\.md$/i.test(file.name)) {
+      setUploadError(resolve('uploadNoSkillFile'))
+      return
+    }
+    try {
+      if (/\.zip$/i.test(file.name)) {
+        stageUpload(file.name, {
+          kind: 'request',
+          request: {
+            kind: 'zip',
+            name: file.name.replace(/\.zip$/i, ''),
+            base64: base64Of(new Uint8Array(await file.arrayBuffer())),
+          },
+        })
+        return
+      }
+      const text = await file.text()
+      const front = frontmatterOf(text)
+      if (front.name === '' || front.description === '') {
+        setUploadError(resolve('uploadBadMarkdown'))
+        return
+      }
+      if (!SKILL_NAME.test(front.name)) {
+        setUploadError(`${resolve('uploadBadName')}：${front.name}`)
+        return
+      }
+      stageUpload(file.name, { kind: 'request', request: { kind: 'markdown', name: front.name, text } })
+    } catch (cause) {
+      setUploadError((cause as { message?: string })?.message ?? String(cause))
+    }
+  }
+
+  const onFilePicked = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file === undefined) return
+    await stagePickedFile(file)
+  }
+
+  /** A drop carries files, or folders that have to be walked: Chromium exposes
+   * a directory as a `FileSystemDirectoryEntry`, and its contents carry their
+   * path relative to the drop, so a dropped skill folder stages exactly like a
+   * picked one. Falls back to the plain file list when the entry API is absent
+   * (a drop of loose files, or a platform without it). */
+  const onDrop = async (event: DragEvent<HTMLDivElement>): Promise<void> => {
+    event.preventDefault()
+    setUploadDragging(false)
+    if (uploadBusy) return
+    const transfer = event.dataTransfer
+    const dropped = Array.from(transfer?.files ?? [])
+    const entries = Array.from(transfer?.items ?? [])
+      .map(item => (typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null))
+      .filter((entry): entry is FileSystemEntry => entry !== null)
+    if (entries.length === 0) {
+      if (dropped.length === 1) await stagePickedFile(dropped[0] as File)
+      else if (dropped.length > 1) await stageFolder(dropped.map(file => ({ path: file.name, file })))
+      return
+    }
+    const walked = await collectDropped(entries)
+    if (walked.length === 0) return
+    if (walked.length === 1 && walked[0]?.path.split('/').length === 1 && !/\.(zip|md)$/i.test(walked[0].path)) {
+      await stageFolder(walked)
+      return
+    }
+    if (walked.length === 1) {
+      await stagePickedFile(walked[0].file)
+      return
+    }
+    await stageFolder(walked)
+  }
+
+  // ---------- 自定义连接器 ----------
+  /** Open one of the four authoring routes. */
+  const startConnector = (route: 'quick' | 'json' | 'bundle', kind: 'dxt' | 'mcpb' = 'mcpb'): void => {
+    setAddConnectorOpen(false)
+    setConnectorError('')
+    setEditTarget('')
+    setConnectorDialog(route)
+    if (route === 'bundle') {
+      setBundleRoute(kind)
+      setBundlePath('')
+      setBundleSummary(undefined)
+      setBundleValues({})
+    }
+  }
+
+  const closeConnector = (): void => {
+    if (connectorBusy) return
+    setConnectorDialog(undefined)
+  }
+
+  /** Every route ends in the same call, so success reads the same everywhere:
+   * close, notice, reload the 本地 list the new row lands in. */
+  const runConnector = async (request: ConnectorAuthorRequestFace): Promise<void> => {
+    if (capabilities === undefined) return
+    setConnectorBusy(true)
+    setConnectorError('')
+    try {
+      const result = await capabilities.authorConnector(request)
+      setConnectorDialog(undefined)
+      setNotice(result.message)
+      setConnectorSource('local')
+      await loadLocalConnectors()
+      // A row's instance mounts — and registers its tools — a moment after dsh
+      // reloads the patch, so the card's status dot settles on its own.
+      for (const delay of [900, 1800, 3000]) {
+        window.setTimeout(() => { void loadLocalConnectors() }, delay)
+      }
+    } catch (cause) {
+      setConnectorError((cause as { message?: string })?.message ?? String(cause))
+    } finally {
+      setConnectorBusy(false)
+    }
+  }
+
+  /** A picked bundle: read its manifest before installing, so the dialog can
+   * show what it is and what it asks for. */
+  const onBundlePicked = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file === undefined || capabilities === undefined) return
+    setConnectorError('')
+    setBundleSummary(undefined)
+    const path = hostPathOf(file)
+    if (path === '') {
+      setConnectorError(resolve('connectorNeedDesktop'))
+      return
+    }
+    setBundlePath(path)
+    setConnectorBusy(true)
+    try {
+      const summary = await capabilities.describeConnectorBundle(path)
+      setBundleSummary(summary)
+      const values: Record<string, string> = {}
+      for (const field of summary.fields) values[field.key] = field.defaultValue
+      setBundleValues(values)
+    } catch (cause) {
+      setConnectorError((cause as { message?: string })?.message ?? String(cause))
+    } finally {
+      setConnectorBusy(false)
+    }
+  }
+
+  /** A `directory` / `file` user_config field: the desktop bridges answer with
+   * real paths, which is exactly what the manifest's placeholders want. */
+  const pickUserPath = async (key: string, kind: 'directory' | 'file'): Promise<void> => {
+    if (kind === 'directory') {
+      const picker = (globalThis as { __DSH_DIRECTORY_PICKER__?: { pick?: () => Promise<string | null> } }).__DSH_DIRECTORY_PICKER__
+      try {
+        const path = await picker?.pick?.()
+        if (typeof path === 'string' && path !== '') setBundleValues(current => ({ ...current, [key]: path }))
+      } catch {
+        // A dismissed chooser is not an error.
+      }
+      return
+    }
+    fieldFileTarget.current = key
+    fieldFileInput.current?.click()
+  }
+
+  const onFieldFilePicked = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file === undefined) return
+    const path = hostPathOf(file)
+    const key = fieldFileTarget.current
+    if (path === '' || key === '') {
+      setConnectorError(resolve('connectorNeedDesktop'))
+      return
+    }
+    setBundleValues(current => ({ ...current, [key]: path }))
+  }
+
+  /** Open one connector: its tools come from the dsh registry (see
+   * `ConnectorTools`) — the same schemas the model is given. */
+  const openConnectorDetail = async (entry: { id: string; name: string; transport: string; url: string; source: 'local' | 'remote'; authored: boolean }): Promise<void> => {
+    setConnectorDetail(entry)
+    setConnectorMenuId('')
+    setConnectorConfirmRemove('')
+    setConnectorToolList(undefined)
+    if (capabilities === undefined) return
+    setConnectorDetailLoading(true)
+    try {
+      setConnectorToolList(await capabilities.connectorTools(entry.id))
+    } catch (cause) {
+      setConnectorToolList({ tools: [], error: (cause as { message?: string })?.message ?? String(cause) })
+    } finally {
+      setConnectorDetailLoading(false)
+    }
+  }
+
+  /** 删除连接器: only connectors authored here are removable (the host refuses
+   * the rest, so a hand-written config row cannot be lost from this panel). */
+  const removeConnector = async (id: string): Promise<void> => {
+    if (capabilities === undefined) return
+    setConnectorBusy(true)
+    setError('')
+    try {
+      const result = await capabilities.removeConnector(id)
+      setNotice(result.removed ? resolve('connectorRemoved') : resolve('connectorDetailNoTools'))
+      setConnectorConfirmRemove('')
+      setConnectorMenuId('')
+      setConnectorDetail(undefined)
+      await loadLocalConnectors()
+    } catch (cause) {
+      setError((cause as { message?: string })?.message ?? String(cause))
+    } finally {
+      setConnectorBusy(false)
+    }
+  }
+
+  /** 编辑: reopen the authoring form with this connector's values; submitting
+   * replaces it in place (previousId) instead of adding a second one. */
+  const editConnector = (entry: LocalConnectorRow): void => {
+    setConnectorMenuId('')
+    setConnectorDetail(undefined)
+    setConnectorError('')
+    setConnectorDialog(entry.transport === 'sse' ? 'quick' : 'quick')
+    setQuickForm({
+      name: entry.name,
+      transport: entry.transport === '' ? 'stdio' : entry.transport,
+      command: entry.command ?? '',
+      args: (entry.args ?? []).join('\n'),
+      env: Object.entries(entry.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n'),
+      url: entry.url,
+      headers: Object.entries(entry.headers ?? {}).map(([key, value]) => `${key}: ${value}`).join('\n'),
+      timeoutSeconds: entry.timeoutSeconds !== undefined && entry.timeoutSeconds > 0 ? String(entry.timeoutSeconds) : '',
+    })
+    setEditTarget(entry.id)
+  }
+
+  /** 打开/关闭 one local connector: a row's `disabled` flag, or the SSE entry's
+   * stored flag (its bridge session is dropped or re-established). The list is
+   * re-read a few times: a re-enabled row's instance mounts — and registers its
+   * tools — a moment after dsh reloads the patch. */
+  const toggleConnector = async (entry: LocalConnectorRow): Promise<void> => {
+    if (capabilities === undefined) return
+    setConnectorBusy(true)
+    setError('')
+    try {
+      await capabilities.setConnectorEnabled(entry.id, !entry.enabled)
+      await loadLocalConnectors()
+      for (const delay of [900, 1800, 3000]) {
+        window.setTimeout(() => { void loadLocalConnectors() }, delay)
+      }
+    } catch (cause) {
+      setError((cause as { message?: string })?.message ?? String(cause))
+    } finally {
+      setConnectorBusy(false)
+    }
+  }
+
+  // 查找技能's cursor: runs after the source switch has rendered the toolbar.
+  useEffect(() => {
+    if (searchFocus === 0 || skillSource !== 'skillhub') return
+    searchInput.current?.focus()
+    searchInput.current?.select()
+  }, [searchFocus, skillSource])
+
+  // An install notice is a receipt, not a state: it retires on its own.
+  useEffect(() => {
+    if (notice === '') return undefined
+    const timer = window.setTimeout(() => { setNotice('') }, 8000)
+    return () => { window.clearTimeout(timer) }
+  }, [notice])
 
   /** Open a card's detail view: an instant header from the card itself, the
    * fetched detail, and the SKILL.md preview (loaded separately so the header
@@ -345,6 +831,13 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   const remoteMatches = remoteQuery.trim() === ''
     ? skills
     : skills.filter(skill => matchesQuery(`${skill.name} ${skill.description} ${skill.author}`, remoteQuery))
+  const localConnectorMatches = localConnectorQuery.trim() === ''
+    ? localConnectors
+    : localConnectors.filter(server => matchesQuery(`${server.name} ${server.transport} ${server.url}`, localConnectorQuery))
+  const remoteConnectorMatches = remoteConnectorQuery.trim() === ''
+    ? connectors
+    : connectors.filter(server => matchesQuery(`${server.name} ${server.desc} ${server.source}`, remoteConnectorQuery))
+  const connectorSearchValue = connectorSource === 'local' ? localConnectorQuery : remoteConnectorQuery
   const searchValue = skillSource === 'skillhub' ? hubKeyword : skillSource === 'local' ? localQuery : remoteQuery
   // 远程来源的占位符与来源标签同样拼接动态品牌名（品牌为空则退回纯文案）。
   const remotePlaceholder = resolve('remoteSearchPlaceholder')
@@ -596,6 +1089,7 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
       {activeTab === 'skills' && (
         <div className="hub-toolbar">
           <Input
+            ref={searchInput}
             className="hub-search-input"
             icon={<IconSearchOutlineRegular size={16} />}
             value={searchValue}
@@ -616,18 +1110,598 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
             <IconDownloadOutlineRegular size={14} />
             {resolve('installed')}({slashList.length})
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => { window.open('https://skillhub.cn', '_blank', 'noopener,noreferrer') }}
-          >
-            <IconPlusOutlineRegular size={14} />
-            {resolve('addSkill')}
-          </Button>
+          {/* ＋添加技能: find (marketplace search) or upload (folder / .zip / .md). */}
+          <Menu
+            open={addMenuOpen}
+            side="bottom"
+            align="end"
+            portal
+            autoFocus
+            anchor={(
+              <Button
+                variant="primary"
+                size="sm"
+                aria-haspopup="menu"
+                aria-expanded={addMenuOpen}
+                onClick={() => { setAddMenuOpen(value => !value) }}
+              >
+                <IconPlusOutlineRegular size={14} />
+                {resolve('addSkill')}
+              </Button>
+            )}
+            items={[
+              { id: 'find', label: resolve('addSkillFind'), icon: <IconSearchOutlineRegular size={16} /> },
+              { id: 'upload', label: resolve('addSkillUpload'), icon: <IconDownloadOutlineRegular size={16} /> },
+            ]}
+            onSelect={id => {
+              if (id === 'find') findSkill()
+              if (id === 'upload') startUpload()
+            }}
+            onClose={() => { setAddMenuOpen(false) }}
+          />
         </div>
+      )}
+      {activeTab === 'connectors' && (
+        <div className="hub-toolbar">
+          <Input
+            className="hub-search-input"
+            icon={<IconSearchOutlineRegular size={16} />}
+            value={connectorSearchValue}
+            placeholder={resolve('connectorSearchPlaceholder')}
+            onChange={event => {
+              if (connectorSource === 'local') setLocalConnectorQuery(event.target.value)
+              else setRemoteConnectorQuery(event.target.value)
+            }}
+          />
+          {/* 自定义连接器: four ways to author a local MCP connector. */}
+          <Menu
+            open={addConnectorOpen}
+            side="bottom"
+            align="end"
+            portal
+            autoFocus
+            anchor={(
+              <Button
+                variant="primary"
+                size="sm"
+                aria-haspopup="menu"
+                aria-expanded={addConnectorOpen}
+                onClick={() => { setAddConnectorOpen(value => !value) }}
+              >
+                <IconPlusOutlineRegular size={14} />
+                {resolve('customConnector')}
+              </Button>
+            )}
+            items={[
+              { id: 'quick', label: resolve('connectorQuickCreate') },
+              { id: 'json', label: resolve('connectorImportJson') },
+              { id: 'dxt', label: resolve('connectorImportDxt') },
+              { id: 'mcpb', label: resolve('connectorImportMcpb') },
+            ]}
+            onSelect={id => {
+              if (id === 'quick') startConnector('quick')
+              if (id === 'json') startConnector('json')
+              // Both are the same format under two names (DXT is MCPB's former
+              // name), so both routes share the dialog — only its title differs.
+              if (id === 'dxt' || id === 'mcpb') startConnector('bundle', id)
+            }}
+            onClose={() => { setAddConnectorOpen(false) }}
+          />
+        </div>
+      )}
+      {/* 上传技能's three pickers, mounted once in the shared header: a folder
+          (`webkitdirectory`), and a .zip/.md chosen through the normal picker.
+          Both are hidden; the dialog's buttons drive them. */}
+      {/* The one picker behind 「点击上传」: no accept filter, because the host
+          recognises whatever was picked (a SKILL.md means its folder). */}
+      <input
+        ref={fileInput}
+        type="file"
+        hidden
+        onChange={event => { void onFilePicked(event) }}
+      />
+      {uploadOpen && (
+        <Modal
+          open
+          title={resolve('uploadTitle')}
+          closeLabel={resolve('close')}
+          onClose={closeUpload}
+          className="nexusai-import"
+          footer={(uploadSource !== undefined || uploadExists !== '') && (
+            <div className="nexusai-actions">
+              <Button variant="outline" disabled={uploadBusy} onClick={closeUpload}>{resolve('cancelAction')}</Button>
+              {uploadExists !== ''
+                ? (
+                    <Button variant="primary" disabled={uploadBusy} onClick={() => { void submitUpload(true) }}>
+                      {uploadBusy ? <IconLoadingOutlineRegular size={14} className="nexusai-spinner" /> : null}
+                      {resolve('uploadOverwrite')}
+                    </Button>
+                  )
+                : (
+                    <Button variant="primary" disabled={uploadBusy} onClick={() => { void submitUpload(false) }}>
+                      {uploadBusy ? <IconLoadingOutlineRegular size={14} className="nexusai-spinner" /> : null}
+                      {resolve('uploadInstall')}
+                    </Button>
+                  )}
+            </div>
+          )}
+        >
+          {/* One entry for everything: the drop takes files and folders, and a
+              click opens the host's picker — whatever comes back (a folder's
+              SKILL.md, a .zip, a .md) is recognised on the host by its path. */}
+          <div
+            className={`import-drop ${uploadDragging ? 'is-drag' : ''} ${uploadPicked === '' ? '' : 'is-picked'}`}
+            role="button"
+            tabIndex={0}
+            aria-label={resolve('uploadDropHint')}
+            onClick={() => { if (!uploadBusy) fileInput.current?.click() }}
+            onKeyDown={event => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              if (!uploadBusy) fileInput.current?.click()
+            }}
+            onDragOver={event => {
+              event.preventDefault()
+              if (!uploadBusy) setUploadDragging(true)
+            }}
+            onDragLeave={() => { setUploadDragging(false) }}
+            onDrop={event => { void onDrop(event) }}
+          >
+            <ImportIcon size={44} />
+            <span className="import-drop-hint">
+              {uploadPicked === '' ? resolve('uploadDropHint') : `${resolve('uploadPicked')}：${uploadPicked}`}
+            </span>
+          </div>
+          <Checkbox
+            className="import-auto"
+            checked={uploadAuto}
+            disabled={uploadBusy}
+            onChange={setUploadAuto}
+            label={resolve('uploadAutoInstall')}
+          />
+          <h3 className="import-req-title">{resolve('uploadRequirements')}</h3>
+          <ul className="import-req">
+            <li>{resolve('uploadRequirementFolder')}</li>
+            <li>{resolve('uploadRequirementMarkdown')}</li>
+          </ul>
+          {uploadError !== '' && (
+            <p className="nexusai-alert is-error" role="alert">
+              <IconWarningOutlineRegular size={14} />{uploadError}
+            </p>
+          )}
+          {uploadExists !== '' && (
+            <p className="nexusai-alert is-warn" role="alert">
+              <IconWarningOutlineRegular size={14} />{resolve('uploadExists')}：{uploadExists}
+            </p>
+          )}
+        </Modal>
+      )}
+      {/* 自定义连接器: one dialog per authoring route. All three end in
+          runConnector(), so success and failure read the same everywhere. */}
+      <input
+        ref={connectorFileInput}
+        type="file"
+        hidden
+        accept=".dxt,.mcpb"
+        onChange={event => { void onBundlePicked(event) }}
+      />
+      <input
+        ref={fieldFileInput}
+        type="file"
+        hidden
+        onChange={onFieldFilePicked}
+      />
+      {connectorDialog === 'quick' && (
+        <Modal
+          open
+          title={resolve('connectorQuickCreate')}
+          closeLabel={resolve('close')}
+          onClose={closeConnector}
+          className="nexusai-connector"
+          footer={(
+            <div className="nexusai-actions">
+              <Button variant="outline" disabled={connectorBusy} onClick={closeConnector}>{resolve('cancelAction')}</Button>
+              <Button
+                variant="primary"
+                disabled={connectorBusy}
+                onClick={() => {
+                  void runConnector({
+                    kind: 'quick',
+                    ...(editTarget === '' ? {} : { previousId: editTarget }),
+                    name: quickForm.name,
+                    transport: quickForm.transport,
+                    command: quickForm.command,
+                    args: quickForm.args,
+                    env: quickForm.env,
+                    url: quickForm.url,
+                    headers: quickForm.headers,
+                    timeoutSeconds: quickForm.timeoutSeconds,
+                  })
+                }}
+              >
+                {connectorBusy ? <IconLoadingOutlineRegular size={14} className="nexusai-spinner" /> : null}
+                {resolve('connectorSubmit')}
+              </Button>
+            </div>
+          )}
+        >
+          <div className="connector-field">
+            <span>{resolve('connectorName')}</span>
+            <Input
+              value={quickForm.name}
+              onChange={event => { setQuickForm(form => ({ ...form, name: event.target.value })) }}
+            />
+          </div>
+          <div className="connector-field">
+            <span>{resolve('connectorTransport')}</span>
+            <div className="connector-transports">
+              {(['stdio', 'streamable-http', 'sse'] as const).map(transport => (
+                <button
+                  key={transport}
+                  type="button"
+                  className={`connector-transport ${quickForm.transport === transport ? 'active' : ''}`}
+                  aria-pressed={quickForm.transport === transport}
+                  onClick={() => { setQuickForm(form => ({ ...form, transport })) }}
+                >
+                  {transport}
+                </button>
+              ))}
+            </div>
+          </div>
+          {quickForm.transport === 'sse' ? (
+            <>
+              <p className="nexusai-note">{resolve('connectorSseHint')}</p>
+              <div className="connector-field">
+                <span>{resolve('connectorUrl')}</span>
+                <Input
+                  value={quickForm.url}
+                  spellCheck={false}
+                  onChange={event => { setQuickForm(form => ({ ...form, url: event.target.value })) }}
+                />
+              </div>
+              <div className="connector-field">
+                <span>{resolve('connectorHeaders')}</span>
+                <textarea
+                  className="connector-textarea"
+                  value={quickForm.headers}
+                  spellCheck={false}
+                  placeholder={resolve('connectorHeadersHint')}
+                  onChange={event => { setQuickForm(form => ({ ...form, headers: event.target.value })) }}
+                />
+              </div>
+            </>
+          ) : quickForm.transport === 'stdio' ? (
+            <>
+              <div className="connector-field">
+                <span>{resolve('connectorCommand')}</span>
+                <Input
+                  value={quickForm.command}
+                  spellCheck={false}
+                  placeholder={resolve('connectorCommandHint')}
+                  onChange={event => { setQuickForm(form => ({ ...form, command: event.target.value })) }}
+                />
+              </div>
+              <div className="connector-field">
+                <span>{resolve('connectorArgs')}</span>
+                <textarea
+                  className="connector-textarea"
+                  value={quickForm.args}
+                  spellCheck={false}
+                  placeholder={resolve('connectorArgsHint')}
+                  onChange={event => { setQuickForm(form => ({ ...form, args: event.target.value })) }}
+                />
+              </div>
+              <div className="connector-field">
+                <span>{resolve('connectorEnv')}</span>
+                <textarea
+                  className="connector-textarea"
+                  value={quickForm.env}
+                  spellCheck={false}
+                  placeholder={resolve('connectorEnvHint')}
+                  onChange={event => { setQuickForm(form => ({ ...form, env: event.target.value })) }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="connector-field">
+                <span>{resolve('connectorUrl')}</span>
+                <Input
+                  value={quickForm.url}
+                  spellCheck={false}
+                  onChange={event => { setQuickForm(form => ({ ...form, url: event.target.value })) }}
+                />
+              </div>
+              <div className="connector-field">
+                <span>{resolve('connectorHeaders')}</span>
+                <textarea
+                  className="connector-textarea"
+                  value={quickForm.headers}
+                  spellCheck={false}
+                  placeholder={resolve('connectorHeadersHint')}
+                  onChange={event => { setQuickForm(form => ({ ...form, headers: event.target.value })) }}
+                />
+              </div>
+            </>
+          )}
+          {/* Shared by every transport: one row per setting, the label carrying a
+              click-to-open question mark (the reference product's layout). */}
+          <div className="settings-rows">
+            <div className="setting-row">
+              <span className="setting-label">
+                {resolve('connectorTimeout')}
+                <ExplainHint text={resolve('connectorTimeoutHint')} label={resolve('connectorTimeout')} />
+              </span>
+              <span className="setting-control">
+                <Input
+                  className="setting-number"
+                  value={quickForm.timeoutSeconds}
+                  spellCheck={false}
+                  inputMode="numeric"
+                  placeholder="60"
+                  onChange={event => { setQuickForm(form => ({ ...form, timeoutSeconds: event.target.value })) }}
+                />
+                <span className="setting-unit">s</span>
+              </span>
+            </div>
+          </div>
+          {connectorError !== '' && (
+            <p className="nexusai-alert is-error" role="alert">
+              <IconWarningOutlineRegular size={14} />{connectorError}
+            </p>
+          )}
+        </Modal>
+      )}
+      {connectorDialog === 'json' && (
+        <Modal
+          open
+          title={resolve('connectorImportJson')}
+          closeLabel={resolve('close')}
+          onClose={closeConnector}
+          className="nexusai-connector"
+          footer={(
+            <div className="nexusai-actions">
+              <Button variant="outline" disabled={connectorBusy} onClick={closeConnector}>{resolve('cancelAction')}</Button>
+              <Button
+                variant="primary"
+                disabled={connectorBusy || connectorJson.trim() === ''}
+                onClick={() => { void runConnector({ kind: 'json', text: connectorJson }) }}
+              >
+                {connectorBusy ? <IconLoadingOutlineRegular size={14} className="nexusai-spinner" /> : null}
+                {resolve('connectorSubmit')}
+              </Button>
+            </div>
+          )}
+        >
+          <p className="nexusai-note">{resolve('connectorJsonHint')}</p>
+          <textarea
+            className="connector-textarea is-json"
+            value={connectorJson}
+            spellCheck={false}
+            onChange={event => { setConnectorJson(event.target.value) }}
+          />
+          {connectorError !== '' && (
+            <p className="nexusai-alert is-error" role="alert">
+              <IconWarningOutlineRegular size={14} />{connectorError}
+            </p>
+          )}
+        </Modal>
+      )}
+      {connectorDialog === 'bundle' && (
+        <Modal
+          open
+          title={resolve(bundleRoute === 'dxt' ? 'connectorImportDxt' : 'connectorImportMcpb')}
+          closeLabel={resolve('close')}
+          onClose={closeConnector}
+          className="nexusai-connector"
+          footer={(
+            <div className="nexusai-actions">
+              <Button variant="outline" disabled={connectorBusy} onClick={closeConnector}>{resolve('cancelAction')}</Button>
+              <Button
+                variant="primary"
+                disabled={connectorBusy || bundleSummary === undefined}
+                onClick={() => { void runConnector({ kind: 'bundle', path: bundlePath, values: bundleValues }) }}
+              >
+                {connectorBusy ? <IconLoadingOutlineRegular size={14} className="nexusai-spinner" /> : null}
+                {resolve('connectorSubmit')}
+              </Button>
+            </div>
+          )}
+        >
+          <p className="nexusai-note">{resolve('connectorBundleHint')}</p>
+          <div className="connector-pick-row">
+            <Button variant="outline" size="sm" disabled={connectorBusy} onClick={() => { connectorFileInput.current?.click() }}>
+              {resolve('connectorBundlePick')}
+            </Button>
+            {bundlePath !== '' && (
+              <span className="connector-picked" title={bundlePath}>
+                {resolve('connectorBundlePicked')}：{bundlePath.split('/').pop()}
+              </span>
+            )}
+          </div>
+          {bundleSummary !== undefined && (
+            <>
+              <div className="connector-bundle-head">
+                <strong>{bundleSummary.displayName}</strong>
+                <small>
+                  {bundleSummary.kind.toUpperCase()} {bundleSummary.version}
+                  {bundleSummary.author !== '' ? ` · ${bundleSummary.author}` : ''}
+                  {` · ${bundleSummary.serverType}`}
+                </small>
+              </div>
+              {bundleSummary.description !== '' && <p className="muted connector-desc">{bundleSummary.description}</p>}
+              {bundleSummary.fields.length > 0 && (
+                <>
+                  <h3 className="connector-section">{resolve('connectorBundleFields')}</h3>
+                  {bundleSummary.fields.map(field => (
+                    <div className="connector-field" key={field.key}>
+                      <span>{field.title}{field.required ? ' *' : ''}</span>
+                      {field.type === 'boolean' ? (
+                        <Checkbox
+                          checked={bundleValues[field.key] === 'true'}
+                          onChange={next => { setBundleValues(current => ({ ...current, [field.key]: String(next) })) }}
+                          label={field.description || field.title}
+                        />
+                      ) : field.type === 'directory' || field.type === 'file' ? (
+                        <div className="connector-pick-row">
+                          <Input value={bundleValues[field.key] ?? ''} readOnly />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { void pickUserPath(field.key, field.type as 'directory' | 'file') }}
+                          >
+                            {field.type === 'directory' ? resolve('connectorPickDir') : resolve('connectorPickFile')}
+                          </Button>
+                        </div>
+                      ) : (
+                        <Input
+                          value={bundleValues[field.key] ?? ''}
+                          spellCheck={false}
+                          type={field.sensitive ? 'password' : 'text'}
+                          onChange={event => { setBundleValues(current => ({ ...current, [field.key]: event.target.value })) }}
+                        />
+                      )}
+                      {field.description !== '' && field.type !== 'boolean' && (
+                        <small className="connector-hint">{field.description}</small>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+          {connectorError !== '' && (
+            <p className="nexusai-alert is-error" role="alert">
+              <IconWarningOutlineRegular size={14} />{connectorError}
+            </p>
+          )}
+        </Modal>
       )}
     </header>
   )
+
+  // A connector's detail page: what it is, what it can do (the tools with their
+  // parameter schemas, read from the same registry the model is given), and the
+  // actions for connectors authored here.
+  if (connectorDetail !== undefined) {
+    const entry = connectorDetail
+    const tools = connectorToolList?.tools ?? []
+    return (
+      <section className="nexusai-wb">
+        <style>{WORKBENCH_CSS}</style>
+        {capHeader}
+        <div className="wb-body">
+          <div className="tab-scroll">
+            <div className="hub-detail">
+              <button type="button" className="hub-detail-back" onClick={() => { setConnectorDetail(undefined) }}>
+                <IconChevronLeftOutlineRegular size={16} />
+                {resolve('back')}
+              </button>
+              <div className="hub-detail-header">
+                <span className="hub-detail-icon" aria-hidden>{entry.name.charAt(0).toUpperCase()}</span>
+                <div className="hub-detail-head">
+                  <h2 className="hub-detail-title" title={entry.name}>{entry.name}</h2>
+                  <div className="hub-detail-sub">
+                    {entry.transport || 'mcp'}
+                    {' · '}
+                    {tools.length} {resolve('connectorToolsUnit')}
+                    {entry.source === 'remote' ? ` · ${resolve('sourceRemote')}` : ` · ${resolve('sourceLocal')}`}
+                  </div>
+                </div>
+                {entry.authored && (
+                  <div className="detail-actions">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={connectorBusy}
+                      onClick={() => {
+                        const row = localConnectors.find(candidate => candidate.id === entry.id)
+                        if (row !== undefined) editConnector(row)
+                      }}
+                    >
+                      {resolve('connectorEdit')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={connectorBusy}
+                      onClick={() => {
+                        if (connectorConfirmRemove === entry.id) void removeConnector(entry.id)
+                        else setConnectorConfirmRemove(entry.id)
+                      }}
+                    >
+                      {connectorConfirmRemove === entry.id ? resolve('connectorConfirmRemove') : resolve('connectorRemove')}
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="hub-detail-meta">
+                <div className="hub-detail-meta-row">
+                  <span>{resolve('connectorInfo')}</span>
+                  <strong title={entry.url}>{entry.url !== '' ? entry.url : '—'}</strong>
+                </div>
+                {tools.length > 0 && (
+                  <div className="hub-detail-meta-row">
+                    <span>{resolve('detailIdentity')}</span>
+                    <strong title={tools[0]?.name}>{tools[0]?.name.split('__').slice(0, 2).join('__')}__…</strong>
+                  </div>
+                )}
+              </div>
+              <div className="hub-detail-section">
+                <h3 className="hub-detail-section-title">{resolve('connectorDetailTools')}</h3>
+                {connectorDetailLoading && tools.length === 0 ? (
+                  <div className="nexusai-loading">{spinner}{resolve('loading')}</div>
+                ) : tools.length === 0 ? (
+                  <p className="muted">
+                    {resolve('connectorDetailNoTools')}
+                    {connectorToolList?.error !== undefined && connectorToolList.error !== '' ? `（${connectorToolList.error}）` : ''}
+                  </p>
+                ) : (
+                  <div className="tool-list">
+                    {tools.map(tool => (
+                      <article className="tool-item" key={tool.name}>
+                        <div className="tool-head">
+                          <strong>{tool.rawName}</strong>
+                          <button
+                            type="button"
+                            className="tool-copy"
+                            onClick={() => {
+                              void writeClipboard(tool.name).then(() => {
+                                setCopiedTool(tool.name)
+                                window.setTimeout(() => { setCopiedTool(current => current === tool.name ? '' : current) }, 2000)
+                              }, () => undefined)
+                            }}
+                          >
+                            {copiedTool === tool.name ? resolve('connectorCopied') : resolve('connectorDetailCopy')}
+                          </button>
+                        </div>
+                        <code className="tool-name" title={tool.name}>{tool.name}</code>
+                        {tool.description !== '' && <p className="muted tool-desc">{tool.description}</p>}
+                        {parameterRows(tool.parameters).length === 0 ? (
+                          <p className="muted tool-params-empty">{resolve('connectorNoParams')}</p>
+                        ) : (
+                          <ul className="tool-params">
+                            {parameterRows(tool.parameters).map(row => (
+                              <li key={row.name}>
+                                <code>{row.name}</code>
+                                {row.type !== '' && <span className="tool-param-type">{row.type}</span>}
+                                {row.required && <span className="tool-param-required">{resolve('connectorParamRequired')}</span>}
+                                {row.description !== '' && <span className="muted"> — {row.description}</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    )
+  }
 
   // A local skill's detail page: the same frame as the marketplace detail
   // (back / icon / title / meta) over the skill's own SKILL.md.
@@ -830,6 +1904,9 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
       <div className="wb-body">
         {error !== '' && (
           <p className="nexusai-alert is-error" role="alert"><IconWarningOutlineRegular size={14} />{error}</p>
+        )}
+        {notice !== '' && (
+          <p className="nexusai-alert is-ok" role="status">{notice}</p>
         )}
         {loading ? (
           <div className="tab-scroll">
@@ -1164,18 +2241,99 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
           {connectorSource === 'local' ? (
             localConnectors.length === 0
               ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('localConnectorsEmpty')}</p></div>
-              : grid(localConnectors.map(server => (
-                <article key={server.id} className="card">
+              : localConnectorMatches.length === 0
+              ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('connectorNoMatch')}</p></div>
+              : grid(localConnectorMatches.map(server => {
+                const authored = server.id.startsWith('custom-mcp-') || server.id.startsWith('custom-sse-')
+                return (
+                <article
+                  key={server.id}
+                  className={`card ${server.enabled ? '' : 'is-off'}`}
+                  role="button"
+                  tabIndex={0}
+                  title={server.name}
+                  onClick={() => { void openConnectorDetail({ id: server.id, name: server.name, transport: server.transport, url: server.url, source: 'local', authored }) }}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    void openConnectorDetail({ id: server.id, name: server.name, transport: server.transport, url: server.url, source: 'local', authored })
+                  }}
+                >
                   <div className="card-top">
                     <span className="mark" aria-hidden>{server.name.charAt(0).toUpperCase()}</span>
                     <span className="card-title">
-                      <strong title={server.name}>{server.name}</strong>
-                      <small>{server.transport || 'mcp'}</small>
+                      <span className="title-row">
+                        <i
+                          className={`status-dot ${server.enabled ? (server.connected ? 'is-on' : 'is-off') : 'is-idle'}`}
+                          aria-hidden={true}
+                          title={connectorStateLabel(resolve, server)}
+                        />
+                        <strong title={server.name}>{server.name}</strong>
+                      </span>
+                      <small>
+                        {server.transport || 'mcp'}
+                        {' · '}
+                        {server.toolCount} {resolve('connectorToolsUnit')}
+                      </small>
+                    </span>
+                    {/* Same actions column as the skills cards: one wrapper,
+                        skills' own `local-more` button (a bare `card-more`
+                        picked up the browser's default button chrome). */}
+                    <span className="local-actions" onClick={event => { event.stopPropagation() }}>
+                    {authored && (
+                      <Menu
+                        open={connectorMenuId === server.id}
+                        side="bottom"
+                        align="end"
+                        portal
+                        autoFocus
+                        anchor={(
+                          <button
+                            type="button"
+                            className="local-more"
+                            aria-label={resolve('connectorInfo')}
+                            aria-haspopup="menu"
+                            aria-expanded={connectorMenuId === server.id}
+                            onClick={event => {
+                              event.stopPropagation()
+                              setConnectorConfirmRemove('')
+                              setConnectorMenuId(current => current === server.id ? '' : server.id)
+                            }}
+                          >
+                            <MoreIcon />
+                          </button>
+                        )}
+                        items={[
+                          { id: 'tools', label: resolve('connectorDetailTools') },
+                          { id: 'edit', label: resolve('connectorEdit') },
+                          { id: 'remove', label: connectorConfirmRemove === server.id ? resolve('connectorConfirmRemove') : resolve('connectorRemove'), danger: true },
+                        ]}
+                        onSelect={id => {
+                          if (id === 'tools') void openConnectorDetail({ id: server.id, name: server.name, transport: server.transport, url: server.url, source: 'local', authored })
+                          if (id === 'edit') editConnector(server)
+                          if (id === 'remove') {
+                            if (connectorConfirmRemove === server.id) void removeConnector(server.id)
+                            else setConnectorConfirmRemove(server.id)
+                          }
+                        }}
+                        onClose={() => { setConnectorMenuId('') }}
+                      />
+                    )}
+                    {/* The skills cards' own switch: same order (menu, then
+                        switch) and same 36×20 control. */}
+                      <Switch
+                        checked={server.enabled}
+                        disabled={connectorBusy}
+                        label={server.enabled ? resolve('disableConnector') : resolve('enableConnector')}
+                        title={server.enabled ? resolve('disableConnector') : resolve('enableConnector')}
+                        onChange={() => { void toggleConnector(server) }}
+                      />
                     </span>
                   </div>
                   <p className="muted path" title={server.url}>{server.url || '—'}</p>
                 </article>
-              )))
+                )
+              }))
           ) : !signedIn
             ? (
                 <div className="nexusai-empty">
@@ -1188,23 +2346,43 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
               )
             : connectors.length === 0
             ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyHintSync')}</p></div>
-            : grid(connectors.map(server => (
-              <article key={server.name} className="card">
+            : remoteConnectorMatches.length === 0
+            ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('connectorNoMatch')}</p></div>
+            : grid(remoteConnectorMatches.map(server => (
+              <article
+                key={server.name}
+                className="card"
+                role="button"
+                tabIndex={0}
+                title={server.name}
+                onClick={() => { void openConnectorDetail({ id: server.id ?? server.mcpServerId, name: server.name, transport: server.transport, url: server.url ?? '', source: 'remote', authored: false }) }}
+                onKeyDown={event => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return
+                  event.preventDefault()
+                  void openConnectorDetail({ id: server.id ?? server.mcpServerId, name: server.name, transport: server.transport, url: server.url ?? '', source: 'remote', authored: false })
+                }}
+              >
                 <div className="card-top">
                   <span className="mark" aria-hidden>{server.name.charAt(0).toUpperCase()}</span>
                   <span className="card-title">
-                    <strong title={server.name}>{server.name}</strong>
+                    <span className="title-row">
+                      <i
+                        className={`status-dot ${connectorDotClass(server)}`}
+                        aria-hidden={true}
+                        title={server.connected === true
+                          ? `${resolve('connectorConnected')} · ${server.toolCount ?? server.toolNum} ${resolve('toolsUnit')}`
+                          : resolve('connectorDisconnected')}
+                      />
+                      <strong title={server.name}>{server.name}</strong>
+                    </span>
                     <small>
+                      {server.transport || 'mcp'}
+                      {' · '}
                       {server.source === 'imported' ? resolve('mcpImported') : resolve('mcpCreated')}
                       {' · '}
-                      {server.toolNum} {resolve('toolsUnit')}
+                      {server.connected === true ? server.toolCount ?? server.toolNum : 0} {resolve('toolsUnit')}
                     </small>
                   </span>
-                  {!server.connectable && (
-                    server.bridged
-                      ? <span className="mcp-flag is-on" title={resolve('mcpSseBridgedHint')}>{resolve('mcpSseBridged')}</span>
-                      : <span className="mcp-flag" title={resolve('mcpSseHint')}>{resolve('mcpSseOnly')}</span>
-                  )}
                 </div>
                 <p className="muted clamp">{server.desc || '—'}</p>
               </article>
@@ -1218,6 +2396,180 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
       )}
     </section>
   )
+}
+
+/** Ceiling for one upload, mirrored by the host before it writes anything. */
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+
+/** dsh's skill-name grammar: the registry ignores a skill whose frontmatter
+ * `name` is not kebab-case ASCII, so uploads are checked against it here (and
+ * again on the host) instead of installing something the app never lists. */
+const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/** A picked file's path relative to the picked folder (`webkitRelativePath`),
+ * which is what the host strips the wrapping directory from. Files picked
+ * through the plain picker have no relative path and arrive as their name. */
+function relativePathOf(file: File): string {
+  return (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
+}
+
+/** base64 for the wire. Chunked: spreading a whole file into one call would
+ * blow the argument limit on anything but a toy skill. */
+function base64Of(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk))
+  }
+  return btoa(binary)
+}
+
+/** The `name:` and `description:` of a markdown file's YAML front matter — the
+ * same two fields the host requires before accepting a `.md` upload. */
+function frontmatterOf(text: string): { name: string; description: string } {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
+  if (match === null) return { name: '', description: '' }
+  const body = match[1] ?? ''
+  const read = (key: string): string => {
+    const line = new RegExp(`^${key}:[ \t]*(.*)$`, 'm').exec(body)
+    return line === null ? '' : (line[1] ?? '').trim().replace(/^["']|["']$/g, '')
+  }
+  return { name: read('name'), description: read('description') }
+}
+
+/** Where a staged upload came from: an absolute host path (the desktop's own
+ * panel, where the host reads the pick itself) or an in-memory request (a drop,
+ * or a pick with no path bridge — the browser). */
+type UploadSource =
+  | { readonly kind: 'path'; readonly path: string }
+  | { readonly kind: 'request'; readonly request: LocalSkillInstallRequestFace }
+
+/** One file of a dropped or picked skill folder: its path relative to the
+ * folder, plus the file itself. */
+interface DroppedEntry {
+  readonly path: string
+  readonly file: File
+}
+
+/** The pick's real path on the host, when the desktop bridge can tell us (its
+ * `webUtils.getPathForFile`). Empty in a browser, or for a File the user
+ * pasted rather than picked — those upload as bytes instead. */
+function hostPathOf(file: File): string {
+  const bridge = (globalThis as { __DSH_HOST_PATHS__?: { pathFor?: (file: File) => string } }).__DSH_HOST_PATHS__
+  try {
+    return bridge?.pathFor?.(file) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/** Resolve one dropped file entry; a failed read drops the file rather than
+ * failing the whole drop. */
+function fileOfEntry(entry: FileSystemEntry): Promise<File | null> {
+  return new Promise(resolve => {
+    (entry as FileSystemFileEntry).file(file => { resolve(file) }, () => { resolve(null) })
+  })
+}
+
+/** Every child of a dropped directory. `readEntries` returns batches, so it is
+ * called until it answers empty. */
+function readDirectory(entry: FileSystemDirectoryEntry): Promise<FileSystemEntry[]> {
+  const reader = entry.createReader()
+  return new Promise(resolve => {
+    const all: FileSystemEntry[] = []
+    const read = (): void => {
+      reader.readEntries(batch => {
+        if (batch.length === 0) { resolve(all); return }
+        all.push(...batch)
+        read()
+      }, () => { resolve(all) })
+    }
+    read()
+  })
+}
+
+/** Flatten dropped entries into files with folder-relative paths — the same
+ * shape the directory picker produces via `webkitRelativePath`. */
+async function collectDropped(entries: readonly FileSystemEntry[], parent = ''): Promise<DroppedEntry[]> {
+  const out: DroppedEntry[] = []
+  for (const entry of entries) {
+    const path = parent === '' ? entry.name : `${parent}/${entry.name}`
+    if (entry.isFile) {
+      const file = await fileOfEntry(entry)
+      if (file !== null) out.push({ path, file })
+      continue
+    }
+    if (entry.isDirectory) out.push(...await collectDropped(await readDirectory(entry as FileSystemDirectoryEntry), path))
+  }
+  return out
+}
+
+/** The 导入技能 drop zone's glyph: a tray with an up arrow. The primitives
+ * library has no import/upload icon (93 glyphs, none of them). */
+function ImportIcon({ size = 44 }: { size?: number }): ReactNode {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
+      <path d="M4 13.5v4A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5v-4" />
+      <path d="M12 15.5V4.5" />
+      <path d="M8 8.5 12 4.5l4 4" />
+    </svg>
+  )
+}
+
+/** A catalogue connector's status dot: a bridged SSE server is connected when
+ * the bridge holds it, a streamable one when its tools are registered. */
+function connectorDotClass(entry: { bridged: boolean; connected?: boolean }): string {
+  return entry.bridged || entry.connected === true ? 'is-on' : 'is-off'
+}
+
+/** A circled question mark that explains the setting it sits next to: hover
+ * previews, click pins (the reference product's affordance). */
+function ExplainHint({ text, label }: { text: string; label: string }): ReactNode {
+  return (
+    <Tooltip label={text} openOnClick side="top" align="center" maxWidth={300} gap={8}>
+      <button type="button" className="setting-help" aria-label={`${label}：说明`}>
+        <IconQuestionOutlineRegular size={14} />
+      </button>
+    </Tooltip>
+  )
+}
+
+/** What a connector's status dot means, for its tooltip. */
+function connectorStateLabel(resolve: (key: NexusaiLocaleKey) => string, entry: { enabled: boolean; connected: boolean; toolCount: number; bridgeError?: string }): string {
+  if (!entry.enabled) return resolve('connectorOff')
+  if (!entry.connected) return entry.bridgeError === undefined ? resolve('connectorDisconnected') : `${resolve('connectorDisconnected')}：${entry.bridgeError}`
+  return `${resolve('connectorConnected')} · ${entry.toolCount} ${resolve('connectorToolsUnit')}`
+}
+
+/** One parameter row of a tool's JSON Schema, flattened for the detail view. */
+interface ToolParameterRow {
+  readonly name: string
+  readonly type: string
+  readonly required: boolean
+  readonly description: string
+}
+
+/** Flatten a tool's `parameters` schema: name, JSON type, required, description.
+ * Anything that is not an object schema reports its own type instead. */
+function parameterRows(schema: unknown): ToolParameterRow[] {
+  if (schema === null || typeof schema !== 'object') return []
+  const record = schema as { type?: unknown; properties?: unknown; required?: unknown }
+  const properties = record.properties
+  if (properties === null || typeof properties !== 'object') return []
+  const required = Array.isArray(record.required) ? record.required.map(String) : []
+  return Object.entries(properties as Record<string, unknown>).map(([name, value]) => {
+    const field = value !== null && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const type = typeof field.type === 'string'
+      ? field.type
+      : Array.isArray(field.enum) ? field.enum.map(String).join(' | ') : ''
+    return {
+      name,
+      type,
+      required: required.includes(name),
+      description: typeof field.description === 'string' ? field.description : '',
+    }
+  })
 }
 
 /** Compact marketplace counts: 20500 → 2.05w (the marketplace's own style). */
@@ -1478,7 +2830,101 @@ const WORKBENCH_CSS = `
   border-radius: 8px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
 .nexusai-alert.is-error { color: var(--dsw-alias-state-error-primary, #d33);
   background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #d33) 10%, transparent); }
+.nexusai-alert.is-ok { color: var(--dsw-alias-state-success-primary, #2a9d5c);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #2a9d5c) 10%, transparent); }
+.nexusai-alert.is-warn { color: var(--dsw-alias-state-warning-primary, #b8860b);
+  background: color-mix(in srgb, var(--dsw-alias-state-warning-primary, #b8860b) 12%, transparent); }
 .nexusai-alert svg { flex: none; margin-top: 2px; }
+/* 导入技能 dialog: the dashed drop zone, its folder link, the auto-install
+   checkbox and the requirements list. The note/actions rules the Modal chrome
+   expects live here too (the sign-in dialog's stylesheet is not mounted while
+   this one is open). */
+.nexusai-import { width: 560px; max-width: calc(100vw - 32px); }
+.nexusai-note { margin: 0 0 14px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
+.nexusai-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.import-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  min-height: 180px; padding: 20px; box-sizing: border-box; border-radius: 14px;
+  border: 1.5px dashed var(--dsw-alias-border-l2, rgba(128,128,128,0.35));
+  color: var(--dsw-alias-label-secondary); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.import-drop:hover { border-color: var(--dsw-alias-border-l3, var(--dsw-alias-label-tertiary)); background: var(--dsw-alias-interactive-bg-hover); }
+.import-drop:focus-visible { outline: 2px solid var(--dsw-alias-brand-text, var(--dsw-alias-label-primary)); outline-offset: 2px; }
+.import-drop.is-drag { border-style: solid; border-color: var(--dsw-alias-brand-text, var(--dsw-alias-label-primary));
+  background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.import-drop.is-picked { border-color: var(--dsw-alias-state-success-primary, #2a9d5c); color: var(--dsw-alias-label-primary); }
+.import-drop > svg { flex: none; }
+.import-drop-hint { font-size: 15px; line-height: 22px; text-align: center; overflow-wrap: anywhere; }
+.import-auto { margin: 18px 0; }
+/* 自定义连接器 dialogs: the same field rhythm as 导入技能, with a couple of
+   local pieces (transport picker, bundle header, path picker row). */
+.nexusai-connector { width: 560px; max-width: calc(100vw - 32px); }
+.connector-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.connector-field > span { font-size: 13px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.connector-field input { width: 100%; box-sizing: border-box; }
+.connector-hint { font-size: 12px; line-height: 16px; color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); }
+.connector-textarea { width: 100%; box-sizing: border-box; min-height: 72px; padding: 8px 10px;
+  border-radius: 10px; border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.3));
+  background: var(--dsw-alias-bg-layer-2, transparent); color: var(--dsw-alias-label-primary);
+  font: 13px/20px ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+.connector-textarea.is-json { min-height: 200px; }
+.connector-textarea:focus-visible { outline: 2px solid var(--dsw-alias-brand-text, var(--dsw-alias-label-primary)); outline-offset: 1px; }
+.connector-transports { display: flex; gap: 6px; }
+.connector-transport { min-height: 30px; padding: 4px 12px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.connector-transport:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.connector-transport.active { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); font-weight: 600; }
+.connector-pick-row { display: flex; align-items: center; gap: 8px; }
+.connector-pick-row > :first-child { flex: 1; min-width: 0; }
+.connector-picked { font-size: 13px; color: var(--dsw-alias-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.connector-bundle-head { display: flex; flex-direction: column; gap: 2px; margin: 14px 0 6px; }
+.connector-bundle-head small { color: var(--dsw-alias-label-secondary); }
+.connector-desc { margin: 0 0 10px; font-size: 13px; line-height: 19px; }
+.connector-section { margin: 14px 0 8px; font-size: 14px; line-height: 20px; font-weight: 600; }
+/* 连接设置：一行一项（左标签 + 圈问号，右控件），行间一条细线（参考图布局） */
+.settings-rows { margin: 14px 0 4px; border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(128,128,128,0.18)); }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 48px; padding: 6px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l1, rgba(128,128,128,0.18)); }
+.setting-label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; line-height: 20px;
+  color: var(--dsw-alias-label-primary); }
+.setting-help { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); }
+.setting-help:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.setting-control { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.setting-number { width: 96px; }
+.setting-number input { width: 100%; box-sizing: border-box; text-align: right; }
+.setting-unit { font-size: 13px; color: var(--dsw-alias-label-secondary); }
+/* 连接器详情：工具清单（名称/说明/参数 schema） */
+.tool-list { display: flex; flex-direction: column; gap: 12px; }
+.tool-item { padding: 12px 14px; border-radius: 12px; background: var(--dsw-alias-bg-layer-2, transparent);
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.2)); }
+.tool-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tool-copy { border: 0; padding: 0; background: transparent; font: inherit; font-size: 12px;
+  color: var(--dsw-alias-label-secondary); text-decoration: underline; cursor: pointer; }
+.tool-name { display: block; margin: 4px 0 6px; font-size: 12px; line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); overflow-wrap: anywhere; }
+.tool-desc { margin: 0 0 8px; font-size: 13px; line-height: 19px; }
+.tool-params { margin: 0; padding-left: 18px; font-size: 13px; line-height: 20px; }
+.tool-params li { list-style: disc; margin-bottom: 3px; }
+.tool-params code { font-size: 12px; }
+.tool-param-type { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px;
+  background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.tool-param-required { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px;
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #d33) 12%, transparent);
+  color: var(--dsw-alias-state-error-primary, #d33); }
+.tool-params-empty { margin: 0; font-size: 12px; }
+/* 连接器状态点：名字前的绿/红/灰点（与本地技能卡片的开关同排） */
+.card-title .title-row { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.status-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.6)); }
+.status-dot.is-on { background: var(--dsw-alias-state-success-primary, #2a9d5c); box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-success-primary, #2a9d5c) 22%, transparent); }
+.status-dot.is-off { background: var(--dsw-alias-state-error-primary, #d33); box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-error-primary, #d33) 20%, transparent); }
+.status-dot.is-idle { background: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); }
+.card.is-off { opacity: 0.7; }
+.detail-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+.hub-detail-sub { margin-top: 2px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.import-req-title { margin: 0 0 8px; font-size: 15px; line-height: 22px; font-weight: 600; }
+.import-req { margin: 0 0 4px; padding-left: 22px; font-size: 13px; line-height: 22px;
+  color: var(--dsw-alias-label-secondary); }
+.import-req li { list-style: disc; }
 .nexusai-source-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
 .source-tab { min-height: 30px; padding: 4px 12px; border: 0; border-radius: 999px;
   background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
@@ -1511,19 +2957,17 @@ const WORKBENCH_CSS = `
 /* 本地技能的启用开关：只改配色——打开时是产品自己的绿色胶囊 + 白旋钮；
  * 尺寸/位移沿用 dsh 原生（36x20、旋钮 16、位移 16px），状态挂 ARIA 属性
  * 而不是 CSS module 的哈希类名。 */
-.local-card [role='switch'][aria-checked='true'] { background: #00c29a; }
-.local-card [role='switch'][aria-checked='true'] > span { background: #ffffff; }
-.local-card [role='switch'][aria-checked='true'] > span { transform: translateX(16px); }
+/* Every switch in this panel (local skills, local connectors) is the product
+   green when on, dsh's own 36x20 geometry, state on the ARIA attribute. */
+[role='switch'][aria-checked='true'] { background: #00c29a; }
+[role='switch'][aria-checked='true'] > span { background: #ffffff; }
+[role='switch'][aria-checked='true'] > span { transform: translateX(16px); }
 .local-card { cursor: pointer; }
 .local-card.is-off { opacity: 0.62; }
-.local-card .local-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.local-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .local-more { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
   border: 0; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 0; }
 .local-more:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-.mcp-flag { flex: none; margin-left: auto; padding: 1px 7px; border-radius: 5px; font-size: 11px;
-  color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-interactive-bg-hover); }
-.mcp-flag.is-on { color: var(--dsw-alias-state-success-primary, #2a9d5c);
-  background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #2a9d5c) 12%, transparent); }
 .hub-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-title-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .hub-key { flex: none; display: inline-flex; align-items: center; color: var(--dsw-alias-state-warning-primary, #c04100); }

@@ -170,6 +170,27 @@ export interface SkillHubInstallResult {
   readonly path: string
 }
 
+/** One file of an uploaded skill folder: path relative to the picked folder. */
+export interface LocalSkillUploadFile {
+  readonly path: string
+  readonly base64: string
+}
+
+/**
+ * What the 上传技能 dialog sends: a picked folder's files, a `.zip`, or a
+ * single markdown file. `name` is the suggested directory name — used when the
+ * skill's front matter carries no `name` of its own.
+ */
+export type LocalSkillInstallRequest =
+  | { readonly kind: 'folder'; readonly name: string; readonly files: readonly LocalSkillUploadFile[] }
+  | { readonly kind: 'zip'; readonly name: string; readonly base64: string }
+  | { readonly kind: 'markdown'; readonly name: string; readonly text: string }
+
+/** Install outcome. `exists` asks the caller to confirm an overwrite. */
+export type LocalSkillInstallResult =
+  | { readonly installed: true; readonly name: string; readonly path: string }
+  | { readonly installed: false; readonly reason: 'exists'; readonly name: string }
+
 /** One SkillHub listing's full detail (`GET /api/v1/skills/<slug>`), flattened
  * for the workbench's detail view. */
 export interface SkillHubDetail {
@@ -217,4 +238,74 @@ export interface SyncReport {
 export interface SkillDownloadResult {
   readonly name: string
   readonly path: string
+}
+
+/** One 自定义连接器 request: the quick form, pasted JSON, or a DXT/MCPB bundle. */
+export type ConnectorAuthorRequest =
+  | {
+      readonly kind: 'quick'
+      /** Set when the dialog is editing: the connector being replaced. */
+      readonly previousId?: string
+      readonly name: string
+      readonly transport: string
+      /** stdio: command, one arg per line, `KEY=VALUE` env lines. */
+      readonly command: string
+      readonly args: string
+      readonly env: string
+      /** streamable-http / sse: endpoint and `Name: value` header lines. */
+      readonly url: string
+      readonly headers: string
+      /** Per-call budget in seconds; blank/0 means the 60 s default. */
+      readonly timeoutSeconds?: string
+    }
+  | { readonly kind: 'json'; readonly text: string; readonly previousId?: string }
+  | { readonly kind: 'bundle'; readonly path: string; readonly values: Readonly<Record<string, string>>; readonly previousId?: string }
+
+/** What one authoring call produced. */
+export interface ConnectorAuthorResult {
+  readonly added: readonly { readonly name: string; readonly transport: string; readonly serverName: string }[]
+  readonly message: string
+}
+
+/** One `user_config` prompt a DXT/MCPB bundle declares. */
+export interface ConnectorBundleField {
+  readonly key: string
+  readonly type: 'string' | 'number' | 'boolean' | 'directory' | 'file'
+  readonly title: string
+  readonly description: string
+  readonly required: boolean
+  readonly sensitive: boolean
+  readonly multiple: boolean
+  readonly defaultValue: string
+}
+
+/** A picked bundle's manifest, for the dialog's confirmation step. */
+export interface ConnectorBundleSummary {
+  readonly kind: 'mcpb' | 'dxt'
+  readonly manifestVersion: string
+  readonly name: string
+  readonly displayName: string
+  readonly description: string
+  readonly version: string
+  readonly author: string
+  readonly serverType: string
+  readonly entryPoint: string
+  readonly fields: readonly ConnectorBundleField[]
+}
+
+/** One tool a connector contributes, as the model sees it. */
+export interface ConnectorToolInfo {
+  /** The model-facing dsh tool name (`mcp__<serverName>__<tool>`). */
+  readonly name: string
+  /** The server's own tool name. */
+  readonly rawName: string
+  readonly description: string
+  /** JSON Schema of the tool's arguments, untouched. */
+  readonly parameters: unknown
+}
+
+/** One connector's tools, plus why there are none (a bridge that failed). */
+export interface ConnectorToolsResult {
+  readonly tools: readonly ConnectorToolInfo[]
+  readonly error?: string
 }

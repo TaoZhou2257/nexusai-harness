@@ -10,7 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import { McpSseSession } from '../nexus/mcp-sse'
-import { toValueSpec, type ParamSpec } from './openapi'
+import { inputSchemaToParameters, type ParamSpec } from './openapi'
 import type { McpSseCallResult, McpSseTool } from '../types'
 
 /** Public tool name budget, matching the custom-tool registry. */
@@ -23,6 +23,10 @@ export interface McpSseServerInput {
   readonly name: string
   /** The `sseUrl` the session opens. */
   readonly url: string
+  /** Extra headers the handshake and every POST append. */
+  readonly headers?: Readonly<Record<string, string>>
+  /** Per-tool-call budget in ms; 0/omitted keeps the client's default. */
+  readonly toolCallTimeoutMs?: number
 }
 
 /** What one bridged server contributed, for the panel and the sync report. */
@@ -30,7 +34,8 @@ export interface McpSseSummary {
   readonly id: string
   readonly name: string
   readonly url: string
-  readonly toolNames: readonly string[]
+  /** One bridged tool: the server's own name and the dsh name it registered. */
+  readonly tools: readonly { readonly rawName: string; readonly dshName: string }[]
   /** Set when connecting or listing failed; the server stays visible but unbridged. */
   readonly error?: string
 }
@@ -73,19 +78,19 @@ export class McpSseToolRegistry {
       try {
         const session = await this.connect(server)
         const listed = await session.listTools()
-        for (const tool of listed) this.registerTool(server, tool)
+        const bridgedTools = listed.map(tool => ({ rawName: tool.name, dshName: this.registerTool(server, tool) }))
         tools += listed.length
         bridged++
         this.summaries.push({
           id: server.id,
           name: server.name,
           url: server.url,
-          toolNames: listed.map(tool => tool.name),
+          tools: bridgedTools,
         })
       } catch (error) {
         const message = (error as Error).message
         errors.push(`mcp sse ${server.name}: ${message}`)
-        this.summaries.push({ id: server.id, name: server.name, url: server.url, toolNames: [], error: message })
+        this.summaries.push({ id: server.id, name: server.name, url: server.url, tools: [], error: message })
       }
     }
     return { servers: bridged, tools, errors }
@@ -99,7 +104,13 @@ export class McpSseToolRegistry {
     if (existing !== undefined && !existing.session.isClosed()) return Promise.resolve(existing.session)
     const inflight = this.connecting.get(server.id)
     if (inflight !== undefined) return inflight
-    const pending = McpSseSession.connect(server.url, { timeoutMs: this.options.timeoutMs })
+    const pending = McpSseSession.connect(server.url, {
+      // The handshake keeps its own (short) budget: a header/timeout setting is
+      // about tool calls, not about how long the stream may take to open.
+      timeoutMs: this.options.timeoutMs,
+      headers: server.headers,
+      toolCallTimeoutMs: server.toolCallTimeoutMs,
+    })
       .then(session => {
         existing?.session.close()
         this.live.set(server.id, { input: server, session })
@@ -138,7 +149,7 @@ export class McpSseToolRegistry {
     for (const dispose of pending.reverse()) await dispose()
   }
 
-  private registerTool(server: McpSseServerInput, tool: McpSseTool): void {
+  private registerTool(server: McpSseServerInput, tool: McpSseTool): string {
     const name = mcpToolName(this.options.toolNamePrefix, server.name, tool.name)
     const description = [
       tool.description !== '' ? tool.description : `MCP tool ${tool.name}`,
@@ -150,6 +161,10 @@ export class McpSseToolRegistry {
       name,
       description,
       parameters,
+      // dsh's tool-call-timeout policy reads this; without it a long-running
+      // server would be cut off by the default budget instead.
+      ...(server.toolCallTimeoutMs !== undefined && server.toolCallTimeoutMs > 0
+        ? { timeoutMs: server.toolCallTimeoutMs } : {}),
       output: {
         schema: { type: 'json' },
         render: (_args: unknown, value: unknown) => [{ type: 'text', text: renderCallResult(value) }],
@@ -163,6 +178,7 @@ export class McpSseToolRegistry {
     })
     const dispose = this.ctx.effect(() => this.ctx.tools.register(definition), `nexusai mcp tool ${name}`)
     this.disposers.push(() => Promise.resolve(dispose()))
+    return name
   }
 }
 
@@ -186,29 +202,6 @@ function slugPart(value: string): string {
  * parameters, which the Typert gateway reads wire field names from). */
 function slugify(value: string): string {
   return value.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'x'
-}
-
-/**
- * MCP `inputSchema` is JSON Schema; dsh takes a flat parameter map and
- * validates it strictly — every annotation must be lossless JSON, so a spec
- * may never carry `undefined` (a missing property description is filled in).
- */
-export function inputSchemaToParameters(schema: Record<string, unknown>, toolLabel = 'parameter'): Record<string, ParamSpec> {
-  const properties = schema.properties
-  if (typeof properties !== 'object' || properties === null || Array.isArray(properties)) return {}
-  const required = Array.isArray(schema.required) ? schema.required.filter(entry => typeof entry === 'string') : []
-  const spec: Record<string, ParamSpec> = {}
-  for (const [name, node] of Object.entries(properties as Record<string, unknown>)) {
-    const raw = typeof node === 'object' && node !== null
-      ? toValueSpec(node as Parameters<typeof toValueSpec>[0], undefined)
-      : { type: 'json' as const }
-    const description = typeof raw.description === 'string' && raw.description !== ''
-      ? raw.description
-      : `${toolLabel} 参数 ${name}`
-    const value = { ...raw, description } as ParamSpec
-    spec[name] = (required.includes(name) ? { ...value, required: true } : value) as ParamSpec
-  }
-  return spec
 }
 
 /** Tool output: plain text when the tool returned text, JSON otherwise. */

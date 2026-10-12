@@ -11,6 +11,8 @@
  * @module @toby/dsh-plugin-nexusai
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { join } from 'node:path'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 // Side-effect type imports: merge `ctx.credentials` onto Context.
 import type {} from '@deepseek-ai/dsh-credentials'
 // Side-effect type import: merge `ctx.tools` onto Context.
@@ -20,6 +22,11 @@ import type { Config as ConfigType } from './config'
 import { NexusApiClient } from './nexus/api-client'
 import { SkillHubClient } from './nexus/skillhub'
 import { LocalSkills } from './sync/local-skills'
+import { ConnectorRows } from './sync/connector-rows'
+import { ConnectorTools } from './sync/connector-tools'
+import { listSseInputs } from './sync/mcp-list'
+import { mergeSseInputs } from './service/connector-author'
+import { SseConnectors, bridgeInputOf } from './sync/sse-connectors'
 import { McpSseToolRegistry } from './sync/mcp-tools'
 import { NexusaiAuthService } from './service/auth'
 import { NexusaiCapabilitiesService } from './service/capabilities'
@@ -79,13 +86,18 @@ export function apply(ctx: Context, config: ConfigType): void {
     timeoutMs: config.mcp.toolCallTimeoutMs,
   })
   const skills = new SkillSync(ctx, { api, downloadRoot: config.skills.downloadRoot })
+  // Every skill writer resolves the same root: the configured download root,
+  // or the dsh home's own `skills/` when the config leaves that empty.
+  const skillsRoot = config.skills.downloadRoot.trim() !== ''
+    ? config.skills.downloadRoot
+    : join(resolveDshHome(), 'skills')
   // SkillHub marketplace: the public catalog the @cocofhu/skillhub plugin also
   // reads (no auth); endpoints overridable for mirrors/deployments.
   const skillhub = new SkillHubClient({
     apiBase: config.skillhub.apiBase,
     webBase: config.skillhub.webBase,
     timeoutMs: config.skillhub.timeoutMs,
-    skillsRoot: config.skills.downloadRoot,
+    skillsRoot,
   })
 
   const auth = new NexusaiAuthService(ctx, {
@@ -98,10 +110,29 @@ export function apply(ctx: Context, config: ConfigType): void {
     authorization: ctx.authorization,
     defaultOrgId: config.defaultOrgId,
   })
-  // Local skill files: roots default to our download root; the panel adds the
-  // directories of the skills the registry reports (user/project layers).
-  const localSkills = new LocalSkills([config.skills.downloadRoot])
-  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, mcpSse, skills, skillhub, localSkills })
+  // Local skill files: the first root is where uploads and downloads land, the
+  // panel adds the directories of the skills the registry reports (user and
+  // project layers) so 启用/关闭/删除 also work on those.
+  const localSkills = new LocalSkills([skillsRoot])
+  // 自定义连接器: user-authored mcp-client rows. Same patch file as the NexusAI
+  // ones, different id prefix — so a logout clears the remote catalog and
+  // leaves the user's own connectors alone.
+  const sseConnectors = new SseConnectors()
+  const connectors = new ConnectorRows({
+    profilePatchFile: config.profilePatchFile,
+    serverNamePrefix: config.mcp.serverNamePrefix,
+    toolCallTimeoutMs: config.mcp.toolCallTimeoutMs,
+    failOnStartupError: config.mcp.failOnStartupError,
+  })
+  // The bridge refresh used right after an SSE connector is authored: the same
+  // inputs `sync()` builds, recomputed on demand.
+  const refreshSse = async (): Promise<readonly string[]> => {
+    const custom = await sseConnectors.enabledList().catch(() => [])
+    const bridged = await mcpSse.sync(mergeSseInputs(await listSseInputs(api), custom.map(bridgeInputOf)))
+    return bridged.errors
+  }
+  const connectorTools = new ConnectorTools(ctx, { rows: mcp, sse: mcpSse, sseConnectors })
+  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, mcpSse, skills, skillhub, localSkills, connectors, sseConnectors, refreshSse, connectorTools })
 
   // A surviving session means the account was logged in before restart;
   // re-register its tools and rewrite its MCP rows without blocking boot.

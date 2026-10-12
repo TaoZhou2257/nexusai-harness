@@ -31,7 +31,7 @@ import { NexusaiBrandMark, NexusaiBrandName } from './NexusaiBrand'
 import { NexusaiPanelIcon } from './NexusaiPanelIcon'
 import { NexusaiWorkbench } from './NexusaiWorkbench'
 import { en, zh, type NexusaiLocaleKey } from './locales'
-import { unwrap, messageOf, type AuthViewFace, type CapabilitiesRemoteFace, type AuthRemoteFace, type NexusaiSnapshot, type SessionsFace, type SkillsRemoteFace, type SlashSkillFace, type StreamFace } from './face'
+import { unwrap, messageOf, type AuthViewFace, type CapabilitiesRemoteFace, type AuthRemoteFace, type ConnectorAuthorRequestFace, type LocalSkillInstallRequestFace, type NexusaiSnapshot, type SessionsFace, type SkillsRemoteFace, type SlashSkillFace, type StreamFace } from './face'
 import { TYPERT_REMOTE } from './remote'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -149,6 +149,21 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
       setLocalSkillEnabled: (path: string, enabled: boolean, roots: string[]) => unwrap(remote.nexusaiCapabilities.setLocalSkillEnabled(path, enabled, roots)),
       removeLocalSkill: (path: string, roots: string[]) => unwrap(remote.nexusaiCapabilities.removeLocalSkill(path, roots)),
       readLocalSkill: (path: string, roots: string[]) => unwrap(remote.nexusaiCapabilities.readLocalSkill(path, roots)),
+      // Uploads carry base64 payloads; the wire keeps one JSON string so the
+      // capability Remote's parameter codec stays plain scalars.
+      installUploadedSkill: (request: LocalSkillInstallRequestFace, overwrite: boolean) =>
+        unwrap(remote.nexusaiCapabilities.installUploadedSkill(JSON.stringify(request), overwrite)),
+      // The desktop path route: the host reads the pick from disk itself, so a
+      // picked SKILL.md can install as its whole folder.
+      installUploadedPath: (path: string, overwrite: boolean) =>
+        unwrap(remote.nexusaiCapabilities.installUploadedPath(path, overwrite)),
+      // 自定义连接器: the same JSON-string convention as the skill upload.
+      authorConnector: (request: ConnectorAuthorRequestFace) =>
+        unwrap(remote.nexusaiCapabilities.authorConnector(JSON.stringify(request))),
+      describeConnectorBundle: (path: string) => unwrap(remote.nexusaiCapabilities.describeConnectorBundle(path)),
+      connectorTools: (id: string) => unwrap(remote.nexusaiCapabilities.connectorTools(id)),
+      removeConnector: (id: string) => unwrap(remote.nexusaiCapabilities.removeConnector(id)),
+      setConnectorEnabled: (id: string, enabled: boolean) => unwrap(remote.nexusaiCapabilities.setConnectorEnabled(id, enabled)),
       skillhubDetail: (slug: string) => unwrap(remote.nexusaiCapabilities.skillhubDetail(slug)),
       skillhubPreview: (slug: string) => unwrap(remote.nexusaiCapabilities.skillhubPreview(slug)),
       skillhubCategories: () => unwrap(remote.nexusaiCapabilities.skillhubCategories()),

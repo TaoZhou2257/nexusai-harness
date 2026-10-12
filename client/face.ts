@@ -56,8 +56,8 @@ export interface AuthRemoteFace {
 /** The wire face of `nexusaiCapabilities` as this half consumes it. */
 export interface CapabilitiesRemoteFace {
   listCustomTools(): Promise<RemoteAnswer<{ customToolId: string; name: string; description: string }[]>>
-  listLocalMcpServers(): Promise<RemoteAnswer<{ id: string; name: string; transport: string; url: string }[]>>
-  listMcpServers(): Promise<RemoteAnswer<{ mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>>
+  listLocalMcpServers(): Promise<RemoteAnswer<{ id: string; name: string; transport: string; url: string; serverName?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string>; enabled: boolean; connected: boolean; toolCount: number; timeoutSeconds?: number; bridgeError?: string }[]>>
+  listMcpServers(): Promise<RemoteAnswer<{ id?: string; connected?: boolean; toolCount?: number; mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>>
   listSkills(): Promise<RemoteAnswer<{ skillId: string; name: string; description: string; author: string }[]>>
   searchSkillHub(keyword: string, category: string, page: number): Promise<RemoteAnswer<{ cards: SkillHubCardFace[]; total: number }>>
   disabledLocalSkills(roots: string[]): Promise<RemoteAnswer<LocalSkillEntryFace[]>>
@@ -65,6 +65,13 @@ export interface CapabilitiesRemoteFace {
   setLocalSkillEnabled(path: string, enabled: boolean, roots: string[]): Promise<RemoteAnswer<void>>
   removeLocalSkill(path: string, roots: string[]): Promise<RemoteAnswer<void>>
   readLocalSkill(path: string, roots: string[]): Promise<RemoteAnswer<string>>
+  installUploadedSkill(request: string, overwrite: boolean): Promise<RemoteAnswer<LocalSkillInstallResultFace>>
+  installUploadedPath(path: string, overwrite: boolean): Promise<RemoteAnswer<LocalSkillInstallResultFace>>
+  authorConnector(request: string): Promise<RemoteAnswer<ConnectorAuthorResultFace>>
+  connectorTools(id: string): Promise<RemoteAnswer<ConnectorToolsResultFace>>
+  removeConnector(id: string): Promise<RemoteAnswer<{ removed: boolean }>>
+  setConnectorEnabled(id: string, enabled: boolean): Promise<RemoteAnswer<{ changed: boolean }>>
+  describeConnectorBundle(path: string): Promise<RemoteAnswer<ConnectorBundleSummaryFace>>
   skillhubDetail(slug: string): Promise<RemoteAnswer<SkillHubDetailFace>>
   skillhubPreview(slug: string): Promise<RemoteAnswer<string>>
   skillhubCategories(): Promise<RemoteAnswer<{ key: string; label: string }[]>>
@@ -136,8 +143,8 @@ export interface NexusaiAuthOps {
 
 export interface NexusaiCapabilitiesOps {
   listCustomTools(): Promise<{ customToolId: string; name: string; description: string }[]>
-  listLocalMcpServers(): Promise<{ id: string; name: string; transport: string; url: string }[]>
-  listMcpServers(): Promise<{ mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>
+  listLocalMcpServers(): Promise<{ id: string; name: string; transport: string; url: string; serverName?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string>; enabled: boolean; connected: boolean; toolCount: number; timeoutSeconds?: number; bridgeError?: string }[]>
+  listMcpServers(): Promise<{ id?: string; connected?: boolean; toolCount?: number; mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>
   listSkills(): Promise<{ skillId: string; name: string; description: string; author: string }[]>
   searchSkillHub(keyword: string, category: string, page: number): Promise<{ cards: SkillHubCardFace[]; total: number }>
   disabledLocalSkills(roots: string[]): Promise<LocalSkillEntryFace[]>
@@ -145,6 +152,13 @@ export interface NexusaiCapabilitiesOps {
   setLocalSkillEnabled(path: string, enabled: boolean, roots: string[]): Promise<void>
   removeLocalSkill(path: string, roots: string[]): Promise<void>
   readLocalSkill(path: string, roots: string[]): Promise<string>
+  installUploadedSkill(request: LocalSkillInstallRequestFace, overwrite: boolean): Promise<LocalSkillInstallResultFace>
+  installUploadedPath(path: string, overwrite: boolean): Promise<LocalSkillInstallResultFace>
+  authorConnector(request: ConnectorAuthorRequestFace, overwrite?: never): Promise<ConnectorAuthorResultFace>
+  connectorTools(id: string): Promise<ConnectorToolsResultFace>
+  removeConnector(id: string): Promise<{ removed: boolean }>
+  setConnectorEnabled(id: string, enabled: boolean): Promise<{ changed: boolean }>
+  describeConnectorBundle(path: string): Promise<ConnectorBundleSummaryFace>
   skillhubDetail(slug: string): Promise<SkillHubDetailFace>
   skillhubPreview(slug: string): Promise<string>
   skillhubCategories(): Promise<{ key: string; label: string }[]>
@@ -196,6 +210,87 @@ export interface LocalSkillEntryFace {
   readonly path: string
   readonly enabled: boolean
 }
+
+/** One file of an uploaded skill folder, base64-encoded for the wire. */
+export interface LocalSkillUploadFileFace {
+  readonly path: string
+  readonly base64: string
+}
+
+/** What 上传技能 sends: a picked folder, a .zip, or one markdown file. */
+export type LocalSkillInstallRequestFace =
+  | { readonly kind: 'folder'; readonly name: string; readonly files: readonly LocalSkillUploadFileFace[] }
+  | { readonly kind: 'zip'; readonly name: string; readonly base64: string }
+  | { readonly kind: 'markdown'; readonly name: string; readonly text: string }
+
+/** One 自定义连接器 request (the face mirrors the host's types). */
+export type ConnectorAuthorRequestFace =
+  | {
+      readonly kind: 'quick'
+      /** Set when the dialog edits an existing connector it should replace. */
+      readonly previousId?: string
+      readonly name: string
+      readonly transport: string
+      readonly command: string
+      readonly args: string
+      readonly env: string
+      readonly url: string
+      readonly headers: string
+      /** Per-call budget in seconds; blank means the 60 s default. */
+      readonly timeoutSeconds?: string
+    }
+  | { readonly kind: 'json'; readonly text: string; readonly previousId?: string }
+  | { readonly kind: 'bundle'; readonly path: string; readonly values: Readonly<Record<string, string>>; readonly previousId?: string }
+
+/** One tool a connector contributes, as the model sees it. */
+export interface ConnectorToolInfoFace {
+  readonly name: string
+  readonly rawName: string
+  readonly description: string
+  readonly parameters: unknown
+}
+
+/** One connector's tools, plus why there are none. */
+export interface ConnectorToolsResultFace {
+  readonly tools: readonly ConnectorToolInfoFace[]
+  readonly error?: string
+}
+
+export interface ConnectorAuthorResultFace {
+  readonly added: readonly { readonly name: string; readonly transport: string; readonly serverName: string }[]
+  readonly message: string
+}
+
+/** One `user_config` prompt a DXT/MCPB bundle declares. */
+export interface ConnectorBundleFieldFace {
+  readonly key: string
+  readonly type: 'string' | 'number' | 'boolean' | 'directory' | 'file'
+  readonly title: string
+  readonly description: string
+  readonly required: boolean
+  readonly sensitive: boolean
+  readonly multiple: boolean
+  readonly defaultValue: string
+}
+
+/** A picked bundle's manifest, for the dialog's confirmation step. */
+export interface ConnectorBundleSummaryFace {
+  readonly kind: 'mcpb' | 'dxt'
+  readonly manifestVersion: string
+  readonly name: string
+  readonly displayName: string
+  readonly description: string
+  readonly version: string
+  readonly author: string
+  readonly serverType: string
+  readonly entryPoint: string
+  readonly fields: readonly ConnectorBundleFieldFace[]
+}
+
+/** Install outcome; `exists` asks the dialog to offer 覆盖安装. */
+export type LocalSkillInstallResultFace =
+  | { readonly installed: true; readonly name: string; readonly path: string }
+  | { readonly installed: false; readonly reason: 'exists'; readonly name: string }
 
 /** One SkillHub listing's full detail (the detail view's payload). */
 export interface SkillHubDetailFace {

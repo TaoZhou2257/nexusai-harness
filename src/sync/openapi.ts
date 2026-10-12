@@ -143,8 +143,6 @@ export interface ValueSpec {
   enum?: readonly unknown[]
   const?: unknown
   properties?: Record<string, ValueSpec>
-  /** Object schema: required property names. */
-  required?: readonly string[]
   items?: ValueSpec
   additionalProperties?: boolean
   oneOf?: readonly ValueSpec[]
@@ -158,6 +156,32 @@ export interface ParamSpec extends Omit<ValueSpec, 'required'> {
 
 /** Project one OpenAPI schema node onto the dsh parameter DSL. */
 export function toValueSpec(
+  node: OpenApiSchema,
+  components: Record<string, unknown> | undefined,
+  depth = 0,
+): ValueSpec {
+  return pruneUndefined(valueSpecOf(node, components, depth)) as ValueSpec
+}
+
+/**
+ * dsh's schema boundary validates every node as lossless JSON, so a key present
+ * with an `undefined` value — which is what an optional annotation-producing
+ * branch naturally writes — is a hard error there ("must be lossless JSON").
+ * Dropping those keys is what keeps nested nodes loadable.
+ */
+function pruneUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(entry => pruneUndefined(entry))
+  if (value === null || typeof value !== 'object') return value
+  const out: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry === undefined) continue
+    out[key] = pruneUndefined(entry)
+  }
+  return out
+}
+
+/** The unpruned projection; `toValueSpec` prunes it for the schema boundary. */
+function valueSpecOf(
   node: OpenApiSchema,
   components: Record<string, unknown> | undefined,
   depth = 0,
@@ -190,7 +214,18 @@ export function toValueSpec(
       return spec
     }
     case 'object': {
-      const spec: ValueSpec = { type: 'object', description, additionalProperties: true }
+      // dsh's value-schema DSL allows `required` at the property level only —
+      // never inside a nested object (the array-item and oneOf branches are
+      // compiled with required explicitly disallowed). A nested object's
+      // required list therefore travels as prose in its description: the model
+      // still learns which fields matter, and the schema stays loadable.
+      const nested = Array.isArray(node.required)
+        ? node.required.filter(entry => typeof entry === 'string' && entry !== '')
+        : []
+      const hint = nested.length === 0
+        ? description
+        : [description ?? '', `必填字段：${nested.join('、')}`].filter(part => part !== '').join(' ')
+      const spec: ValueSpec = { type: 'object', description: hint, additionalProperties: true }
       if (isRecord(node.properties)) {
         spec.properties = {}
         for (const [name, child] of Object.entries(node.properties)) {
@@ -198,7 +233,6 @@ export function toValueSpec(
           spec.properties[name] = toValueSpec(child, components, depth + 1)
         }
       }
-      if (Array.isArray(node.required)) spec.required = node.required
       return spec
     }
     default:
@@ -232,13 +266,18 @@ export function toParameterSpec(
   }
   if (operation.requestBody !== undefined && operation.requestBody.contentType !== 'multipart/form-data') {
     const bodySpec = toValueSpec(operation.requestBody.schema, components)
+    // Required-ness is read from the raw schema: the DSL accepts it at the
+    // property level, and `toValueSpec` deliberately does not carry it.
+    const bodyRequired = Array.isArray(operation.requestBody.schema.required)
+      ? operation.requestBody.schema.required.filter(entry => typeof entry === 'string')
+      : []
     if (bodySpec.type === 'object' && bodySpec.properties !== undefined) {
       for (const [name, child] of Object.entries(bodySpec.properties)) {
         if (spec[name] !== undefined) {
           spec[name] = { ...spec[name], description: `${spec[name].description ?? name} (body field)` }
           continue
         }
-        if (bodySpec.required?.includes(name)) {
+        if (bodyRequired.includes(name)) {
           spec[name] = { ...child, required: true } as ParamSpec
         } else {
           spec[name] = child as ParamSpec
@@ -259,4 +298,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function componentsOf(doc: unknown): Record<string, unknown> | undefined {
   if (!isRecord(doc) || !isRecord(doc.components) || !isRecord(doc.components.schemas)) return undefined
   return doc.components.schemas
+}
+
+/**
+ * MCP `inputSchema` is JSON Schema; dsh takes a flat parameter map and
+ * validates it strictly — every annotation must be lossless JSON, so a spec
+ * may never carry `undefined` (a missing property description is filled in).
+ */
+export function inputSchemaToParameters(schema: Record<string, unknown>, toolLabel = 'parameter'): Record<string, ParamSpec> {
+  const properties = schema.properties
+  if (typeof properties !== 'object' || properties === null || Array.isArray(properties)) return {}
+  const required = Array.isArray(schema.required) ? schema.required.filter(entry => typeof entry === 'string') : []
+  const spec: Record<string, ParamSpec> = {}
+  for (const [name, node] of Object.entries(properties as Record<string, unknown>)) {
+    const raw = typeof node === 'object' && node !== null
+      ? toValueSpec(node as Parameters<typeof toValueSpec>[0], undefined)
+      : { type: 'json' as const }
+    const description = typeof raw.description === 'string' && raw.description !== ''
+      ? raw.description
+      : `${toolLabel} 参数 ${name}`
+    const value = { ...raw, description } as ParamSpec
+    spec[name] = (required.includes(name) ? { ...value, required: true } : value) as ParamSpec
+  }
+  return spec
 }

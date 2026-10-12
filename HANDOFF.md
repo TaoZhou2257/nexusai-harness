@@ -1,79 +1,148 @@
-# HANDOFF — 交接摘要（2026-10-09 · 全量重写）
+# HANDOFF — 交接摘要（2026-10-10 · 删长时间运行模式）
 
-## 一句话现状
-`@toby/dsh-plugin-nexusai`（0.1.0，dsh 基线 **0.2.0-rc.2**）已把 NexusAI 登录、能力同步、侧栏工作台与品牌体系全部跑通并逐项真机验证；**dsh 源码零改动**（检出为 tag `dsh-v0.2.0-rc.2`，`git status` 干净），NexusAI 侧的东西只落在：插件仓库、dev home 的 `cordis.patch.yml`、生成的 `.desktop-build` 里的软链/补丁。tsc 0 错误、无遗留调试日志。**发行版/产品化与 Windows 试用按用户指示暂停**（见文末待办），功能开发继续。
+> 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图），不是推理。
 
-## 当前能力清单（全部真机验证）
-**登录与账号**
-- NexusAI 登录取代 dsh 内置账号 UI：官方 seam（`ctx.authorization.registerFlow` + 凭据 `nexusai/session`），左下角同一位置；登录弹窗打开即取验证码、动态品牌、服务器地址可改（脏值才可点的「应用」按钮 → 连通性测试 → 应用后**品牌立即刷新**）、空字段抖动校验、错误提示在表单下方、失败自动重发且**保留密码**
-- 左下角启动器：未登录点一下直接开弹窗；已登录显示**圆形头像（首字母）+ 账号名 + 组织胶囊**（点击切换组织，宿主持久化 orgId 并重同步能力，工作台列表随 orgId 刷新）；菜单 = **打开设置（带 ⌘ , 快捷键提示）/ 登出**（「同步能力」入口已去掉，理由见下）
-- **登出前确认框**（对齐 dsh 内置账号菜单，2026-10-09 补）：点「登出」先弹 `Modal`，三态文案 —— 有任务在跑「当前有任务正在执行，退出登录会打断它们」/ 列表未就绪「暂时无法确认任务状态…」/ 空闲「退出登录不会丢失任何数据」；确认按钮复用同一 `auth.logout()`。判定在读菜单点击**那一刻**采样（`runtime.hasRunningTasks()`），弹窗期间新起任务不会让文案失真
-- 会话失效（401/过期）会自动登出：清理工具 / MCP 行 / SSE 桥接，并在左下角提示「登录状态已失效…」
+## 本次交接（2026-10-10）
 
-**工作台（侧栏「专家 · 技能 · 连接器」）**
-- 布局对齐 WorkBuddy 真机：能力标签行右端常驻 搜索框 / `已安装(N)` / `＋添加技能`；计数挂在能力标签与来源标签上
-- **贴着窗口左上角的让位内边距**（2026-10-09 修）：`.nexusai-wb` 顶部 = `24px + var(--dsh-frame-top-clearance)`、起始边 = `max(24px, var(--dsh-frame-leading-clearance))` —— 侧边栏收起时内容自动让开红绿灯与「打开侧边栏 / 新建会话」悬浮控件（详见坑第 19 条）
+**改了什么**：按用户拍板删除了「长时间运行模式」整个功能。原因：dsh 的 MCP 客户端只有**一个**超时字段（`toolCallTimeoutMs`），且无 `progress`/`_meta.progressToken` 处理 —— 开关无法在运行时生效，只是插件侧的一纸声明。长任务现在直接填大「超时」。
+
+- host：删 `src/sync/connector-prefs.ts` 整文件（`mcp-connector-prefs.json` 不再产生）；`types.ts` / `connector-rows.ts`（去掉 `CONNECTOR_LONG_RUNNING_SECONDS`）/ `connector-author.ts` / `capabilities.ts` / `index.ts` 同步清字段与接线
+- client：删表单里的 Switch 开关行、`face.ts` 两个 `longRunning` 类型字段、中英文 2 个语言键（`connectorLongRunning` / `connectorLongRunningHint`）
+- 套件 `scripts/verify/connector-authoring.mjs`：删开关断言，超时断言保留（原样写、编辑只动数字、非数字拒绝）
+- HANDOFF：§3.7 连接设置、坑 B7、§13 变更表三处已更新
+
+**保留的行为**：超时（秒，默认 60，`toolCallTimeoutMs` / 桥预算原样写入；`connectorTimeoutMs()` 是唯一换算处）、SSE 请求头、打开/关闭、编辑/删除、桥接全部不动。
+
+**验证**：`npx tsc --noEmit` 0 错误；`node scripts/build.mjs` 两个产物；`npm run check:dsh` ok（0.2.0-rc.2）；`connector-authoring.mjs` 63 例全绿；`local-skills-paths.mjs` 16 例全绿。**未做**：桌面端 UI 回归（本次纯删除，理论不影响 UI，但按流程标准应跑一次 CDP 走查）。
+
+**卡在哪**：无阻塞。Windows 试用包计划暂停（dsh 拒绝 macOS 交叉构建 `win-x64`，需 Windows 构建机 + VS Build Tools；交付物已备在 `dist/windows-trial/`，含 STATUS.md 说明）。
+
+**下一步建议**：
+1. 跑一次 `pnpm run start:desktop` + CDP 走查，确认连接器创建弹窗只剩「超时」一项、创建/编辑/调用全链路正常（§8 标准流程）。
+2. 之后回到待办（§11）：正式产品化（自有 Electron 壳 + 构建期组装 profile）、SSE 桥接凭据跟进、agent 实调自定义工具等。
+
+## 0. 这是什么
+
+`@toby/dsh-plugin-nexusai`（0.1.0）—— dsh（DeepSeek Harness）桌面端的一个 Cordis 插件，把 **NexusAI 平台**接进 dsh 侧栏：NexusAI 登录、自定义工具（专家）、技能（本地 / SkillHub / NexusAI 远程）、连接器（本地 MCP / NexusAI MCP，含 legacy SSE 桥接）、以及全站品牌。
+
+**三个坐标**
+| 位置 | 路径 |
+|---|---|
+| 插件仓库（本项目，可自由改） | `~/GoLandProjects/nexusai-harness` |
+| dsh 源码（**不要改**） | `~/IdeaProjects/deepseek-harness`（检出 tag `dsh-v0.2.0-rc.2`，git 干净） |
+| dsh 运行目录（dev home，配置文件在这） | `~/IdeaProjects/deepseek-harness/apps/desktop/.desktop-build/development/home` |
+| NexusAI 服务器（当前用） | `http://agent.nexusai.net.cn:8081`（另有 `http://221.226.155.134:8081`；SkillHub 用公网 `api.skillhub.cn`） |
+
+**三条硬红线**（源自 `AGENTS.md`，违反即返工）
+1. **不改 nexusai-server 任何代码** —— 只通过它的 REST API（bff，nginx 前缀 `/service/api`，envelope `{code,data,msg}`）。
+2. **尽量不改 dsh 源码** —— 需要改行为时，只动 dev home 的 `cordis.patch.yml`；改 `pnpm-workspace.yaml` 等源码会与上游 git 冲突。目前**源码零改动**。
+3. **不在插件里写死密钥** —— 凭据走 dsh credentials 机制（`.credentials.yaml`）。
+
+## 1. 环境自检（接手先跑这四条）
+
+```bash
+cd ~/GoLandProjects/nexusai-harness
+npx tsc --noEmit        # 期望：无输出（0 错误）
+node scripts/build.mjs  # 期望：lib/index.js（宿主）+ lib/client.js（客户端）两个产物
+npm run check:dsh       # 期望：check-dsh-version: ok (dsh 0.2.0-rc.2)
+DSH_CDP_PORT=9223 node scripts/verify/cdp-eval.mjs "'ok'"   # 期望："ok"（能连上运行中的桌面端）
+```
+
+桌面端没在跑时，第 4 条会报 `no dsh-app page target`。启动方式（**9222 常被 WorkBuddy 占用，固定用 9223**）：
+
+```bash
+cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup pnpm run start:desktop > /tmp/dsh-9223.log 2>&1 & disown
+# 约 60 秒后日志出现 "dsh web: http://127.0.0.1:19387/?token=..." 即就绪
+```
+
+**同时只能跑一个实例**（详见坑 A3）。
+
+## 2. 当前运行状态（2026-10-09 收尾）
+
+| 项 | 值 |
+|---|---|
+| 服务器 | `http://agent.nexusai.net.cn:8081` |
+| 登录 | 已登录 `admin`，组织 `--- 系统 ---` |
+| 侧栏品牌 | `NexusAgent Builder ｜ v1.5.0.3`（远程取到；取不到回默认 `NexusAI DSH` + 节点图 mark） |
+| 工作台计数 | 专家 11 / 技能 1 / 连接器 5 |
+| 技能来源计数 | 本地 21 / SkillHub 24 / 远程获取 · NexusAgent Builder 1 |
+| 侧边栏 | 展开；面板选中「专家 · 技能 · 连接器」 |
+
+## 3. 已实现能力（全部真机验证）
+
+**登录与账号**（取代 dsh 内置 DeepSeek 账号 UI，用官方 seam `ctx.authorization.registerFlow` + 凭据 `nexusai/session`）
+- 登录弹窗：打开即取验证码、动态品牌（logo/欢迎语/按钮色/平台版本）、服务器地址可改（脏值才可点的「应用」→ 连通性测试 → 应用后**品牌立即刷新**）、空字段抖动校验、错误在表单下方、失败自动重发且**保留密码**
+- 左下角启动器：未登录点一下直接开弹窗；已登录 = **圆形头像（首字母）+ 账号名 + 组织胶囊**（点胶囊切组织，宿主持久化 orgId 并重同步，工作台列表随之刷新）；菜单 = **打开设置（带 `⌘ ,` 快捷键提示）/ 登出**
+- **登出前确认框**：`Modal` 三态文案 —— 有任务在跑「当前有任务正在执行，退出登录会打断它们」/ 会话列表未就绪「暂时无法确认任务状态…」/ 空闲「退出登录不会丢失任何数据」。判定在点菜单**那一刻**采样
+- 会话失效（401/过期）自动登出：清工具 / MCP 行 / SSE 桥接，左下角提示「登录状态已失效…」
+
+**工作台（侧栏「专家 · 技能 · 连接器」，键控面板 `nexusai`）**
+- 布局对齐 WorkBuddy：能力标签行右端常驻 搜索框 / `已安装(N)` / `＋添加技能`；计数挂在能力标签与来源标签上
+- **搜索按来源分开**：本地 / SkillHub / 远程各一个搜索词互不串味；占位符随来源变化（`搜索本地技能` / `搜索技能` / `搜索远程技能 · <品牌>`）；**只有 SkillHub 走服务端搜索**（回车 + 分类芯片），本地与远程是本地过滤
 - **专家** = NexusAI 自定义工具卡片
-- **技能** 三来源：**本地**（对话「/」目录同源，卡片带启用/关闭开关「开=产品绿 `#00C29A` + 白旋钮，尺寸沿用 dsh 36×20」，「…」菜单 = 查看内容 / 复制路径 / 删除技能(二次确认)；详情页不放开关）/ **SkillHub**（腾讯市场：分类芯片 13+全部，带左右箭头翻页、向下无限翻页、卡片钥匙图标标「需 APIKey」、★收藏、点卡片进详情含 SKILL.md 预览|源码）/ **远程获取 · <品牌>**（NexusAI 目录，可下载）
+- **技能** 三来源：**本地**（与对话「/」目录同源；卡片带启用/关闭开关「开 = 产品绿 `#00C29A` + 白旋钮，尺寸沿用 dsh 36×20」，「…」菜单 = 查看内容 / 复制路径 / 删除技能(二次确认)；详情页不放开关；顺序稳定、切换不闪）/ **SkillHub**（腾讯市场：13 个分类芯片 + 全部，左右箭头翻页 + 向下无限翻页，钥匙图标标「需 APIKey」，★收藏，点卡片进详情含 SKILL.md 预览）/ **远程获取 · <品牌>**（NexusAI 目录，可下载）
 - **连接器** 两来源：**本地**（本机 profile 的 mcp-client 行）/ **远程获取 · <品牌>**（创建 + 导入两套 MCP；legacy SSE 的由插件桥接成 dsh 工具，卡片显「SSE 已桥接」）
-- 未登录时：隐藏「专家」与两个「远程获取」来源，其余照常（本地/SkillHub 无需登录）
+- **连接器工具栏**（2026-10-09，布局与技能一致）：搜索框（按来源各自过滤，含「没有匹配的连接器」）+ **自定义连接器** 四项菜单
+  - **快速创建**：名称 + 传输方式（stdio / streamable-http），stdio 填 命令 / 参数 / 环境变量，http 填 URL / 请求头。参数「每行一个」（只有一行时按空格拆），环境变量「每行 KEY=VALUE」，请求头「每行 Name: value」
+  - **从 JSON 导入**：粘贴 MCP 配置 JSON，认四种形状 —— `{mcpServers:{…}}`（Claude/Cursor）、`{servers:{…}}`（VS Code）、裸的 `{名字:{…}}` 映射、单个带 name 的对象；一次可加多个。有 `command` 走 stdio、有 `url` 走 streamable-http；`type:"sse"` 明确拒绝（dsh 无 legacy SSE 传输）
+  - **legacy SSE 也支持**（2026-10-09）：快速创建多了 `sse` 传输（只填 URL），JSON 里 `type:"sse"` 不再被拒 —— 它们**不写行**（dsh 的 mcp-client 没有这个传输），而是存进 `<dshHome>/mcp-sse-connectors.json` 并由本插件的桥接注册成 dsh 工具（与 NexusAI 那些 SSE 服务器同一条桥）。本地卡片对它们显示「SSE 已桥接 / 仅 SSE」旗标，出问题带 bridgeError
+  - **导入 DXT 包 / 导入 MCPB 包**：同一个格式的两个名字（MCPB 是现名，DXT 是旧名，manifest 字段分别是 `manifest_version` / `dxt_version`）。选包后先读 manifest 展示名称/版本/作者/类型，再把 `user_config` 声明渲染成表单（string/number/boolean/directory/file，sensitive 掩码，default 预填，必填校验），确认后解包到 `<dshHome>/mcp-bundles/<name>` 并写行
+  - **每个连接器的连接设置**（三种传输都有）：**超时（秒）**（默认 60，写进行的 `toolCallTimeoutMs` / 桥的每次调用预算，**原样写，不缩放**）、以及 **SSE 的请求头**（`Name: value` 每行一个，握手与每次 POST 都带上）。JSON 导入认 `timeout`（秒）；编辑时全部预填。
+    ⚠️ **长时间运行模式已删除**（2026-10-10，用户拍板）：dsh 的 MCP 客户端只有**一个**超时字段、且不支持按进度重置计时器，开关无法在运行时生效 —— 它只是插件侧的一纸声明，所以整个功能（存储 `mcp-connector-prefs.json`、表单开关、语言键）一并移除了。想跑长任务的连接器直接把「超时」填大即可。
+  - **连接器详情页**（点卡片进入）：连接信息（地址/命令、工具命名空间）+ **可调用的工具清单** —— 每个工具给服务器自己的名字、dsh 全名（`mcp__…`，可一键复制）、说明，以及**参数 schema**（参数名/类型/必填/说明）。清单来自 `ctx.tools.schemas()`，与模型看到的是同一份
+  - **连通状态点**（名字前）：**绿=已连通**（title 里带工具数）、**红=未连通**（title 里带桥的报错）、**灰=已关闭**；远程卡片同样有点
+  - **打开/关闭开关**（本地卡片，模仿技能卡片的 36×20 胶囊，位置也在「…」右侧）：行式连接器写 dsh 自己的 `disabled: true`（dsh 的加载器随后卸载实例、撤掉工具，无需重启）；自定义 SSE 写存储里的 `enabled` 并重跑桥。**已实测**：关掉后状态点变灰、工具数归 0（实例被回收），打开后状态点变绿、工具回来。NexusAI 自己的行不给关（同步维护），宿主会拒绝
+  - **卡片「…」菜单**（只有本页添加的才有）：可调用的工具 / 编辑 / 删除连接器。编辑按原值预填，改名**原地替换**（旧行随之删除）；删除需二次确认；配置文件里手写的行**不给删除入口**，宿主也会拒绝
+  - 三者都落到 `<profile>/cordis.patch.yml` 的 **`custom-mcp-*` 行**（插件自己的 insert 项），**登出不会被清**（NexusAI 的 `nexusai-mcp-*` 才会）；同名再加 = 覆盖更新那一行（id 由名字派生）。实测：删掉行 → dsh 的 HMR 立刻回收实例（夹具进程随之退出）
+- **＋添加技能**（2026-10-09）＝ 两项菜单：**查找技能**（切到 SkillHub 来源 + 光标落进搜索框）/ **上传技能**（打开「导入技能」弹窗）
+- **导入技能弹窗**（按用户给的参考图重做）：标题 + 右上 X、**虚线拖拽区**（托盘+上箭头自绘字形 + 「拖拽文件或点击上传」）、`非高风险自动安装` 复选框、`文件要求` 两条（文件夹或 .zip 需含 SKILL.md；.md 需含 YAML 名称与描述）；另加一行 `选择文件夹` 下划线链接 —— 一个原生文件对话框无法同时选文件和选目录，所以拖拽与链接各管一类
+  - 拖拽：`dragEnter/dragOver` 高亮（`is-drag`），`drop` 时用 `webkitGetAsEntry()` 递归展开文件夹（路径与目录选择器的 `webkitRelativePath` 同形），拿不到 entry 就退回 `dataTransfer.files`
+  - **只有一个入口**（2026-10-09 合并）：拖拽收下一切，点区域开一个选择面板，**由「选中项的真实路径」自动判断**拿回来的是什么
+  - 点击上传为什么一个入口能通吃：桌面 preload 暴露 `window.__DSH_HOST_PATHS__.pathFor(file)`（= 主进程 `webUtils.getPathForFile`），拿到真实磁盘路径后交给宿主 `installFromPath()` 判断 —— 目录=技能文件夹；名为 `SKILL.md`=它的整个文件夹；`.zip`=压缩包；`.md`=单文件技能；其他文件=同目录若有 SKILL.md 就按那个文件夹装，否则明确拒绝。于是不再需要第二个「选择文件夹」按钮（**原生面板一次只能选文件或选目录**，dsh 自己的 `ctx.directoryPicker` / `__DSH_DIRECTORY_PICKER__` 也只有目录一种）
+  - 没有路径桥时（浏览器打开 dsh web、或粘贴来的 File）回落成按字节上传，此时只有 .zip/.md 能被识别
+  - `非高风险自动安装` 勾选后，选中即装（不再点「安装」）；**但同名冲突仍然停下来问**（弹「已存在同名技能」→ 覆盖安装）——实测确认，不会静默覆盖
+  - 校验（客户端先拦、宿主再核）：文件夹与 .zip 必须含 **SKILL.md**（允许整体多包一层目录，自动剥掉）；.md 与 SKILL.md 本身都要有 YAML 前置信息的 **name + description**，且 name 必须符合 **dsh 的 kebab-case 语法**（见坑 B8）
+  - 落盘 = `<技能根>/<name>/`（name 即目录名，用户输入不触达路径），先写 staging 再 `rename` 换入；同名返回 `exists`；上限 8MB；路径穿越（`..`/绝对路径/盘符）拒绝
+- 未登录时：隐藏「专家」与两个「远程获取」来源，本地/SkillHub 照常
+- 贴着窗口左上角的**让位内边距**：顶部 `24px + var(--dsh-frame-top-clearance)`、起始边 `max(24px, var(--dsh-frame-leading-clearance))` —— 侧边栏收起时自动避开红绿灯与悬浮控件（坑 B4）
 
 **品牌（全部来自 `GET /v1/base/custom`）**
-- 登录弹窗：logo、欢迎语、按钮色（平台配置）、底部平台版本（`about.version`；不显示版权）
-- 侧栏左上角品牌：走**官方槽位** `sidebar.brand.mark` / `sidebar.brand.name` —— mark 取服务端方形 logo（宽高比 0.8–1.25），名字取 `tab.title`，版本徽章**优先平台版本**、取不到回落 **dsh 构建串** `0.2.0-rc.2-639ed01`；远程不可达时用默认 **NexusAI DSH** + 默认 mark（**智能体节点图**：上两节点 + 下节点连线）
-- 工作台/连接器的品牌名与来源标签随登录的服务器刷新
+- 登录弹窗：logo、欢迎语、按钮色、底部平台版本（`about.version`，不显示版权）
+- 侧栏左上角：走**官方槽位** `sidebar.brand.mark` / `sidebar.brand.name` —— mark 取服务端方形 logo（宽高比 0.8–1.25），名字取 `tab.title`，版本徽章优先平台版本、取不到回落 dsh 构建串；远程不可达时用默认 **NexusAI DSH** + 默认 mark（节点图）
+- 工作台/连接器的品牌名与来源标签随登录服务器刷新
 
-**同步能力**
-- 自定义工具（OpenAPI → dsh 工具）、MCP 行（streamable）、**SSE MCP 桥接**（`src/nexus/mcp-sse.ts` + `src/sync/mcp-tools.ts`：握手 → initialize → tools/list → tools/call，按需重连；工具名 `<prefix>__mcp__<server>__<tool>`，中文服务名用短哈希避免撞名）
-- 实测：agent 在新会话里真的调用了桥接工具（远端返回 403「需要 token」，证明链路通）
-- **触发时机（都是自动的，故 2026-10-09 去掉了头像菜单里的「同步能力」手动入口）**：登录成功时 / 切换组织时 / 带会话启动时各跑一遍；`capabilities.sync()` 内部工具·MCP 行·SSE 桥接三步各自 try/catch 隔离，单步失败不影响其余
-- 清理范围：只删了 UI 入口（`NexusaiLauncher` 的菜单项 + `runSync` + `capabilities` prop + 两个导入）。宿主的 `Capabilities.sync()` **保留**（auth 仍在调），其 Typert Remote 描述符也**故意保留**：宿主 16 个公开方法与 16 条描述符严格 1:1，删描述符会让「公开方法无描述符」这一未经 dsh 验证的状态上线，得不偿失
-- 去掉入口的真机验证（CDP 驱动）：菜单现在只剩 `["打开设置","登出"]`；把组织 `--- 系统 ---` → `nexusai` → `--- 系统 ---` 往返，技能与连接器计数随之变化并复原 —— 系统组织 `技能(1) / 远程获取·NexusAgent Builder(5)`（博查 / 百炼联网搜索 / 智能问数 / toolbox_databases…），`nexusai` 组织 `技能(0) / 连接器(0)`，切回后计数与卡片名**逐一复原**，说明切组织确实重新拉取了组织维度的数据
+**能力同步**（全部自动：登录成功 / 切换组织 / 带会话启动各跑一遍）
+- 自定义工具（OpenAPI → dsh 工具）、MCP 行（streamable，写 profile patch）、**SSE MCP 桥接**（`src/nexus/mcp-sse.ts` + `src/sync/mcp-tools.ts`：握手 → initialize → tools/list → tools/call，按需重连；工具名 `<prefix>__mcp__<server>__<tool>`，中文服务名用短哈希防撞）
+- `capabilities.sync()` 内部三步各自 try/catch 隔离，单步失败不影响其余
+- 实测：agent 在新会话真的调用了桥接工具（远端 403「需要 token」，证明链路通）
+- 头像菜单里的手动「同步能力」入口已删（因为同步全自动）；宿主 `Capabilities.sync()` 与它的 Remote 描述符**保留**（宿主 17 个公开方法 ↔ 17 条描述符严格 1:1，删描述符会引入 dsh 未验证状态）
 
-## 技能页搜索框按来源分开（2026-10-09）
-用户报：技能页的搜索框不管在「本地」还是「远程获取」，搜的都是 SkillHub。原因：输入框一直绑在 `hubKeyword`（SkillHub 的关键词），且回车会**切到 SkillHub 来源**。
-修法（`NexusaiWorkbench.tsx`）：
-- 每个来源**各自一个搜索词**（`hubKeyword` / `localQuery` / `remoteQuery`），输入框按当前来源绑定；切换来源时各自保留、互不串
-- 占位符随来源变化：`搜索本地技能` / `搜索技能`（SkillHub）/ **`搜索远程技能 · <品牌>`**（与来源标签同款动态拼接，品牌为空时退回 `搜索远程技能`）
-- **只有 SkillHub 走服务端搜索**（回车 + 分类芯片）；本地与远程都是**本地过滤**（匹配 name/description/path 与 name/description/author，大小写不敏感），无匹配时显示「没有匹配的技能，换个关键词试试」
-- 去掉了"在本地/远程打字回车就跳去 SkillHub"的行为（那正是串味的根源）
+## 4. 架构与关键接缝
 
-真机验证：本地 21 条 → 输入 `ppt` 得 5 条（baoyu-slide-deck / html-ppt / office-pptx / ppt-generator / pptx）；输入 `zzzz` 显示无匹配提示；远程（1 条 web-search）输入 `zzzz` 列表清空并提示无匹配、输入 `web` 命中；占位符三态分别为 `搜索本地技能` / `搜索技能` / `搜索远程技能 · NexusAgent Builder`；切 SkillHub 时输入框为空、24 张卡、搜 `excel` 走服务端；各来源搜索词互相独立、切回来还在。
-
-⚠️ 教训（本次踩到）：远程分支的过滤**第一次没生效**，原因是我的脚本化替换锚点写错、又没断言，于是**静默没改**（渲染仍是 `skills.map`）。凡是脚本改代码，都应在替换后 `assert '<新片段>' in s` 复核。
-
-## 启动器对齐 dsh 原生账号菜单（2026-10-09）
-dsh 原生的头像菜单（`packages/client/ui-settings-account/src/client/AccountMenu.tsx`，注册在 `settings.launcher`）其实有：**设置（带快捷键提示）/ 意见反馈（飞书问卷，prefill uid+版本+设备）/ 退出登录（先查运行中任务再弹确认框）**，外加会话失效 toast、模型需登录 toast、充值赠送卡片，头像取 `profile.avatarUrl`，设置里还有「账号与余额」面板。而我们这边 **`ui-settings-account` 在 dev home 就是 `disabled: true`**，原生菜单根本不渲染（`priority: -1` 只是第二道保险）。
-于是按用户要求补齐其中两项（其余——意见反馈指向 DeepSeek 问卷、余额面板、赠送卡片——不适用于 NexusAI，故意不补）：
-1. **快捷键提示**：接住 owner props 里的 `settingsShortcut`，透传给菜单项 `shortcut` → 项上渲染 `⌘ ,` 键帽并带 `aria-keyshortcuts`
-2. **登出确认框**：`Modal` + 三态文案；判定用 `runtime.hasRunningTasks()`（读客户端 `sessions.list` 快照的 `running`，`phase !== 'ready'` → `'unknown'`）。**没有**照搬原生那个 `remote.account.hasRunningTasks()`（那是 DeepSeek 账号专属 RPC，我们不该依赖）
-
-真机验证（CDP，重启后）：
-- 菜单项文案 = `打开设置 ⌘ ,`，`aria-keyshortcuts="Meta+,"`✓
-- 空闲态：点登出弹框，文案「退出登录不会丢失任何数据…」，点「取消」→ 弹窗关闭且**仍为已登录**、组织不变✓
-- **运行中态**：发一条真消息让 agent 跑起来，1.5 秒后开同一条路径 → 文案变「当前有任务正在执行，退出登录会打断它们」✓（任务跑完后同路径又回到空闲文案，说明判定跟的是实时状态）
-- **确认登出真的生效**：点确认 → 弹窗关闭、启动器变「登录」✓；随后 `cp` 回备份凭据 + 重启 → 恢复「已登录：admin」、专家 11 / 技能 1 / 连接器 5、本地 21 / SkillHub 24 / 远程获取·NexusAgent Builder 1 全部复原✓（`logout()` 只清本地不调服务端，故旧 session 仍可用）
-- **头像改圆形**：原本 `border-radius: 50%` 也被 dsh 的 `corner-shape: superellipse(1.5)`（根节点、可继承）画成圆角方块；加 `corner-shape: round` 后整窗截图核对为**正圆**✓（坑第 17 条）。组织胶囊保持 dsh 的 superellipse 风格不动
-
-## 架构与关键接缝
 | 环节 | 实现 |
 |---|---|
 | 授权 flow | `NexusaiAuthService` 注册 `ctx.authorization.registerFlow`（key `nexusai/session`）：captcha → 等提交 → bff login → `session.commit(grant)` |
 | 尝试状态机 | initializing/waiting-input/verifying/committing/succeeded/cancelled/failed，`@Remote({mode:'stream'}) watch` 下发 |
-| 凭据 | flow 唯一提交者（`nexusai/session`）；`nexusai/endpoint` 存 base url 覆盖；401 → api-client `persist(undefined)` → credentials 广播 `record-updated` → auth 清缓存/翻转视图/`sessionLost()` 清理注册并提示 |
-| 客户端 fiber | mount/consumer 双 fiber：顶层只 inject 基础服务并 `$mount`，消费者 `ctx.plugin({inject:['remote.nexusaiAuth','remote.nexusaiCapabilities','theme','sessions','remote.skills']})` |
+| 凭据 | flow 是唯一提交者；`nexusai/endpoint` 存 base url 覆盖；401 → api-client `persist(undefined)` → credentials 广播 `record-updated` → auth 清缓存/翻视图/`sessionLost()` |
+| 客户端双 fiber | mount/consumer：顶层只 inject 基础服务并 `$mount`，消费者 `ctx.plugin({inject:['remote.nexusaiAuth','remote.nexusaiCapabilities','theme','sessions','remote.skills']})`（避免自死锁） |
 | 状态共享 | 一条 watch 流 → 共享快照 store → `useNexusai(selector)` |
-| 本地读取（非 Remote） | `runtime.hasRunningTasks()` 直接读 dsh 客户端 `sessions.list` 快照的 `running`（`phase !== 'ready'` 返回 `'unknown'`）——刻意不走 Remote，免得给宿主加描述符 |
-| Typert Remote | 手写描述符 **29 条**（`client/remote.ts`） |
-| 槽位 | `sidebar.panellist` + `main`（键控面板 `nexusai`）+ `settings.launcher`（priority -1 遮蔽内置）+ **`sidebar.brand.mark` / `sidebar.brand.name`**（single/root，官方品牌槽）；**`settings.section` 已按要求删除**（组织切换挪到左下角） |
+| 本地读取（非 Remote） | `runtime.hasRunningTasks()` 直接读 dsh 客户端 `sessions.list` 快照的 `running`（`phase !== 'ready'` → `'unknown'`）——刻意不加 Remote 描述符 |
+| 结论：工具数就是连通性的唯一来源 | dsh 不暴露 mcp-client 实例的连接状态，所以「绿/红点」只能以**工具是否注册**为准：绿=有工具；灰=已关闭；红=没工具（**可能是连不上，也可能是服务端本来就没给工具**——远程的 `百炼联网搜索` 就是后者，直连 curl 该 endpoint 返回 `{"tools":[]}`）。红点的 title 因此写「未连通或没有提供工具」 |
+| 工具清单读取 | `src/sync/connector-tools.ts` 读 `ctx.tools.schemas()`（dsh 注册表，模型同源）：行式连接器按 `mcp__<serverName>__` 前缀匹配，桥接式按桥记录的 `{rawName, dshName}` 精确匹配；远程卡片用目录 id，宿主折算成我们写的那行 |
+| 连接器行 | `<profile>/cordis.patch.yml` 里的 mcp-client 行：**NexusAI 的 `nexusai-mcp-*`**（登出清）与**用户自定义 `custom-mcp-*`**（永不清）分属两个 insert 项；共用 `src/sync/patch-file.ts` 的保注释 + 原子写 |
+| 桌面 preload 桥（可用接缝） | `window.__DSH_HOST_PATHS__.pathFor(file)` → 选中项的绝对路径；`window.__DSH_DIRECTORY_PICKER__.pick()` → 原生**目录**选择器。都出自 `apps/desktop/src/preload-app.ts`，contextBridge 冻结、只读不可改写 |
+| Typert Remote | 手写描述符 **32 条**（`client/remote.ts`）；宿主 `capabilities` **20 公开方法 ↔ 20 描述符**（曾有一条孤儿描述符 `listLocalSkills`：无方法、无调用者，已删） |
+| 槽位（5 个） | `sidebar.panellist` + `main`（键控面板 `nexusai`）+ `settings.launcher`（priority -1 遮蔽内置账号菜单）+ `sidebar.brand.mark` / `sidebar.brand.name`；`settings.section` 已按要求删除（组织切换挪到左下角） |
+| 构建 | `scripts/build.mjs`：esbuild 双产物（宿主 ESM / 客户端 CJS + `__ModuleLoader__` 包裹） |
 
-## 文件地图
+## 5. 文件地图
+
 ```
 src/                        宿主半
   index.ts                  apply：装配 + inject ['credentials','tools','authorization'] + LocalSkills / SkillHubClient / McpSseToolRegistry
   config.ts                 行配置（baseUrl、aesKey/aesIv、mcp.*、skills.*、skillhub.*、profilePatchFile…）
   service/auth.ts           登录服务（flow/状态机/watch/品牌+dsh 版本/连通测试/组织切换/会话丢失处理）
-  service/capabilities.ts   能力 Remote：列表/同步（工具·MCP 行·SSE 桥接各自容错）/下载/技能详情预览/本地技能操作
+  service/capabilities.ts   能力 Remote：列表/同步（三步各自容错）/下载/技能详情预览/本地技能操作（含上传安装）
   nexus/api-client.ts       bff 客户端（可变 base、/service/api 前缀、envelope 解码、assetUrl、401 语义）
   nexus/model.ts            接口类型（含导入 MCP、CustomInfoResponse 品牌全字段）
   nexus/skillhub.ts         SkillHub 客户端（搜索/分类/详情/安装/预览；canonicalName 唯一标识）
@@ -82,95 +151,178 @@ src/                        宿主半
   sync/mcp-list.ts          两套 MCP 目录归一（创建 + 导入，判定 connectable）
   sync/mcp-tools.ts         SSE MCP 工具注册（JSON Schema → dsh 参数；名字防撞；按需重连）
   sync/mcp-rows.ts          mcp-client 行写入（YAML 保注释 + 原子写；isSeq 判定）
-  sync/local-skills.ts      本地技能启用/关闭（改名）/扫描/读取/删除（路径守卫）
+  sync/local-skills.ts      本地技能：启用/关闭（改名）/扫描/读取/删除（路径守卫）/安装（按请求或按路径；校验 name 类型+语法；staging 换入）
+  sync/patch-file.ts        profile patch 的共用读写（保注释、原子 0600、解析失败即拒绝、serverName 生成）
+  sync/connector-rows.ts    自定义连接器行（custom-mcp-*，与 NexusAI 行分开的 insert 项，登出不清）
+  sync/mcp-bundle.ts        DXT/MCPB 包：manifest 校验、user_config 表单字段、变量替换、平台覆盖、解包安装
+  sync/sse-connectors.ts    自定义 legacy-SSE 连接器清单（JSON，原子写；enabled/超时/请求头；`bridgeInputOf` 是唯一映射入口）
+  sync/connector-tools.ts   连接器 → 工具清单（读 dsh 注册表；行式按前缀、桥接按记录名）
+  sync/connector-rows.ts    另含 `connectorTimeoutMs()`：超时（秒）→ 毫秒预算的唯一换算处
+  sync/mcp-rows.ts          另含 `setEnabled`：写/清行的 `disabled` 标志（dsh 的插件开关同一机制）
+  service/connector-author.ts  三条录入路径的解析与落行（快速/JSON/包），供 capabilities 调用
   sync/{skills,endpoint-store,session-store,openapi}.ts
 client/                     浏览器半
-  index.ts                  双 fiber + 快照 store + 6 个槽位注册 + controller
-  face.ts / remote.ts       DTO / 29 条 Typert 描述符 / locales.ts 中英字典
-  NexusaiWorkbench.tsx      三选项卡工作台（详情页、本地开关菜单、SkillHub 列表详情、连接器卡片）
+  index.ts                  双 fiber + 快照 store + 5 个槽位注册 + controller（auth/capabilities/runtime/hooks）
+  face.ts / remote.ts       DTO / 29 条 Typert 描述符 / locales.ts 中英字典（135 key，其中 18 个已无引用）
+  NexusaiWorkbench.tsx      三选项卡工作台（详情页、本地开关菜单、SkillHub 列表详情、连接器卡片、＋添加技能菜单与上传弹窗）
   NexusaiSignInDialog.tsx   登录弹窗（品牌/服务器地址/校验/错误位置/失败重发）
-  NexusaiLauncher.tsx       左下角入口（账号名 + 组织胶囊 + 菜单 = 打开设置 ⌘, / 登出 + 登出确认框）
-  NexusaiBrand.tsx          侧栏品牌两个槽位的贡献（远程 mark/名字/版本；默认 NexusAI DSH + 节点图 mark）
+  NexusaiLauncher.tsx       左下角入口（圆形头像 + 账号名 + 组织胶囊 + 菜单 + 登出确认框）
+  NexusaiBrand.tsx          侧栏品牌两槽贡献（远程 mark/名字/版本；默认 NexusAI DSH + 节点图）
   NexusaiPanelIcon.tsx      侧栏图标（工具箱字形）
 scripts/
-  build.mjs                 esbuild 双产物（宿主 ESM / 客户端 CJS + ModuleLoader 包裹）
+  build.mjs                 esbuild 双产物
   check-dsh-version.mjs     版本基线检查（npm run check:dsh）
-  verify/cdp-eval.mjs       CDP 驱动运行中的桌面端（读 DSH_CDP_PORT，默认 9222）
+  verify/cdp-eval.mjs       CDP 驱动运行中的桌面端（读 DSH_CDP_PORT，按 dsh-app 选目标）
+  verify/local-skills-paths.mjs  技能按路径安装的回归套件（16 例；esbuild 打包成 CJS + 临时技能根）
+  verify/connector-authoring.mjs  自定义连接器回归套件（66 例；临时 $DSH_HOME，覆盖包解析/替换/JSON 形状/表单解析/SSE 存储/开关两路/超时与表头/无变化不重写/工具 schema DSL 一致性）
   dev/install-into-dsh.mjs  新机器接线（构建 + 软链 + patch 行，幂等）
   dev/brand-dev-app.mjs     dev 包改名 + 换访达/Dock 图标（取服务端品牌，幂等）
-  dev/{center-window.mjs,start-desktop.sh,watch-window.sh}   窗口摆放（macOS 专属，需辅助功能权限）
+  dev/{center-window.mjs,start-desktop.sh,watch-window.sh}  窗口摆放（macOS 专属，需辅助功能权限）
 dist/windows-trial/         Windows 试用包（一键脚本 + 离线插件包 + 说明；未实测）
 ```
 
-## 红线与坑（务必遵守）
-1. **不改 dsh 源码**；配置只进 dev home 的 `cordis.patch.yml`（应用运行时会改写该文件，手改前先停应用）。宿主 `deepseek-account` 行**永远不禁用**（欢迎窗 RPC 硬依赖，禁用=启动 fatal；禁客户端 `ui-settings-account` 安全）
-2. 改 client/src/patch 后必须重启桌面端；**不要 Page.reload**（会搞挂宿主）
-3. **esbuild 会重命名宿主 Remote 方法的参数**（与外层标识符冲突时）→ Typert 按编译后签名校验，报 `args fields do not match the descriptor`；改参数后 `grep "async <method>(" lib/index.js` 核对
-4. **React 列表 key 必须唯一**：上游「天然主键」不可想当然（SkillHub 的 `publicSlug` 一页内就有重复，曾表现为「筛选失效」→ 改用 `namespace.canonicalName`）
-5. **外部接口空值**不能只判 undefined/''：JSON `null` 与字面量 `"null"` 都出现过（图标裂图）
-6. **yaml 库解析结果是节点类型**（`YAMLSeq`/`YAMLMap`），判断集合要用 `isSeq/isMap`，`Array.isArray` 永远 false
-7. **技能注册表对文件变更的响应不一致**：改名（SKILL.md ↔ .disabled）会刷新目录，**整目录删除不会** → 列表另用 `missingLocalSkills(paths)` 按磁盘核对
-8. **dsh mcp-client 只支持 stdio / streamable-http**：legacy SSE 必须走本插件的桥接；SSE 帧可能是 CRLF，且 Node 的 `fetch` 默认无超时（都要处理）
-9. **dsh 对工具参数 schema 校验严格**：`description` 缺失（undefined）会被拒（`must be lossless JSON data`）
-10. **语言包无法被插件覆盖**：`ctx.locale.register` 对同 namespace+locale 重复注册直接抛错 → 改 Shell 文案只能用官方槽位（侧栏品牌即如此）或改 dsh 源码
-11. **dev 包的 Dock 图标改不动**：Electron 未打包模式用自带图标；`CFBundleIconFile` 只影响访达，名称（plist）与访达图标可改，打包版（isPackaged）不受限；dsh 重建 dev 包后需重跑 `brand-dev-app.mjs`
-12. **凭据磁盘与进程内状态（已用插桩定案）**：干净运行下会话**不会自己消失**——插桩验证 75 秒内无 401、无 `sessionLost`、磁盘记录完好、界面保持已登录。之前几次"磁盘没 session"**是我自己的测试引起的**：把 endpoint 换成另一台服务器（或恢复了对不上服务器的备份）→ 下一次 API 调用 401 → 插件按设计清会话并登出（现在还会在左下角提示「登录状态已失效…」）。恢复登录 = `cp` 回**同服务器**且含 session 的备份 + **重启**；备份时先 `grep -c 'nexusai/session'` 确认里有，且比对 `baseUrl:` 一致
-13. 环境：**9222 常被 WorkBuddy 占用** → dsh 用 `DSH_DESKTOP_RENDERER_DEBUG_PORT=9223` 启动、验证脚本读 `DSH_CDP_PORT`；**同时只跑一个实例**（残留实例占 19387 → 新实例报 `DesktopHostFatalError: 2 required plugins did not activate`）；被强杀的实例留 `Singleton*` 导致秒退（删掉即可）
-14. 权限：截屏看用户屏幕需**屏幕录制**；外部脚本移动窗口需**辅助功能**（两者当前已授权）
-15. dsh 基线 **0.2.0-rc.2**（developer preview）：升级后跑 `npm run check:dsh` + tsc + CDP 回归，再更新 `dshBaseline`
-16. **CDP 目标必须按 `dsh-app` 选**：`/json/list` 里可能有**两个 page 目标**——`devtools://…devtools_app.html`（DevTools 前端，0 个按钮）和 `dsh-app://app/`（我们的界面）。临时探针若按 `url.includes('index.html')` 匹配（永远匹配不到）再回落到「第一个 page」，会**静默驱动 DevTools 前端**，得到「找不到启动器／菜单为空」这类假失败。`scripts/verify/cdp-eval.mjs` 已按 `dsh-app` 选，照抄它的选法
-17. **`border-radius: 50%` 在 dsh 里画不出圆形**：dsh 在根节点设了 `corner-shape: superellipse(1.5)`，该属性**可继承**，所以再正的 50% 圆角也会被描成「圆角方块」（表现为左下角头像不是圆的）。要真圆就在元素上写 `corner-shape: round`（Chromium 计算值归一为 `superellipse(1)`）；注意 `cornerShape` 还不在 csstype 的 `CSSProperties` 里，样式对象要放宽成 `React.CSSProperties & { cornerShape?: string }`。排查用 `getComputedStyle(el).cornerShape`
-18. **截图核对的可靠姿势**：`Page.captureScreenshot` 的 `clip` 按 CSS px 传，但返回图会按 `dpr × scale` 放大（本机 dpr=2），别按像素直接读；最稳是**整窗截图**（不传 clip）再用 `sips -c <高> <宽> --cropOffset <top> <left>` 裁剪，然后放大看。**注意 `--cropOffset 0 0` 等同没传**（sips 会退化成居中裁剪，极易误判），要传 `1 1` 之类非零值。直接改 DOM 做视觉实验后记得还原（React 只 patch 变化的 style key，手改的值不会被自动清掉）
-19. **主面板贴着左上角时必须用框架的「让位」变量**（否则会被窗口 chrome 压住）：dsh 框架（`ui-layout`，契约写在 `packages/client/ui-layout/README.zh.md`）发布两个变量 —— `--dsh-frame-top-clearance`（macOS 恒为 **48px**，Windows 为标题栏高）与 `--dsh-frame-leading-clearance`（**只在侧边栏收起时发布**，macOS **160px** = 红绿灯到 x68 + 控件 x88–152 + 8px 余量；全屏下 84px）。入口型页面（插件管理器/任务管理器/对话）都拿它们做内边距。我们的 `.nexusai-wb` 原先写死 `padding: 24px`，收起侧边栏后内容直接压在「打开侧边栏 / 新建会话」两个悬浮控件和红绿灯下面（表现为那排能力标签与控件重叠）。修法即契约写法：
-    ```css
-    .nexusai-wb { padding: calc(24px + var(--dsh-frame-top-clearance, 0px)) 24px 24px;
-      padding-inline-start: max(24px, var(--dsh-frame-leading-clearance, 0px)); }
-    ```
-    （变量未发布时回落到自身 24px，浏览器里打开也不受影响；右侧不加，避免收起时右边也多出 160px）
-20. **测「被挡住/点不动」必须用真实鼠标事件**：`el.click()` 走不到命中测试（hit testing），被遮挡的按钮照样"点得动"，会漏掉遮挡类 bug。要 `Input.dispatchMouseEvent`（mouseMoved → mousePressed → mouseReleased），并配合 `document.elementsFromPoint(x,y)` 看该点实际落在谁身上
+## 6. 红线（重复一遍，最常见的事故源）
 
-## 验证操作手册
+1. **不改 dsh 源码**；配置只进 dev home 的 `cordis.patch.yml`（应用运行时会改写该文件，**手改前先停应用**）。
+2. 宿主 `deepseek-account` 行**永远不禁用**（欢迎窗 RPC 硬依赖，禁用 = 启动 fatal）；禁客户端 `ui-settings-account` 是安全的（我们现在就禁着）。
+3. 改 client/src/patch 后**必须重启桌面端**；**不要 Page.reload**（会搞挂宿主）。
+4. 不加 Remote 描述符就别改宿主公开方法（宿主 `capabilities` 保持 18 方法 ↔ 18 描述符）。
+
+## 7. 坑（按类别，全部踩过）
+
+### A. 环境与工具链
+1. **9222 常被 WorkBuddy 占用** → dsh 用 `DSH_DESKTOP_RENDERER_DEBUG_PORT=9223` 启动，验证脚本读 `DSH_CDP_PORT`。
+2. **同时只跑一个实例**：残留实例占 19387 → 新实例报 `DesktopHostFatalError: 2 required plugins did not activate`。被强杀的实例会留下 `Singleton*` 锁文件导致秒退（删掉即可）。彻底重启姿势：`pkill -f "Harness Dev.app"` + kill `scripts/dev.ts --skip-build`，确认 `pgrep -f 'Harness Dev'` 为 0、19387/9223 无占用，再起。
+3. **CDP 目标必须按 `dsh-app` 选**：`/json/list` 里有两个 page 目标 —— `devtools://…`（DevTools 前端，0 个按钮）和 `dsh-app://app/`（我们的界面）。探针若按 `index.html` 匹配（永远匹配不到）再回落到「第一个 page」，会**静默驱动 DevTools 前端**，得到「找不到启动器/菜单为空」这类假失败。照抄 `scripts/verify/cdp-eval.mjs` 的选法。
+4. **测「被挡住/点不动」必须用真实鼠标事件**：`el.click()` 走不到命中测试，被遮挡的按钮照样"点得动"，会漏掉遮挡类 bug。用 `Input.dispatchMouseEvent`（mouseMoved → mousePressed → mouseReleased），配合 `document.elementsFromPoint(x,y)` 看该点实际落在谁身上。
+5. **截图核对的可靠姿势**：`Page.captureScreenshot` 的 `clip` 按 CSS px 传但返回图按 `dpr × scale` 放大（本机 dpr=2），别按像素直接读；最稳是**整窗截图**（不传 clip）+ `sips -c <高> <宽> --cropOffset <top> <left>` 裁剪再放大看。**`--cropOffset 0 0` 等同没传**（sips 退化成居中裁剪，极易误判），要传 `1 1`。用 DOM 直接改样式做实验后记得还原（React 只 patch 变化的 key，手改值不会被自动清掉）。
+6. **`DOM.setFileInputFiles` 在本机 Electron 上无效**（返回成功但 `input.files.length` 仍为 0，objectId/nodeId 两种传法都试过）：要测文件上传，就在页面里**自造 FileList** —— `new File([bytes], name)` → `DataTransfer` → `input.files = dt.files` → `input.dispatchEvent(new Event('change', { bubbles: true }))`。夹具字节从 node 侧 base64 注入（免起 HTTP 服务，也不受 CSP 影响）；想模拟「选文件夹」的 `webkitRelativePath`，用 `Object.defineProperty(file, 'webkitRelativePath', { value: 'dir/SKILL.md' })` 影子覆盖即可
+7. 权限：截屏看屏幕需**屏幕录制**；外部脚本移动窗口需**辅助功能**（当前均已授权）。
+8. **模拟拖拽要发全序列**：CDP `Input.dispatchDragEvent` 必须先 `dragEnter` → `dragOver` → 再 `drop`（`data: { items: [], files: [绝对路径], dragOperationsMask: 1 }`）；只发 `drop` 会被丢弃，表现为「拖了但没反应」。另：程序化构造的 `DataTransferItem` **没有** `webkitGetAsEntry()`，所以「拖入文件夹」这条分支只能靠真人从访达拖，自动化只能覆盖「拖入文件」。**CDP 注入的拖拽不带磁盘路径**（`pathFor` 返回空），所以「按路径安装」这条分支在自动化里走不到 —— 要验它得绕开 UI：用 esbuild 单独打包 `src/sync/local-skills.ts`（**打成 CJS**；`yaml` 是 CJS 包，打成 ESM 会死在 `Dynamic require of "process"`），这一步已固化成可重复回归 **`scripts/verify/local-skills-paths.mjs`**（16 例，自带打包到临时 CJS，不依赖桌面端）
+9. 从后台任务启动的 GUI 应用会被一起收走 → 用 `nohup … & disown` 启动。
+10. **CDP 造的 File 没有磁盘路径**：`__DSH_HOST_PATHS__.pathFor()` 对 CDP 注入/程序化构造的 File 返回空串，所以「按路径」的功能（技能导入、DXT/MCPB 选包）在自动化里点不到真实面板 —— 它们的**宿主逻辑**要用独立套件验（见验证手册），UI 侧只能验到"弹窗/入口/按钮状态"。
+11. **空 patch 文件会被写成 flow 风格**：patch 不存在时读到的是 `'[]'`，`yaml` 库把整份文档按 flow 打印（`insert: [{…}]`），与真实 patch 的块风格不一致，也让按行匹配的断言失效 → 两个写入方加完行都设 `document.contents.flow = false`。
+
+### B. dsh 平台行为
+1. **`border-radius: 50%` 画不出圆形**：dsh 在根节点设 `corner-shape: superellipse(1.5)`，该属性**可继承**，所以 50% 圆角也被描成圆角方块（表现为左下角头像不是圆的）。要真圆就在元素上写 `corner-shape: round`（计算值归一为 `superellipse(1)`）；`cornerShape` 还不在 csstype 里，样式对象要放宽成 `React.CSSProperties & { cornerShape?: string }`。排查用 `getComputedStyle(el).cornerShape`。
+2. **语言包无法被插件覆盖**：`ctx.locale.register` 对同 namespace+locale 重复注册直接抛错 → 改 Shell 文案只能用官方槽位（侧栏品牌即如此）或改 dsh 源码。
+3. **esbuild 会重命名宿主 Remote 方法的参数**（与外层标识符冲突时）→ Typert 按编译后签名校验，报 `args fields do not match the descriptor`；改参数后 `grep "async <method>(" lib/index.js` 核对。
+4. **主面板贴着左上角必须用框架的「让位」变量**（否则被窗口 chrome 压住）：框架（`ui-layout`，契约见 `packages/client/ui-layout/README.zh.md`）发布 `--dsh-frame-top-clearance`（macOS 恒 48px）与 `--dsh-frame-leading-clearance`（**只在侧边栏收起时发布**，macOS 160px = 红绿灯 + 悬浮控件 + 8px 余量；全屏 84px）。入口型页面都拿它们做内边距：
+   ```css
+   .nexusai-wb { padding: calc(24px + var(--dsh-frame-top-clearance, 0px)) 24px 24px;
+     padding-inline-start: max(24px, var(--dsh-frame-leading-clearance, 0px)); }
+   ```
+5. **dsh 工具参数是受限 DSL，不是完整 JSON Schema**（`packages/core/tools/src/schema.ts`）：每个节点只允许自己的词汇表 —— object：`type`/`properties`/`additionalProperties`；array：`type`/`items`；标量：`type`/`enum`/`const`；另有 `oneOf` 与注解 `description`/`title`/`default`/`examples`。**`required` 只允许出现在属性层**（数组 `items`、`oneOf` 分支里一律拒绝），且任何节点**不能带值为 undefined 的键**（报 `… annotation must be lossless JSON`）。我们的 `toValueSpec` 曾两处违规（嵌套对象照抄 `required`、嵌套节点写 `description: undefined`）—— 表现为真实第三方 MCP（用户自己的 modelscope 连接器，17 个工具）桥接时报错、工具一个都注册不上。现已在转换器出口统一处理：嵌套 required 改为写进描述的「必填字段：…」，undefined 键递归剪掉
+6. **dev 包的 Dock 图标改不动**：Electron 未打包模式用自带图标；`CFBundleIconFile` 只影响访达（名称 plist 与访达图标可改），打包版不受限；dsh 重建 dev 包后需重跑 `brand-dev-app.mjs`。
+7. **dsh 不能按进度重置超时**：mcp-client 里没有任何 `progress`/`_meta.progressToken` 处理（已核对源码），`toolCallTimeoutMs` 是**一次性**预算，进度通知不会延长它。因此没有「长时间运行」开关（2026-10-10 已整体移除）—— 需要长任务就把「超时」直接填大。想真正"收到进度就续命"必须改 dsh 源码（红线不允许）
+8. **dsh 的 mcp-client 行能写什么**（写连接器/自定义 MCP 必看，源码 `packages/mcp/mcp-client/src/index.ts`）：只有两种传输 —— `stdio`（`command` 必填、`args[]`、`env{}`、`cwd`、`toolCallTimeoutMs`、`failOnStartupError`）与 `streamable-http`（`url` 必填、`headers{}`）；`serverName` 限 `[A-Za-z0-9_-]{1,32}` 且**必须在活实例间唯一**（legacy SSE **没有**这个传输 —— NexusAI 的 SSE 服务器与**用户自定义的 SSE 连接器**都靠本插件桥接成 dsh 工具；区别是前者来自目录、后者存在 `<dshHome>/mcp-sse-connectors.json` 并在每次 sync 时并入桥的输入）（工具名 `mcp__<serverName>__<tool>`）；行本身只有 `id`/`name`/`config`（**没有显示名字段**，所以我们的自定义连接器把显示名放进 id：`custom-mcp-<名字>`，面板读 id 后缀当标签）。`env` 是**叠加在净化过的环境上**，且 dsh **不走 shell** 启动子进程 → 命令要用绝对路径（PATH 里的 `npx`/`node` 可能找不到）；我们的 DXT/MCPB 安装对 `node` 包自动换成 `process.execPath` + `ELECTRON_RUN_AS_NODE=1`（用本应用自带的运行时，不依赖系统 node）
+9. **技能名与前置信息是硬约束**（写上传/导入类功能必看）：`packages/skill/skill-filesystem` 只认 `<root>/<目录>/SKILL.md`（或根下裸 `.md`），且要求 YAML 前置信息含 **name + description**，name 还要满足 `packages/skill/skill` 的 `^[a-z0-9]+(?:-[a-z0-9]+)*$`（**kebab-case ASCII**）。任何一条不满足 → **只写一条 logger 警告、技能被忽略**（界面完全不显示，磁盘上却躺着文件）。所以上传功能必须拦：中文名「测试上传技能A」就是被这条静默丢弃的。**还有一条更隐蔽**：dsh 用 YAML 解析后要求 name/description 是 **string** —— `name: 12306`（未加引号）会被解析成**数字**，同样被静默忽略（这台机器的 skills/ 里现在就躺着这样一个技能 `12306`，改成 `name: "12306"` 即可恢复）。本插件现已按 YAML 类型 + kebab-case 双重校验，并在错误里直接提示加引号
+
+### C. 数据与接口
+1. **React 列表 key 必须唯一**：上游「天然主键」不可想当然（SkillHub 的 `publicSlug` 一页内重复，曾表现为「筛选失效」）→ 统一用 `namespace.canonicalName` 作身份。
+2. **外部接口空值**不能只判 undefined/''：JSON `null` 与字面量 `"null"` 都出现过（曾导致图标裂图）。
+3. **yaml 库解析结果是节点类型**（`YAMLSeq`/`YAMLMap`）：判断集合要 `isSeq/isMap`，`Array.isArray` 永远 false（曾导致 patch 里 231 行重复累积）。
+4. **技能注册表对文件变更响应不一致**：改名（`SKILL.md` ↔ `.disabled`）会刷新目录，**整目录删除不会** → 列表另用 `missingLocalSkills(paths)` 按磁盘核对。
+5. **SSE 帧可能是 CRLF**，且 Node 的 `fetch` 默认无超时（一个不可达的服务器会挂住整个 sync）→ 归一 + `AbortSignal.timeout`。
+
+### D. 流程纪律
+1. **脚本化改代码必须断言**：曾因为锚点写错又没断言，替换静默失败（渲染仍是旧的 `skills.map`）。改完 `assert '<新片段>' in s` 复核。
+2. **凭据磁盘/进程内状态一致**（已用插桩定案）：干净运行下会话**不会自己消失**。历史上几次"磁盘没 session"都是测试自己造的：把 endpoint 换成另一台服务器（或恢复了不匹配的备份）→ 下次调用 401 → 插件按设计清会话并登出。恢复 = `cp` 回**同服务器**且含 session 的备份 + **重启**；备份前先 `grep -c 'nexusai/session'` 确认，并比对 `baseUrl:` 一致。
+3. **环境：dsh 基线 0.2.0-rc.2（developer preview）**：升级 dsh 后要跑 `npm run check:dsh` + tsc + CDP 回归，再更新 `dshBaseline`。
+
+## 8. 改动后的标准流程
+
 ```bash
-# 起桌面端（9222 可能被占）
-cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 pnpm run start:desktop
-# 驱动/检查运行中的页面（自动找 dsh-app 目标）
+# 1) 改代码（client/*.tsx|ts、src/**）
+# 2) 静态检查 + 构建
+npx tsc --noEmit && node scripts/build.mjs && npm run check:dsh
+# 3) 重启桌面端（client 改动必须重启，禁止 Page.reload）
+pkill -f "Harness Dev.app"; sleep 1; kill $(pgrep -f "scripts/dev.ts --skip-build") 2>/dev/null; sleep 4
+cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup pnpm run start:desktop > /tmp/dsh-9223.log 2>&1 & disown
+sleep 60   # 等 "dsh web: http://127.0.0.1:19387/?token=..."
+# 4) 真机验证（CDP：数值 + 命中测试；必要时整窗截图裁剪核对）
 cd ~/GoLandProjects/nexusai-harness && DSH_CDP_PORT=9223 node scripts/verify/cdp-eval.mjs "<js表达式>"
-# 构建与静态检查
-node scripts/build.mjs && npx tsc --noEmit && npm run check:dsh
-# 新机器接线 / 改名换图标 / 窗口居中
-node scripts/dev/install-into-dsh.mjs
-node scripts/dev/brand-dev-app.mjs            # 可选 --name X --icon path/to.png --bg 111113
-./scripts/dev/start-desktop.sh                # 或 ./scripts/dev/watch-window.sh center
+# 4b) 技能「按路径安装」的回归：不需要桌面端，自带打包 + 临时目录，16 例
+node scripts/verify/local-skills-paths.mjs
+# 4c) 自定义连接器录入 / 开关 / 工具 schema 一致性的回归（不需要桌面端；用临时 $DSH_HOME）
+node scripts/verify/connector-authoring.mjs
+# 5) 更新本文件（改了哪些文件、验证到了什么、卡在哪、下一步）
 ```
 
-## 换机器 / 新环境部署
-- **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs`（幂等：构建 + 软链 + patch 行）→ 启动 → 登录
-- **不带源码（体验用）**：本机 `pnpm run package:desktop:mac:arm64` 出 dsh 安装包 + `npm pack` 出插件 tgz → 新机器装应用 → 侧栏「插件」页安装（dsh 支持 registry / 本地路径 / tgz / git 四种来源）→ 在 profile 的 user 层 patch 补 `nexusai` 行 → 登录
-  - ⚠️ **Windows 包只能在 Windows 构建机/CI 上打**（dsh 打包脚本硬性要求，且预检需 VS C++ 工具链；GitHub release 无官方安装包）
-- Windows 试用包见 `dist/windows-trial/`（一键 dev 接线 ps1 + 离线插件包 + 说明；**未实测**，PowerShell 未做语法校验）
+驱动页面的常用套路（写在临时 `*.mjs` 里，照抄 `scripts/verify/cdp-eval.mjs` 的连接骨架）：
+- 选目标：`list.find(t => t.type === 'page' && t.url.includes('dsh-app'))`
+- 求值：`Runtime.evaluate` 必须带 `returnByValue: true, awaitPromise: true`（异步 IIFE 否则返回 `{}`）
+- 取结果：响应形状是 `{ result: { result: { value }, exceptionDetails? } }`，写错层级会拿到 `undefined`
+- 真点击：`Input.dispatchMouseEvent`
 
-## 自定义应用名 / 图标（2026-10-09）
+其他脚本：
+```bash
+node scripts/dev/install-into-dsh.mjs          # 新机器接线（构建 + 软链 + patch 行，幂等）
+node scripts/dev/brand-dev-app.mjs             # 改 dev 包应用名 + 访达图标（可选 --name X --icon p.png --bg 111113）
+./scripts/dev/start-desktop.sh                 # 或 ./scripts/dev/watch-window.sh center  # 窗口摆放（macOS）
+```
+
+## 9. 换机器 / 新环境部署
+
+- **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
+- **不带源码（体验用）**：本机 `pnpm run package:desktop:mac:arm64` 出 dsh 安装包 + `npm pack` 出插件 tgz → 新机器装应用 → 侧栏「插件」页安装（支持 registry / 本地路径 / tgz / git 四种来源）→ 在 profile user 层 patch 补 `nexusai` 行 → 登录
+- ⚠️ **Windows 包只能在 Windows 构建机/CI 上打**（dsh 打包脚本硬性要求，预检还需 VS C++ 工具链；GitHub release 没有官方安装包）
+- Windows 试用包见 `dist/windows-trial/`（一键 ps1 + 离线插件包 + 说明；**未实测**）
+
+## 10. 自定义应用名 / 图标
+
 | 层面 | 来源 | 可否自定义 |
 |---|---|---|
-| Dock / 菜单栏 / 访达的**应用名** | dev 包 plist 硬编码 `Harness Dev` | ✅ 改生成出来的 .app（`scripts/dev/brand-dev-app.mjs`） |
-| **访达里的图标** | dev 包继承 Electron 图标 | ✅ 同上（下载服务端 logo → sips 补方 → iconutil → icns → 重签名） |
-| **Dock 图标（dev）** | Electron 未打包模式自带图标 | ❌ 需 `app.dock.setIcon()`（改 dsh）；打包版正常 |
-| 应用内品牌（侧栏左上角） | 官方槽位 `sidebar.brand.mark/name` | ✅ 已做（远程 → 默认 NexusAI DSH + 节点图） |
-| 打包版 `productName` / 图标 | dsh 源码硬编码 `DeepSeek Harness` / `resources/icon-macos.png` | ❌ 需产品化（自有壳）或改 dsh |
+| Dock / 菜单栏 / 访达的**应用名** | dev 包 plist 硬编码 `Harness Dev` | ✅ `scripts/dev/brand-dev-app.mjs` |
+| **访达里的图标** | dev 包继承 Electron 图标 | ✅ 同上（服务端 logo → sips 补方 → iconutil → icns → 重签名） |
+| **Dock 图标（dev）** | Electron 未打包模式自带 | ❌ 需 `app.dock.setIcon()`（改 dsh）；打包版正常 |
+| 应用内品牌（侧栏左上角） | 官方槽位 `sidebar.brand.mark/name` | ✅ 已做 |
+| 打包版 `productName` / 图标 | dsh 源码硬编码 | ❌ 需产品化（自有壳）或改 dsh |
 
-## 待办
+## 11. 待办
+
 | 优先级 | 任务 | 状态 |
-|--------|------|------|
-| 暂缓 | **发行版 / 产品化**：薄载体（自有 Electron 壳 ≈250 行 + 构建期组装 profile + electron-builder；macOS 本机出、Windows 走 CI windows runner）+ 插件自带 `dsh.bundle.patch` 与配置表单；产物目标 ~500MB；品牌 NexusAgent Builder、占位图标、不签名、窗口默认居中 | ⏸ 用户暂缓 |
+|---|---|---|
+| 暂缓 | **发行版/产品化**：薄载体（自有 Electron 壳 ≈250 行 + 构建期组装 profile + electron-builder；macOS 本机出、Windows 走 CI windows runner）+ 插件自带 `dsh.bundle.patch` 与配置表单；产物目标 ~500MB；品牌 NexusAgent Builder、占位图标、不签名、窗口默认居中 | ⏸ 用户暂缓 |
 | 暂缓 | Windows 试用包实测 | ⏸ 用户暂缓 |
 | 暂缓 | SSE 桥接的凭据跟进（智能问数需 token：服务端 `mcp_start` 换取 / 插件配置默认 token） | ⏸ 用户暂缓 |
 | 暂缓 | agent 实调 NexusAI 自定义工具（MCP 侧已验过整条链路） | ⏸ 用户暂缓 |
 | 杂 | 「删除技能」是否改移入废纸篓；`package.json` 的 `types` 指向不存在的 d.ts | ⏸ 用户暂缓 |
-| 可选 | 强登录门槛：shell.overlay 全屏拦截层（未实施） | ⬜ |
+| 可选 | 强登录门槛：`shell.overlay` 全屏拦截层（未实施） | ⬜ |
 
-### 清洁项
-- 测试用临时技能（zz-scratch-skill / mm-scratch-skill / aa-delete-target / zz-bystander / zz-tag-check）均已删除；误删的 `indiv-ebandao-dev-expert` 已重装
-- 代码内无 `TEMP-DEBUG` 残留（已全量 grep 确认）；`mcp-rows` 重复行已收敛为 1 个 insert
-- **语言包有 18 个已无引用的 key**（`nav`/`tabExpertsDesc`/`tabSkillsDesc`/`tabConnectorsDesc`/`skillhubHint`/`search`/`featuredSkills`/`searchResults`/`shuffle`/`mcpSseTools`/`pathCopied`/`captchaPlaceholder`/`loggedInAs`/`expires`/`org`/`tools`/`mcpServers`/`notLoggedIn`），是历次删 UI 的残留；已确认无动态拼 key 的用法，可安全删（本次未删，避免超出改动范围）
-- 应用当前状态：endpoint `http://agent.nexusai.net.cn:8081`、已登录 admin、专家 11 / 技能 1 / 连接器 5、侧栏品牌 `NexusAgent Builder ｜ v1.5.0.3`
-- 可用的凭据备份（含 session）在 `/tmp/creds-*.yaml`（临时目录，重启机器会清）；`/tmp/creds-presignout-1009-1616.yaml` 是 2026-10-09 登出验证前所备、**已验证可完整还原登录态**（`logout()` 只清本地，不调服务端，所以旧 session 仍然可用）。恢复手法见「坑」第 12 条
+## 12. 清洁项 / 事故记录
+
+- 测试用临时技能（zz-scratch-skill / mm-scratch-skill / aa-delete-target / zz-bystander / zz-tag-check）已删；误删的 `indiv-ebandao-dev-expert` 已重装
+- 代码内无 `TEMP-DEBUG` 残留；profile patch 里 mcp 行已收敛为 1 个 insert
+- 删除了一条**孤儿 Remote 描述符** `listLocalSkills`（无宿主方法、无客户端调用者）；上传功能验证用的测试技能（upload-folder-test / upload-zip-test / upload-md-test）已全部清理
+- **语言包有 16 个已无引用的 key**（`nav`/`tabExpertsDesc`/`tabSkillsDesc`/`tabConnectorsDesc`/`skillhubHint`/`search`/`featuredSkills`/`searchResults`/`shuffle`/`pathCopied`/`captchaPlaceholder`/`loggedInAs`/`expires`/`org`/`tools`/`mcpServers`/`notLoggedIn` 中除已删者外），是历次删 UI 的残留；已确认无动态拼 key，可安全删。随「文字旗标→状态点」一起删掉的 6 个（`mcpSseOnly`/`mcpSseHint`/`mcpSseBridged`/`mcpSseBridgedHint`/`mcpSseTools`/`connectorParamType`）已清理
+- **可用凭据备份**：`/tmp/creds-presignout-1009-1616.yaml`（含 session，**已验证能完整还原登录态** —— `logout()` 只清本地不调服务端，旧 session 服务端仍有效）。恢复手法见坑 D2。注意 `/tmp` 重启机器会清
+- 事故：曾误报「MCP 行没写入」（插桩证明写入了）；曾因锚点错+无断言静默改无效；曾把组织切换探针打到 DevTools 前端得出假失败 —— 三条都已进坑表
+
+## 13. 近期变更（倒序，压缩）
+
+| 日期 | 变更 | 验证 |
+|---|---|---|
+| 10-10 | **删除「长时间运行模式」**（用户拍板：dsh 只有一个超时字段、无进度重置，开关无法在运行时生效）：移除 `sync/connector-prefs.ts` 整个存储、表单开关 UI、2 个语言键、`CONNECTOR_LONG_RUNNING_SECONDS`；超时保持「秒，默认 60，原样写」 | tsc + build + check:dsh + 套件全绿（长任务 = 直接填大超时） |
+| 10-09 | **＋添加技能**：两项菜单（查找技能 → 切 SkillHub+聚焦搜索框 / 上传技能 → 文件夹·zip·md 弹窗，校验 + 同名覆盖） | 三路径真机上装并确认出现在本地列表；拒绝路径（无 SKILL.md / 无前置信息 / 中文名）逐个核对；覆盖安装后磁盘内容替换、旧文件移除 |
+| 10-09 | 导入技能弹窗按参考图重做（虚线拖拽区 + 自动安装开关 + 文件要求），新增拖拽上传与文件夹展开 | 真实拖拽事件：高亮 → 拖入 .zip 装上、拖入 .md 装上；自动安装勾选后免点安装；同名时仍停下确认 |
+| 10-09 | **连接器连通状态点 + 打开/关闭开关**（模仿技能卡片布局）：绿/红/灰点放在名字前，开关走 dsh 自己的 `disabled` 机制（行）或存储标志（SSE） | 用户连接器绿点「已连通 · 17 个工具」；死命令的连接器红点；关掉一个可用连接器 → 灰点 + 工具数 0（实例被回收），打开 → 绿点 + 工具回来；SSE 连接器同样三态；套件补 8 例开关断言 |
+| 10-10 | **把「超时」与「长时间运行」拆成两个独立参数**（用户纠正）：开关不再改写超时输入框、行式连接器的开关不再从预算反推，开关存进独立 JSON；`connectorTimeoutMs()` 收窄成只认秒数 | 实测：填 90 → 打开开关 → 超时仍是 90；再改成 45 → 开关仍是开。套件改为断言"开关不参与数字"与"改一项不动另一项" |
+| 10-10 | **连接设置的样式按参考图重做**：一项一行（左标签 + 圈问号，右控件），超时是右对齐数字框 + 外侧 `s` 单位，行间细线；说明收进「点击问号」的气泡（primitives `Tooltip openOnClick`） | 实测两行结构（switch / 右对齐 input + `s`、0.5px 分隔线）、问号点击弹说明气泡，截图核对 |
+| 10-10 | **连接设置**：超时（秒，默认 60）、长时间运行模式（上限抬到 10 分钟）、SSE 请求头；JSON 导入认 `timeout`；编辑全预填 | 夹具服务器**实际收到** `x-fixture: hello` + `authorization: Bearer t0ken`（含握手与 POST）；6 秒预算下 8 秒的工具调用报 `timed out after 6000ms`，改成 20 秒后同一调用 `slow-echo: ok`；打开长时间开关表单自动变 600；套件 63 例全绿 |
+| 10-10 | 修「设置只在一条路径生效」：新增设置后 `refreshSse`（编辑/新增走的那条）漏传 → 超时看似无效。现两条路径共用 `bridgeInputOf()` | 先用真实夹具复现（6s 预算下 8s 调用居然成功），修完复测超时生效 |
+| 10-10 | 本地连接器卡片的「…」与开关**样式对齐技能卡片**：按钮改用 `local-more`（原来用的 `card-more` 没有任何 CSS → 带浏览器默认灰底）、菜单与开关同放一个 `local-actions`、绿色开关规则从 `.local-card` 收窄改为全局 | 实测几何与技能卡片一致（26×26、radius 8、透明底、与 36 宽开关间距 6px），开关也是产品绿 + 白旋钮；截图对比通过 |
+| 10-09 | **同步不再无谓重写行**：`mcp-rows.write()` 先比对现有行，完全一致就不写文件 | 起因：切组织触发同步 → 重写 → dsh 重载 patch → 每个 MCP 实例卸载重连，约一分钟内全部显示未连通。现已跳过无变化写入，套件加 3 例 |
+| 10-09 | **连接器工具详情 + 编辑/删除**：详情页列工具（名字/说明/参数 schema + 复制全名）；卡片「…」菜单支持编辑（原地替换）与删除（二次确认，仅限本页添加的） | 夹具详情列出 2 个工具与参数（`text string 必填`）；编辑预填正确、改名后无重复；删除二次确认生效；**用户自己的 modelscope 连接器从「SSE 未接入」变为「已桥接」并列出 17 个工具** |
+| 10-09 | 修两处 schema 转换违规（嵌套 `required`、`description: undefined`）—— 真实第三方 MCP 工具全部注册失败的真因 | 套件新增「按 DSL 词汇表逐节点核对」一节；用用户的真实连接器端到端确认 |
+| 10-09 | **自定义 legacy SSE**：快速创建加 `sse` 传输、JSON 的 `type:"sse"` 改为存进 SSE 清单并并入桥；本地卡片显示桥接旗标 | 起了一个本地 legacy-SSE MCP 夹具：面板添加 → 落到**连接器·本地**且旗标「SSE 已桥接」 → **agent 真调用 `sse_echo` 返回 `sse-echo: ok`**；宿主套件补 SSE 存储/并集/替换 5 例 |
+| 10-09 | **连接器工具栏 + 自定义连接器**（快速创建 / 从 JSON 导入 / 导入 DXT 包 / 导入 MCPB 包），按来源搜索；行写进插件自己的 insert 项，登出不清 | 四项入口逐个验；快速创建与 JSON 导入各加成功；**agent 真调用夹具连接器的 echo 工具**，返回 `echo: ok \| note=quick-create`（证明命令/参数/env/握手/工具注册全通）；35 例宿主套件覆盖包解析与替换；删行后 HMR 回收实例 |
+| 10-09 | 导入技能**合并成单入口**：去掉「选择文件夹」，改由宿主按选中项真实路径自动判断（目录/SKILL.md/zip/md/同目录兜底） | 宿主侧 13 例全绿（含压缩包路径穿越拒绝、纯数字名拒绝、加引号后成功）；UI 侧确认单入口、0 个第二控件、无路径回退仍可装 |
+| 10-09 | 侧栏收起时面板被窗口 chrome 压住 → 按框架契约加让位内边距 | 两态几何 + 真实鼠标点击 + 截图 |
+| 10-09 | 头像改圆形（`corner-shape: round`） | 整窗截图核对为正圆 |
+| 10-09 | 补登出确认框（三态文案）+ 设置项快捷键提示 `⌘ ,` | 空闲/运行中/确认登出/凭据恢复全部实测 |
+| 10-09 | 删头像菜单里的手动「同步能力」入口（同步本就全自动） | 菜单只剩两项；切组织往返计数与卡片名复原 |
+| 10-09 | 技能页搜索按来源分开（此前一律搜 SkillHub） | 三态占位符 + 本地/远程过滤 + SkillHub 服务端搜索 |
+| 10-09 | 左上角品牌改走官方槽位（远程取，带默认兜底） | 远程/不可达两种情形都核过布局不变 |
+| 10-08 | 连接器拆本地/远程；导入 MCP 纳入；未登录隐藏远程来源 | 计数与卡片核对 |
+| 10-07 | SSE MCP 桥接打通（含 CRLF/超时/重连/schema 兼容） | agent 真调用工具，链路通 |

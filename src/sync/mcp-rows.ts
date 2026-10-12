@@ -11,17 +11,32 @@
  * abort that never clobbers the user's hand-written rows. Only top-level
  * insert items whose every row id matches `nexusai-mcp-*` are ever removed.
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import { parseDocument, isMap, isSeq } from 'yaml'
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { readFile } from 'node:fs/promises'
+import { isMap, isSeq } from 'yaml'
 import type { Context } from '@deepseek-ai/cordis'
+import { parsePatchDocument, readPatchText, resolvePatchFile, serverNameOf, writeAtomic } from './patch-file'
+import { customConnectorLabel } from './connector-rows'
+
+/** One row of the patch, as the panel sees it. */
+export interface McpRowSummary {
+  readonly id: string
+  readonly name: string
+  readonly transport: string
+  readonly url: string
+  /** The mcp-client namespace (`mcp__<serverName>__<tool>`). */
+  readonly serverName: string
+  /** Whether the row runs (dsh's own `disabled` flag on an insert row). */
+  readonly enabled: boolean
+  /** The row's per-call budget, as configured (ms). */
+  readonly toolCallTimeoutMs: number
+  readonly command: string
+  readonly args: readonly string[]
+  readonly env: Readonly<Record<string, string>>
+  readonly headers: Readonly<Record<string, string>>
+}
 
 /** Every row id this plugin owns, for surgical removal. */
 const OWNED_ID_PATTERN = /^nexusai-mcp-[A-Za-z0-9_-]+$/
-
-/** mcp-client serverName grammar: `[A-Za-z0-9_-]{1,32}`. */
-const SERVER_NAME_LIMIT = 32
 
 /** One MCP Server row to materialize. */
 export interface McpRowInput {
@@ -48,8 +63,7 @@ export class McpRowSync {
 
   /** The patch file this writer targets. */
   patchFile(): string {
-    if (this.options.profilePatchFile !== '') return this.options.profilePatchFile
-    return resolvePatchFile('desktop')
+    return resolvePatchFile(this.options.profilePatchFile)
   }
 
   /** Replace all owned rows with one `- insert:` item for every server. */
@@ -60,18 +74,25 @@ export class McpRowSync {
     if (!isSeq(document.contents)) {
       throw new Error(`nexusai: profile patch ${patchFile} is not a YAML sequence; refusing to edit`)
     }
-    removeOwnedItems(document.contents.items)
+    // A patch read from a missing file starts as `[]` (flow style); keep
+    // the document in the block style every real patch file uses.
+    document.contents.flow = false
     const rows = servers.map(server => ({
       id: `nexusai-mcp-${server.mcpServerId}`,
       name: '@deepseek-ai/dsh-mcp-client',
       config: {
         transport: 'streamable-http',
-        serverName: serverNameOf(this.options.serverNamePrefix, server),
+        serverName: serverNameOf(this.options.serverNamePrefix, server.name, server.mcpServerId),
         url: server.url,
         toolCallTimeoutMs: this.options.toolCallTimeoutMs,
         failOnStartupError: this.options.failOnStartupError,
       },
     }))
+    // A rewrite is not free: dsh reloads the patch, unmounts every owned
+    // instance and reconnects them (tools vanish for a moment). When the rows
+    // are already exactly this, leave the file — and the live sessions — alone.
+    if (isAlreadyWritten(document, rows)) return rows.length
+    removeOwnedItems(document.contents.items)
     if (rows.length > 0) document.add({ insert: rows })
     await writeAtomic(patchFile, String(document))
     return rows.length
@@ -80,12 +101,28 @@ export class McpRowSync {
   /** Locally configured mcp-client rows for the panel's 本地 tab: every
    * mcp-client insert whose id this plugin does not own (ours are the 远程
    * ones, written from the NexusAI catalog). */
-  async list(): Promise<Array<{ id: string; name: string; transport: string; url: string }>> {
+  /**
+   * The mcp-client namespace of one row, owned by this plugin or not — the
+   * panel's 远程 cards need it to find their tools in the registry.
+   * @param id - the row id.
+   * @returns the row's `serverName`, or '' when no such row exists.
+   */
+  async serverNameOfRow(id: string): Promise<string> {
+    const found = (await this.scanRows(true)).find(row => row.id === id)
+    return found?.serverName ?? ''
+  }
+
+  async list(): Promise<McpRowSummary[]> {
+    return this.scanRows(false)
+  }
+
+  /** Every mcp-client row of the patch; `includeOwned` also reports ours. */
+  private async scanRows(includeOwned: boolean): Promise<McpRowSummary[]> {
     const patchFile = this.patchFile()
     const text = await readPatchText(patchFile)
     const document = parsePatchDocument(text, patchFile)
     if (!isSeq(document.contents)) return []
-    const rows: Array<{ id: string; name: string; transport: string; url: string }> = []
+    const rows: McpRowSummary[] = []
     for (const item of document.contents.items) {
       if (!isMap(item) || !item.has('insert')) continue
       const insert = item.get('insert')
@@ -93,7 +130,8 @@ export class McpRowSync {
       for (const row of insert.items) {
         if (!isMap(row)) continue
         const id = row.get('id')
-        if (typeof id !== 'string' || id === '' || OWNED_ID_PATTERN.test(id)) continue
+        if (typeof id !== 'string' || id === '') continue
+        if (!includeOwned && OWNED_ID_PATTERN.test(id)) continue
         if (row.get('name') !== '@deepseek-ai/dsh-mcp-client') continue
         const config = row.get('config')
         const read = (key: string): string => {
@@ -101,17 +139,80 @@ export class McpRowSync {
           const value = config.get(key)
           return typeof value === 'string' ? value : ''
         }
+        const readList = (key: string): string[] => {
+          const value = isMap(config) ? config.get(key) : undefined
+          return isSeq(value) ? value.items.map(entry => String(entry)) : []
+        }
+        const readMap = (key: string): Record<string, string> => {
+          const value = isMap(config) ? config.get(key) : undefined
+          if (!isMap(value)) return {}
+          const out: Record<string, string> = {}
+          // YAMLMap items are Pair nodes, not arrays.
+          for (const pair of value.items) {
+            out[String(pair.key)] = String(pair.value)
+          }
+          return out
+        }
         const command = read('command')
         const url = read('url') !== '' ? read('url') : command
+        // Rows authored in this plugin carry their display name in the id;
+        // everything else shows its serverName (the tool namespace).
+        const label = customConnectorLabel(id)
         rows.push({
           id,
-          name: read('serverName') !== '' ? read('serverName') : id,
+          name: label !== '' ? label : read('serverName') !== '' ? read('serverName') : id,
           transport: read('transport'),
           url,
+          // The panel shows the tool namespace and can reopen the editor with
+          // these values, so both travel with the row.
+          serverName: read('serverName'),
+          enabled: row.get('disabled') !== true,
+          toolCallTimeoutMs: (() => {
+            const value = isMap(config) ? config.get('toolCallTimeoutMs') : undefined
+            return typeof value === 'number' && value > 0 ? value : 0
+          })(),
+          command: read('command'),
+          args: readList('args'),
+          env: readMap('env'),
+          headers: readMap('headers'),
         })
       }
     }
     return rows
+  }
+
+  /**
+   * Turn one local row on or off. dsh reads `disabled` on an insert row itself
+   * (the same flag its plugin page writes), and its loader unmounts the
+   * instance on the next patch reload — so a disabled connector's tools vanish
+   * without a restart.
+   * @param id - the row id (plugin-owned rows are refused: the sync owns those).
+   * @param enabled - whether the connector should run.
+   * @returns whether a row was found and changed.
+   */
+  async setEnabled(id: string, enabled: boolean): Promise<boolean> {
+    if (OWNED_ID_PATTERN.test(id)) {
+      throw new Error('这个连接器由 NexusAI 登录同步维护，不能单独关闭')
+    }
+    const patchFile = this.patchFile()
+    const document = parsePatchDocument(await readPatchText(patchFile), patchFile)
+    if (!isSeq(document.contents)) {
+      throw new Error(`nexusai: profile patch ${patchFile} is not a YAML sequence; refusing to edit`)
+    }
+    let changed = false
+    for (const item of document.contents.items) {
+      if (!isMap(item) || !item.has('insert')) continue
+      const insert = item.get('insert')
+      if (!isSeq(insert)) continue
+      for (const row of insert.items) {
+        if (!isMap(row) || row.get('id') !== id) continue
+        if (enabled) row.delete('disabled')
+        else row.set('disabled', true)
+        changed = true
+      }
+    }
+    if (changed) await writeAtomic(patchFile, String(document))
+    return changed
   }
 
   /** Remove every owned row (logout). */
@@ -134,12 +235,33 @@ export class McpRowSync {
   }
 }
 
-/** Default: `<dshHome>/profiles/<name>/cordis.patch.yml`. */
-function resolvePatchFile(profileName: string): string {
-  return resolveDshHome() + `/profiles/${profileName}/cordis.patch.yml`
+/** Whether the owned rows already hold exactly these servers. */
+function isAlreadyWritten(
+  document: ReturnType<typeof parsePatchDocument>,
+  rows: readonly { id: string; config: Record<string, unknown> }[],
+): boolean {
+  const current = new Map<string, string>()
+  if (!isSeq(document.contents)) return false
+  for (const item of document.contents.items) {
+    if (!isMap(item) || !item.has('insert')) continue
+    const insert = item.get('insert')
+    if (!isSeq(insert)) continue
+    for (const row of insert.items) {
+      if (!isMap(row)) continue
+      const id = row.get('id')
+      if (typeof id !== 'string' || !OWNED_ID_PATTERN.test(id)) continue
+      current.set(id, JSON.stringify(row.get('config') ?? null))
+    }
+  }
+  if (current.size !== rows.length) return false
+  return rows.every(row => current.get(row.id) === JSON.stringify(row.config))
 }
 
-/** Drop every top-level insert item whose rows are all plugin-owned; returns whether any left. */
+/**
+ * Drop every top-level insert item whose rows are all plugin-owned; returns
+ * whether any were removed. Only `nexusai-mcp-*` items are ever touched, so
+ * rows the user authored here (`custom-mcp-*`) survive every logout.
+ */
 function removeOwnedItems(items: unknown[]): boolean {
   let removed = false
   for (let index = items.length - 1; index >= 0; index--) {
@@ -157,46 +279,4 @@ function removeOwnedItems(items: unknown[]): boolean {
     removed = true
   }
   return removed
-}
-
-/** serverName: `<prefix>-<slug>`, unique, ≤32 chars, `[A-Za-z0-9_-]`. */
-function serverNameOf(prefix: string, server: McpRowInput): string {
-  const serverSlug = server.name.replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
-  const unique = `${prefix}-${serverSlug || 'server'}-${shortId(server.mcpServerId)}`.slice(0, SERVER_NAME_LIMIT)
-  return unique.replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+$/, '')
-}
-
-/** Stable short discriminator so same-named servers stay distinct. */
-function shortId(mcpServerId: string): string {
-  let hash = 0
-  for (let index = 0; index < mcpServerId.length; index++) {
-    hash = (hash * 31 + mcpServerId.charCodeAt(index)) | 0
-  }
-  return (hash >>> 0).toString(36)
-}
-
-async function readPatchText(patchFile: string): Promise<string> {
-  try {
-    return await readFile(patchFile, 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '[]\n'
-    throw error
-  }
-}
-
-function parsePatchDocument(text: string, patchFile: string): ReturnType<typeof parseDocument> {
-  const document = parseDocument(text, {
-    customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }],
-  })
-  const error = document.errors[0]
-  if (error !== undefined) {
-    throw new Error(`nexusai: profile patch ${patchFile} failed to parse (${error.message}); refusing to edit`)
-  }
-  return document
-}
-
-/** Write through the plugin's atomic pattern: create-if-missing, 0600 mode. */
-async function writeAtomic(patchFile: string, text: string): Promise<void> {
-  await mkdir(dirname(patchFile), { recursive: true })
-  await writeFile(patchFile, text, { encoding: 'utf8', mode: 0o600 })
 }

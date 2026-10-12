@@ -35,9 +35,17 @@ interface PendingCall {
 export interface McpSseConnectOptions {
   /** Budget for the stream handshake (the endpoint event). */
   readonly timeoutMs: number
+  /** Extra headers appended to the standard set on the stream and every POST. */
+  readonly headers?: Readonly<Record<string, string>>
+  /** Per-request budget for tool calls; 0 or omitted uses the default below. */
+  readonly toolCallTimeoutMs?: number
 }
 
 export class McpSseSession {
+  /** Headers the caller added (auth tokens, tenant ids, …). */
+  private requestHeaders: Record<string, string> = {}
+  /** Budget for one tool call; the module default until configured. */
+  private callTimeoutMs = REQUEST_TIMEOUT_MS
   private readonly pending = new Map<number, PendingCall>()
   private readonly controller = new AbortController()
   private nextId = 1
@@ -52,7 +60,7 @@ export class McpSseSession {
     let response: Response
     try {
       response = await fetch(url, {
-        headers: { Accept: 'text/event-stream', 'User-Agent': 'dsh-nexusai-plugin/0.1' },
+        headers: { Accept: 'text/event-stream', 'User-Agent': 'dsh-nexusai-plugin/0.1', ...options.headers },
         signal: AbortSignal.any([session.controller.signal, AbortSignal.timeout(options.timeoutMs)]),
       })
     } catch (error) {
@@ -69,6 +77,10 @@ export class McpSseSession {
     const decoder = new TextDecoder()
     let buffer = ''
 
+    session.requestHeaders = { ...options.headers }
+    if (options.toolCallTimeoutMs !== undefined && options.toolCallTimeoutMs > 0) {
+      session.callTimeoutMs = options.toolCallTimeoutMs
+    }
     const pump = (async () => {
       try {
         for (;;) {
@@ -199,14 +211,14 @@ export class McpSseSession {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(new Error(`${method} 超时`))
-      }, REQUEST_TIMEOUT_MS)
+        reject(new Error(`${method} 超时（${Math.round(this.callTimeoutMs / 1000)}s）`))
+      }, this.callTimeoutMs)
       this.pending.set(id, { resolve, reject, timer })
       void fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'dsh-nexusai-plugin/0.1' },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'dsh-nexusai-plugin/0.1', ...this.requestHeaders },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.callTimeoutMs),
       }).then(response => {
         if (response.ok) return
         this.pending.delete(id)
@@ -224,7 +236,7 @@ export class McpSseSession {
     if (this.closed || this.endpoint === '') return
     await fetch(this.endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'dsh-nexusai-plugin/0.1' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'dsh-nexusai-plugin/0.1', ...this.requestHeaders },
       body: JSON.stringify({ jsonrpc: '2.0', method }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     }).catch(() => undefined)

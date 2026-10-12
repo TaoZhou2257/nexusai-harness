@@ -23,6 +23,30 @@ export interface McpDescriptor {
   readonly connectable: boolean
 }
 
+/**
+ * The catalogue's legacy-SSE servers, as the bridge wants them: the ones dsh's
+ * mcp-client cannot host (`connectable` false) and that speak SSE.
+ * @param api - the NexusAI client.
+ * @returns bridge inputs; empty when the catalogue is unreachable.
+ */
+export async function listSseInputs(api: NexusApiClient): Promise<McpSseServerInput[]> {
+  try {
+    const catalog = await listMcpCatalog(api)
+    return catalog.servers
+      .filter(server => !server.connectable && server.transport === 'sse')
+      .map(server => ({ id: server.id, name: server.name, url: server.url }))
+  } catch {
+    return []
+  }
+}
+
+/** One bridge input: a server id, its display name, and the URL the session opens. */
+export interface McpSseServerInput {
+  readonly id: string
+  readonly name: string
+  readonly url: string
+}
+
 export interface McpCatalog {
   readonly servers: McpDescriptor[]
   /** Human-readable reasons for servers that cannot be registered. */

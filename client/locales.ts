@@ -51,11 +51,6 @@ export type NexusaiLocaleKey =
   | 'builtinSkill'
   | 'mcpCreated'
   | 'mcpImported'
-  | 'mcpSseOnly'
-  | 'mcpSseHint'
-  | 'mcpSseBridged'
-  | 'mcpSseBridgedHint'
-  | 'mcpSseTools'
   | 'moreActions'
   | 'viewContent'
   | 'copyPath'
@@ -122,6 +117,70 @@ export type NexusaiLocaleKey =
   | 'download'
   | 'downloaded'
   | 'notLoggedIn'
+  | 'addSkillFind'
+  | 'addSkillUpload'
+  | 'uploadTitle'
+  | 'uploadDropHint'
+  | 'uploadAutoInstall'
+  | 'uploadRequirements'
+  | 'uploadRequirementFolder'
+  | 'uploadRequirementMarkdown'
+  | 'uploadPicked'
+  | 'uploadInstall'
+  | 'uploadDone'
+  | 'uploadExists'
+  | 'uploadOverwrite'
+  | 'uploadNoSkillFile'
+  | 'uploadBadMarkdown'
+  | 'uploadBadName'
+  | 'uploadTooLarge'
+  | 'customConnector'
+  | 'connectorQuickCreate'
+  | 'connectorImportJson'
+  | 'connectorImportDxt'
+  | 'connectorImportMcpb'
+  | 'connectorName'
+  | 'connectorTransport'
+  | 'connectorCommand'
+  | 'connectorCommandHint'
+  | 'connectorArgs'
+  | 'connectorArgsHint'
+  | 'connectorEnv'
+  | 'connectorEnvHint'
+  | 'connectorUrl'
+  | 'connectorHeaders'
+  | 'connectorHeadersHint'
+  | 'connectorJsonHint'
+  | 'connectorSubmit'
+  | 'connectorBundleHint'
+  | 'connectorBundlePick'
+  | 'connectorBundleFields'
+  | 'connectorBundlePicked'
+  | 'connectorPickDir'
+  | 'connectorPickFile'
+  | 'connectorNeedDesktop'
+  | 'connectorSearchPlaceholder'
+  | 'connectorNoMatch'
+  | 'connectorSseHint'
+  | 'connectorTimeout'
+  | 'connectorTimeoutHint'
+  | 'connectorDetailTools'
+  | 'connectorDetailNoTools'
+  | 'connectorDetailCopy'
+  | 'connectorCopied'
+  | 'connectorToolsUnit'
+  | 'connectorEdit'
+  | 'connectorRemove'
+  | 'connectorConfirmRemove'
+  | 'connectorInfo'
+  | 'connectorParamRequired'
+  | 'connectorNoParams'
+  | 'connectorRemoved'
+  | 'connectorConnected'
+  | 'connectorDisconnected'
+  | 'connectorOff'
+  | 'enableConnector'
+  | 'disableConnector'
 
 export const zh: Record<NexusaiLocaleKey, string> = {
   nav: 'NexusAI',
@@ -170,11 +229,6 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   builtinSkill: '内置技能（随应用分发，没有独立文件）',
   mcpCreated: '创建',
   mcpImported: '导入',
-  mcpSseOnly: 'SSE 未接入',
-  mcpSseHint: '该 MCP 是 legacy SSE 连接，dsh 暂不支持，未注册为工具',
-  mcpSseBridged: 'SSE 已桥接',
-  mcpSseBridgedHint: '该 MCP 走 legacy SSE：已由本插件桥接为 dsh 工具，agent 可直接调用',
-  mcpSseTools: 'SSE 桥接工具',
   moreActions: '更多操作',
   viewContent: '查看技能内容',
   copyPath: '复制技能路径',
@@ -236,13 +290,77 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   org: '组织',
   signedOutHint: '登录账号后，可在这里管理同步过来的自定义工具、MCP 服务与技能。',
   connectorsSignedOut: '登录后可同步 NexusAI 的 MCP 服务（创建与导入）。',
-  localConnectorsEmpty: '本机还没有配置本地 MCP 服务（可在配置文件里添加 mcp-client 行）。',
+  localConnectorsEmpty: '本机还没有本地 MCP 服务，可用右上角「自定义连接器」添加。',
   tools: '自定义工具',
   mcpServers: 'MCP 服务',
   skills: '技能',
   download: '下载',
   downloaded: '已下载',
   notLoggedIn: '未登录',
+  addSkillFind: '查找技能',
+  addSkillUpload: '上传技能',
+  uploadTitle: '导入技能',
+  uploadDropHint: '拖拽文件或点击上传',
+  uploadAutoInstall: '非高风险自动安装',
+  uploadRequirements: '文件要求',
+  uploadRequirementFolder: '文件夹或者 .zip 需要包含 SKILL.md 文件',
+  uploadRequirementMarkdown: '.md 文件需包含 YAML 格式的技能名称和描述',
+  uploadPicked: '已选择',
+  uploadInstall: '安装',
+  uploadDone: '已上传并安装',
+  uploadExists: '已存在同名技能',
+  uploadOverwrite: '覆盖安装',
+  uploadNoSkillFile: '没有找到 SKILL.md：请选择包含 SKILL.md 的技能文件夹或压缩包',
+  uploadBadMarkdown: '.md 需要以 YAML 前置信息（---）开头，并包含 name 与 description',
+  uploadBadName: '技能名称只支持小写字母、数字与连字符（如 my-skill）',
+  uploadTooLarge: '上传内容过大（上限 8MB），请改用更小的技能包',
+  customConnector: '自定义连接器',
+  connectorQuickCreate: '快速创建',
+  connectorImportJson: '从 JSON 导入',
+  connectorImportDxt: '导入 DXT 包',
+  connectorImportMcpb: '导入 MCPB 包',
+  connectorName: '名称',
+  connectorTransport: '传输方式',
+  connectorCommand: '启动命令',
+  connectorCommandHint: '建议填绝对路径，例如 /usr/local/bin/node（dsh 启动子进程时不走 shell，PATH 里的命令可能找不到）',
+  connectorArgs: '参数',
+  connectorArgsHint: '每行一个参数；只有一行时按空格拆分',
+  connectorEnv: '环境变量',
+  connectorEnvHint: '每行一个 KEY=VALUE',
+  connectorUrl: 'URL',
+  connectorHeaders: '请求头',
+  connectorHeadersHint: '每行一个 Name: value',
+  connectorJsonHint: '粘贴 MCP 配置 JSON，如 {"mcpServers": {"名字": {"command": "npx", "args": ["-y", "包名"]}}}；支持多个服务器',
+  connectorSubmit: '添加',
+  connectorBundleHint: '选择 .dxt / .mcpb 插件包（MCP 插件包），安装到本机后作为连接器使用',
+  connectorBundlePick: '选择 .dxt / .mcpb 文件',
+  connectorBundleFields: '该插件需要以下配置',
+  connectorBundlePicked: '已选择',
+  connectorPickDir: '选择目录',
+  connectorPickFile: '选择文件',
+  connectorNeedDesktop: '导入插件包需要在桌面端操作（浏览器里读不到本地路径）',
+  connectorSearchPlaceholder: '搜索连接器',
+  connectorNoMatch: '没有匹配的连接器，换个关键词试试。',
+  connectorSseHint: 'legacy SSE：只需填地址（dsh 本身不支持这个传输，由本插件桥接成工具）。',
+  connectorTimeout: '超时',
+  connectorTimeoutHint: '对该服务器单次工具调用的超时时间，单位是秒（右侧 s）。留空或 0 表示默认 60 秒。',
+  connectorDetailTools: '可调用的工具',
+  connectorDetailNoTools: '这个连接器当前没有注册任何工具（服务未连上或未提供工具）。',
+  connectorDetailCopy: '复制工具名',
+  connectorCopied: '已复制',
+  connectorToolsUnit: '个工具',
+  connectorEdit: '编辑',
+  connectorRemove: '删除连接器',
+  connectorConfirmRemove: '再次点击确认删除',
+  connectorInfo: '连接信息',
+  connectorParamRequired: '必填',
+  connectorNoParams: '无参数',
+  connectorRemoved: '已删除连接器',
+  connectorConnected: '已连通',
+  connectorDisconnected: '未连通或没有提供工具',
+  connectorOff: '已关闭',
+  enableConnector: '打开',
+  disableConnector: '关闭',
 }
 
 export const en: Record<NexusaiLocaleKey, string> = {
@@ -292,11 +410,6 @@ export const en: Record<NexusaiLocaleKey, string> = {
   builtinSkill: 'Built-in skill (ships with the app; no file of its own)',
   mcpCreated: 'Created',
   mcpImported: 'Imported',
-  mcpSseOnly: 'SSE only',
-  mcpSseHint: 'This MCP uses legacy SSE, which dsh does not support; it is not registered as tools.',
-  mcpSseBridged: 'SSE bridged',
-  mcpSseBridgedHint: 'Legacy-SSE MCP bridged into dsh tools by this plugin — the agent can call them.',
-  mcpSseTools: 'SSE bridged tools',
   moreActions: 'More actions',
   viewContent: 'View skill content',
   copyPath: 'Copy skill path',
@@ -358,11 +471,75 @@ export const en: Record<NexusaiLocaleKey, string> = {
   org: 'Organization',
   signedOutHint: 'Sign in to manage the synced custom tools, MCP servers, and skills here.',
   connectorsSignedOut: 'Sign in to sync the NexusAI MCP servers (created and imported).',
-  localConnectorsEmpty: 'No local MCP server configured on this machine yet (add an mcp-client row to the profile).',
+  localConnectorsEmpty: 'No local MCP connector yet — add one with 自定义连接器 in the toolbar.',
   tools: 'Custom tools',
   mcpServers: 'MCP servers',
   skills: 'Skills',
   download: 'Download',
   downloaded: 'Downloaded',
   notLoggedIn: 'Not signed in',
+  addSkillFind: 'Find skills',
+  addSkillUpload: 'Upload skill',
+  uploadTitle: 'Import skill',
+  uploadDropHint: 'Drop files here or click to upload',
+  uploadAutoInstall: 'Install automatically when low risk',
+  uploadRequirements: 'File requirements',
+  uploadRequirementFolder: 'A folder or .zip must contain a SKILL.md file',
+  uploadRequirementMarkdown: 'A .md file must carry the skill name and description as YAML',
+  uploadPicked: 'Selected',
+  uploadInstall: 'Install',
+  uploadDone: 'Uploaded and installed',
+  uploadExists: 'A skill with this name already exists',
+  uploadOverwrite: 'Overwrite',
+  uploadNoSkillFile: 'No SKILL.md found — pick a skill folder or archive that contains one',
+  uploadBadMarkdown: 'A .md must open with YAML front matter (---) carrying name and description',
+  uploadBadName: 'A skill name may only contain lowercase letters, digits and hyphens (e.g. my-skill)',
+  uploadTooLarge: 'Upload is too large (8MB limit) — use a smaller skill package',
+  customConnector: 'Custom connector',
+  connectorQuickCreate: 'Quick create',
+  connectorImportJson: 'Import from JSON',
+  connectorImportDxt: 'Import DXT package',
+  connectorImportMcpb: 'Import MCPB package',
+  connectorName: 'Name',
+  connectorTransport: 'Transport',
+  connectorCommand: 'Command',
+  connectorCommandHint: 'Prefer an absolute path, e.g. /usr/local/bin/node (dsh spawns without a shell, so PATH lookups may fail)',
+  connectorArgs: 'Arguments',
+  connectorArgsHint: 'One per line; a single line splits on spaces',
+  connectorEnv: 'Environment',
+  connectorEnvHint: 'One KEY=VALUE per line',
+  connectorUrl: 'URL',
+  connectorHeaders: 'Headers',
+  connectorHeadersHint: 'One Name: value per line',
+  connectorJsonHint: 'Paste an MCP config JSON, e.g. {"mcpServers": {"name": {"command": "npx", "args": ["-y", "pkg"]}}}; several servers are fine',
+  connectorSubmit: 'Add',
+  connectorBundleHint: 'Pick a .dxt / .mcpb package (an MCP bundle); it installs locally and becomes a connector',
+  connectorBundlePick: 'Choose a .dxt / .mcpb file',
+  connectorBundleFields: 'This package asks for the following',
+  connectorBundlePicked: 'Selected',
+  connectorPickDir: 'Choose a directory',
+  connectorPickFile: 'Choose a file',
+  connectorNeedDesktop: 'Installing a package needs the desktop app (a browser cannot read local paths)',
+  connectorSearchPlaceholder: 'Search connectors',
+  connectorNoMatch: 'No connector matches — try another keyword.',
+  connectorSseHint: 'Legacy SSE: the URL is all it needs (dsh cannot host this transport, so the plugin bridges it into tools).',
+  connectorTimeout: 'Timeout',
+  connectorTimeoutHint: 'Per-tool-call timeout for this server, in seconds (the s on the right). Blank or 0 keeps the 60 s default.',
+  connectorDetailTools: 'Tools it offers',
+  connectorDetailNoTools: 'This connector currently registers no tools (the server is down or offers none).',
+  connectorDetailCopy: 'Copy tool name',
+  connectorCopied: 'Copied',
+  connectorToolsUnit: 'tools',
+  connectorEdit: 'Edit',
+  connectorRemove: 'Delete connector',
+  connectorConfirmRemove: 'Click again to confirm',
+  connectorInfo: 'Connection',
+  connectorParamRequired: 'required',
+  connectorNoParams: 'No parameters',
+  connectorRemoved: 'Connector deleted',
+  connectorConnected: 'Connected',
+  connectorDisconnected: 'Not connected or exposes no tools',
+  connectorOff: 'Disabled',
+  enableConnector: 'Enable',
+  disableConnector: 'Disable',
 }
