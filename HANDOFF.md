@@ -15,9 +15,9 @@
 
 **已验证（macOS arm64 真机）**：`prepare:runtime` 组合出 profile 且含插件行；`smoke:runtime` 到达 web URL；**打包版 `.app` 从干净 home 启动并开窗**；DMG（237MB）挂载正常、`Resources/nexusai-runtime/profile/node_modules` 里 CLI 在位。
 
-**未验证**：Windows 安装包（要跑一次 CI 的 `windows` job）；品牌/图标（现为 Electron 默认）；首启交互打磨。**红线提醒**：`dist/windows-trial/nexusai.patch.yml` 仍是 git 跟踪状态且含 AES key —— 推到公开 GitHub 前必须先处理（见 §11）。
+**未验证**：Windows 安装包（要跑一次 CI 的 `windows` job，且需先 `gh auth login` 我才能读日志）；首启交互打磨；产物精简（内置 profile ~490MB）。**密钥现状**：仓库已转私有；那个曾公开过的 AES key 建议在服务端轮换一次（不急，但别忘）。
 
-**卡在哪**：无技术阻塞。**等你决策**：是否把含密钥的文件从仓库移除后再推 GitHub（推公开仓库=密钥进入公网且不可撤回）。
+**卡在哪**：`gh` 已安装但**未登录**（`gh auth status` 报 not logged in），所以我读不到 CI、也不能重跑；需要在本机跑一次 `gh auth login`（或给我 `GH_TOKEN`）。
 
 ## 0. 这是什么
 
@@ -310,6 +310,9 @@ node scripts/dev/brand-dev-app.mjs             # 改 dev 包应用名 + 访达�
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **carrier 发行化三件**：①应用图标/品牌（`resources/icon.svg` 派生 png/icns/ico，两端共用）②菜单收敛（去掉 Reload/Force Reload/DevTools 快捷键，另吞 ⌘R/Ctrl+R/F5）③运行时失败开窗显示输出（不再静默退出） | 打包版 .app 的 `CFBundleIconFile=icon.icns` 且与源一致；启动打印 `menu: minimal installed (4 top-level, no reload)`；干净 home 启动到 web URL 无失败 |
+| 10-13 | **修发行阻断 bug：独立 profile 必须装 peer**。dsh 把 `@deepseek-ai/cordis-plugin-{group,include,loader}` 等声明为 peerDependencies，而 `dsh-app-boot` 直接 import 它们；照抄 dev profile 的 `autoInstallPeers: false` 会让打包版启动即 `ERR_MODULE_NOT_FOUND`。改 `true`，并把 `@deepseek-ai/dsh-subprocess-local` 加进 allowBuilds（与 dsh 同决定） | 本机打包版从干净 home 启动成功；修前失败日志已捕获 |
+| 10-13 | **修 CI 首跑：`npm ci` 因 peer 图 ERESOLVE** → 仓库级 `.npmrc` 设 `legacy-peer-deps=true` | 从 GitHub 真实 clone 的干净副本：`npm ci` 通过（68 包）、`build.mjs` 出两产物、`npm pack` 出 tgz |
 | 10-12 | **v1.0 carrier（workdsh 式架构）**：dsh 以 submodule 锁版本封装进仓库（`upstream.json` + `upstream/`）；新增 `apps/nexusai-desktop` 薄壳（Electron-as-Node 跑内置 dsh）+ `prepare-runtime`（按版本装 dsh 进 profile）+ `after-pack` + `smoke-runtime`；`.github/workflows/build.yml` 出 mac/win 未签名包 | macOS 真机：profile 组合通过、无 GUI 冒烟到达 web URL、**打包版 .app 从干净 home 启动开窗**、DMG 237MB 挂载含完整运行时 |
 | 10-10 | **删除「长时间运行模式」**（用户拍板：dsh 只有一个超时字段、无进度重置，开关无法在运行时生效）：移除 `sync/connector-prefs.ts` 整个存储、表单开关 UI、2 个语言键、`CONNECTOR_LONG_RUNNING_SECONDS`；超时保持「秒，默认 60，原样写」 | tsc + build + check:dsh + 套件全绿（长任务 = 直接填大超时） |
 | 10-09 | **＋添加技能**：两项菜单（查找技能 → 切 SkillHub+聚焦搜索框 / 上传技能 → 文件夹·zip·md 弹窗，校验 + 同名覆盖） | 三路径真机上装并确认出现在本地列表；拒绝路径（无 SKILL.md / 无前置信息 / 中文名）逐个核对；覆盖安装后磁盘内容替换、旧文件移除 |
