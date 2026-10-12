@@ -45,6 +45,8 @@ function runtimeHome() {
 let logsDir = ''
 let runtimeLog = ''
 let logStream
+/** Resolved once at startup; see {@link resolvePlacement}. */
+let windowPlacement = 'center'
 
 /**
  * Start the run log.
@@ -216,16 +218,62 @@ function installMenu() {
   logLine(`menu: minimal installed (${menu.items.length} top-level, no reload)`)
 }
 
+/**
+ * Where the window goes on screen.
+ *
+ * Positioned explicitly rather than with `center: true`: measured on macOS the
+ * built-in centring landed 41 px above the real middle of the work area, and
+ * "middle of the work area" is exactly what a first impression should mean.
+ * `workArea` already excludes the menu bar and the Dock, so `bottom` rests the
+ * window on the Dock rather than under it.
+ *
+ * - `center` — middle of the work area, 160 px of air on each side (default);
+ * - `bottom` — same size, bottom edge on the Dock;
+ * - `fill` — the whole work area (tallest it can be without going under chrome).
+ */
+function windowBounds() {
+  const { workArea } = screen.getPrimaryDisplay()
+  const placement = windowPlacement
+  const width = Math.min(1440, Math.max(960, workArea.width - 160))
+  const height = placement === 'fill'
+    ? Math.min(960, workArea.height)
+    : Math.min(960, Math.max(640, workArea.height - 160))
+  const x = Math.round(workArea.x + (workArea.width - width) / 2)
+  const y = placement === 'center'
+    ? Math.round(workArea.y + (workArea.height - height) / 2)
+    : Math.round(workArea.y + workArea.height - height)
+  return { x, y, width, height, placement, workArea }
+}
+
+/**
+ * The placement to use, and where that decision came from.
+ *
+ * A double-clicked app has no shell to set an environment variable in, so the
+ * home also carries the choice in a one-word file — the same kind of knob as
+ * the log directory, next to the user rather than in a launcher.
+ * Precedence: `NEXUSAI_WINDOW_PLACEMENT` (handy when running from source) >
+ * `<home>/window-placement` > `center`.
+ */
+function resolvePlacement(home) {
+  const fromEnv = (process.env.NEXUSAI_WINDOW_PLACEMENT ?? '').trim()
+  if (fromEnv !== '') return { value: fromEnv, from: 'NEXUSAI_WINDOW_PLACEMENT' }
+  try {
+    const fromFile = readFileSync(join(home, 'window-placement'), 'utf8').trim()
+    if (fromFile !== '') return { value: fromFile, from: `${home}/window-placement` }
+  } catch { /* absent: the default applies */ }
+  return { value: 'center', from: 'default' }
+}
+
 function openWindow(url) {
-  const { workAreaSize } = screen.getPrimaryDisplay()
-  const width = Math.min(1440, Math.max(960, workAreaSize.width - 160))
-  const height = Math.min(960, Math.max(640, workAreaSize.height - 160))
+  const { x, y, width, height, placement, workArea } = windowBounds()
+  logLine(`window: ${placement} ${width}x${height} at ${x},${y} (work area ${workArea.x},${workArea.y} ${workArea.width}x${workArea.height})`)
   const window = new BrowserWindow({
+    x,
+    y,
     width,
     height,
     minWidth: 960,
     minHeight: 640,
-    center: true,
     title: APP_NAME,
     backgroundColor: '#111113',
     show: false,
@@ -348,6 +396,9 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     const home = runtimeHome()
     openLog(home)
+    const chosen = resolvePlacement(home)
+    windowPlacement = ['bottom', 'fill'].includes(chosen.value) ? chosen.value : 'center'
+    logLine(`window placement: ${windowPlacement} (from ${chosen.from})`)
     installMenu()
     const profile = materializeProfile(home)
     startRuntime(home, profile)

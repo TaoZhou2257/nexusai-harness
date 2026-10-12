@@ -332,6 +332,7 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **窗口摆放改为按工作区精确计算**：原 `center: true` 实测比工作区真正的中线高 41pt（y=73，应然 114）。改为自己取 `screen.getPrimaryDisplay().workArea` 算 x/y，支持 `center`（默认）/`bottom`（底边压 Dock）/`fill`（撑满）；来源优先级 env `NEXUSAI_WINDOW_PLACEMENT` > `<home>/window-placement` 文件 > 默认（文件是给双击启动的发行版用的，它没有 shell） | 三种模式各自实测（渲染进程读回屏幕坐标）：center `1352x714@80,114` 与理论 113 吻合；bottom `1352x712@80,194`（194+712=906=工作区底）；fill `1352x872@80,34`；文件模式日志显示 `from /tmp/…/window-placement` |
 | 10-13 | **修品牌槽失效**：`sidebar.brand.{mark,name}` 会渲染优先级最低的贡献，我们的注册漏写 `priority`（默认 0）→ 一直输给 dsh 自带的本地构建标签，服务端品牌从未生效。补 `priority: -1`（与同文件 settings.launcher 同一规则） | 同机同 home 重启实测：侧栏变 `NexusAgent Builder ｜ v1.5.0.3`，dsh 标签消失（页面上搜不到 deepseek 文案） |
 | 10-13 | **首启不弹 dsh 的「预览版说明」**：该提示用 `ui-settings-general.welcomeNoticeVersion` 与当前版本**精确相等**判定，预置配置里替用户确认即可。版本常量由 `prepare-runtime.mjs` 从装好的 `dsh-client-ui-settings-models` 包里读出（不硬编码；dsh 升级后新说明会再显一次，属预期） | 全新 home 启动：页面上 `预览版说明` / `预览阶段` 文案均搜不到；同一份 profile 的 patch 里出现 `welcomeNoticeVersion: '2026-09-28.1'` |
 | 10-13 | 新增 `scripts/capture-ui.mjs`（CDP 截应用自身界面，只含应用内容、不含桌面）+ `scripts/check-auto-signin.mjs`（首启弹窗检查） | 本轮全部截图与首启断言都用它们产出 |

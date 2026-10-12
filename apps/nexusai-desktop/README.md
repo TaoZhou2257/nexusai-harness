@@ -84,6 +84,22 @@ host-native and where dsh's own packaging would refuse to cross-build anyway.
   this wrong writes MCP rows and custom connectors into a file the running host
   never loads, so the UI lists connectors whose tools never appear.
 
+## Window placement
+
+The window is positioned explicitly against the display's *work area* (menu bar
+and Dock already excluded) rather than with Electron's `center: true`, which
+measured 41 px above the real middle on macOS.
+
+| value | result |
+|---|---|
+| `center` (default) | middle of the work area, 160 px of air on each side |
+| `bottom` | same size, bottom edge resting on the Dock |
+| `fill` | the whole work area |
+
+Pick it with `NEXUSAI_WINDOW_PLACEMENT=…` when running from a shell, or — for the
+installed app, which has no shell — by writing the single word into
+`<home>/window-placement`. The chosen value and its source are logged at startup.
+
 ## Runtime diagnostics
 
 The runtime's output is appended to `<home>/logs/runtime.log` (rotated once at
