@@ -233,8 +233,12 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
   // and if this entry ever abdicates, the built-in menu takes over again).
   // The shell's brand slots (single, root-scope): the mark and the name come
   // from the NexusAI server; dsh's own local-build label is their fallback.
+  // `priority: -1` is what makes ours render instead of that built-in label:
+  // the slot renders its lowest priority, the same rule the launcher below
+  // relies on. Without it dsh's own label wins and the server brand is unused.
   consumer.slots.inject('sidebar.brand.mark', () => consumer.slots.register({
     name: 'sidebar.brand.mark',
+    priority: -1,
     locale: NS,
     registrant: 'nexusai',
     inject: () => controller,
@@ -243,6 +247,7 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
 
   consumer.slots.inject('sidebar.brand.name', () => consumer.slots.register({
     name: 'sidebar.brand.name',
+    priority: -1,
     locale: NS,
     registrant: 'nexusai',
     inject: () => controller,
