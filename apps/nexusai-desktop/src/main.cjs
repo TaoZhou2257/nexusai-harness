@@ -12,13 +12,13 @@
  *
  * CommonJS on purpose: no build step, no module-format surprises under Electron.
  */
-const { app, BrowserWindow, Menu, shell, screen } = require('electron')
+const { app, BrowserWindow, Menu, dialog, shell, screen } = require('electron')
 const { spawn } = require('node:child_process')
 const {
-  cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync,
-  rmSync, symlinkSync, unlinkSync, writeFileSync,
+  cpSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync,
+  renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync,
 } = require('node:fs')
-const { join, resolve } = require('node:path')
+const { dirname, join, resolve } = require('node:path')
 
 const PROFILE_NAME = 'nexusai'
 const APP_NAME = process.env.NEXUSAI_APP_NAME || 'NexusAgent Builder'
@@ -39,6 +39,55 @@ function bundledProfileDir() {
 function runtimeHome() {
   if (process.env.NEXUSAI_DSH_HOME) return resolve(process.env.NEXUSAI_DSH_HOME)
   return join(app.getPath('userData'), 'dsh-home')
+}
+
+/** Where the runtime's output is kept, for the user to send with a bug report. */
+let logsDir = ''
+let runtimeLog = ''
+let logStream
+
+/**
+ * Start the run log.
+ *
+ * The packaged app has no terminal, so a failure's only trace used to be the
+ * one-shot window. Appending everything the runtime prints to a file under the
+ * home means a user can always hand over what happened — and one rotation keeps
+ * a long-lived install from growing without bound.
+ */
+function openLog(home) {
+  logsDir = join(home, 'logs')
+  mkdirSync(logsDir, { recursive: true })
+  runtimeLog = join(logsDir, 'runtime.log')
+  try {
+    if (statSync(runtimeLog).size > 2 * 1024 * 1024) renameSync(runtimeLog, `${runtimeLog}.1`)
+  } catch { /* absent or unreadable: start fresh */ }
+  logStream = createWriteStream(runtimeLog, { flags: 'a' })
+  logStream.on('error', () => { logStream = undefined })
+  logLine(`===== ${APP_NAME} ${app.getVersion()} start ${new Date().toISOString()} =====`)
+  logLine(`home ${home}`)
+  return runtimeLog
+}
+
+/**
+ * Write one line to the run log and to stderr (both, so nothing is lost).
+ *
+ * Tokens are stripped: dsh prints its web URL with the session token, and the
+ * log is exactly the file a user is asked to send along with a bug report —
+ * that token grants access to the local session.
+ */
+function logLine(text) {
+  const line = (text.endsWith('\n') ? text : `${text}\n`).replace(/(token=)[^&\s"']+/gu, '$1…')
+  try { logStream?.write(line) } catch { /* keep going: logging must not break startup */ }
+  process.stderr.write(line)
+}
+
+/** The bundled runtime's version string, e.g. `0.1.0+dsh-0.2.0-rc.2+mac-arm64`. */
+function runtimeVersion() {
+  try {
+    return readFileSync(join(bundledRoot(), 'runtime-version.txt'), 'utf8').trim()
+  } catch {
+    return '(unknown)'
+  }
 }
 
 /** dsh CLI entry inside the bundled profile. */
@@ -94,26 +143,64 @@ function materializeProfile(home) {
   return target
 }
 
+/** What this app is, in the words a user can act on. */
+function showAbout() {
+  void dialog.showMessageBox({
+    type: 'info',
+    title: `关于 ${APP_NAME}`,
+    message: `${APP_NAME} ${app.getVersion()}`,
+    detail: [
+      `内置运行时：${runtimeVersion()}`,
+      `dsh home：${runtimeHome()}`,
+      `运行日志：${runtimeLog || '(未开始)'}`,
+      '',
+      '未签名构建：macOS 首次打开需右键 →「打开」；Windows 会先被 SmartScreen 拦一下。',
+    ].join('\n'),
+    buttons: ['好'],
+  })
+}
+
 /**
  * Install a deliberately small menu.
  *
  * The default Electron menu carries Reload / Force Reload / Toggle DevTools,
  * and a reload tears down the page that dsh's host is attached to (a documented
  * way to break the running app). So the menu keeps only what a user needs to
- * quit, edit text and resize — and no reload accelerator exists at all.
+ * quit, edit text, resize, and — since there is no terminal — read the logs.
  */
 function installMenu() {
   const reloadKeys = [
     { key: 'r', meta: true }, { key: 'r', control: true },
     { key: 'F5' }, { key: 'r', meta: true, shift: true }, { key: 'r', control: true, shift: true },
   ]
+  const help = {
+    role: 'help',
+    submenu: [
+      { label: '打开日志目录', click: () => { void shell.openPath(logsDir || runtimeHome()) } },
+      { label: '查看运行日志', click: () => { void shell.openPath(runtimeLog) } },
+      { type: 'separator' },
+      { label: `关于 ${APP_NAME}`, click: showAbout },
+    ],
+  }
   const template = [
     ...(process.platform === 'darwin'
-      ? [{ role: 'appMenu' }]
+      ? [{
+          role: 'appMenu',
+          submenu: [
+            { label: `关于 ${APP_NAME}`, click: showAbout },
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+          ],
+        }]
       : []),
     { role: 'editMenu' },
     { role: 'viewMenu', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' },
+    help,
   ]
   const menu = Menu.buildFromTemplate(template)
   // Belt and braces: roles are the only accelerators above, but strip any reload
@@ -126,7 +213,7 @@ function installMenu() {
     strip(item)
   }
   Menu.setApplicationMenu(menu)
-  console.log(`menu: minimal installed (${menu.items.length} top-level, no reload)`)
+  logLine(`menu: minimal installed (${menu.items.length} top-level, no reload)`)
 }
 
 function openWindow(url) {
@@ -172,7 +259,8 @@ function openWindow(url) {
  */
 function showFailure(detail) {
   const text = String(detail || 'unknown error')
-  process.stderr.write(`${APP_NAME} failed: ${text}\n`)
+  logLine(`${APP_NAME} failed: ${text}`)
+  logLine(logsDir === '' ? '' : `see ${runtimeLog}`)
   const html = `<!doctype html><meta charset="utf-8"><title>${APP_NAME}</title>
 <style>body{margin:0;padding:32px;font:13px/1.6 -apple-system,Segoe UI,sans-serif;background:#111113;color:#e8e8ea}
 h1{font-size:15px;margin:0 0 12px}p{margin:0 0 16px;color:#a0a0a8}
@@ -215,17 +303,18 @@ function startRuntime(home, profileDir) {
   let output = ''
   const consume = chunk => {
     const text = chunk.toString('utf8')
-    process.stderr.write(text)
+    logLine(text)
     if (ready) return
     output = `${output}${text}`.slice(-16_384)
     const match = READY_PATTERN.exec(output)
     if (match && match[1]) {
       ready = true
+      logLine(`runtime ready: ${match[1].replace(/token=[^&\s]+/, 'token=…')}`)
       openWindow(match[1])
     }
   }
   child.stdout.on('data', consume)
-  child.stderr.on('data', chunk => process.stderr.write(chunk))
+  child.stderr.on('data', chunk => logLine(chunk.toString('utf8')))
   child.once('error', cause => {
     if (!quitting) showFailure(`spawn failed: ${cause && cause.message ? cause.message : String(cause)}`)
   })
@@ -257,8 +346,9 @@ if (!app.requestSingleInstanceLock()) {
     if (!mainWindow) { app.relaunch(); app.quit() }
   })
   app.whenReady().then(() => {
-    installMenu()
     const home = runtimeHome()
+    openLog(home)
+    installMenu()
     const profile = materializeProfile(home)
     startRuntime(home, profile)
   }).catch(cause => {

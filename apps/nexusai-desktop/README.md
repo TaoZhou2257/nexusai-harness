@@ -77,12 +77,33 @@ host-native and where dsh's own packaging would refuse to cross-build anyway.
   `ElectronDownloadCacheMode` from it, which older majors do not export — the DMG
   step then dies with `Cannot read properties of undefined (reading 'ReadWrite')`.
   `pnpm-workspace.yaml` pins it via `overrides`.
+- **This bundle's profile is called `nexusai`, not `desktop`.** Anything that
+  addresses a profile by name has to use that one. The plugin resolves it by
+  finding the profile whose patch mounts it (`src/sync/patch-file.ts`) rather
+  than assuming `desktop`, which is what a development checkout uses — getting
+  this wrong writes MCP rows and custom connectors into a file the running host
+  never loads, so the UI lists connectors whose tools never appear.
+
+## Runtime diagnostics
+
+The runtime's output is appended to `<home>/logs/runtime.log` (rotated once at
+2 MB, tokens redacted) and the menu carries **帮助 → 打开日志目录 / 查看运行日志**
+plus an **关于** item showing the app version, the bundled runtime version and
+the home path. There is no terminal in a packaged app, so this file is the
+artifact to ask a user for when something goes wrong.
+
+The app also offers sign-in by itself: on a start that is signed out, the login
+dialog opens once, a moment after the shell settles. Closing it is remembered for
+the session. (`scripts/check-auto-signin.mjs <port>` checks this over CDP against
+a running instance.)
 
 ## v1.0 status
 
 Verified on macOS (arm64): `prepare:runtime` composes the profile with the plugin
 row present, `smoke:runtime` reaches the web URL, the packaged `.app` boots from a
-clean home and opens its window, and the DMG mounts with the full runtime inside.
-**Not yet verified:** the Windows installer (needs a run of the `windows` CI job),
-branding/iconography, and first-run UX polish — those are deliberate, tracked
-follow-ups rather than blockers for the architecture itself.
+clean home and opens its window, the DMG mounts with the full runtime inside, the
+sign-in dialog offers itself on a signed-out start, and closing it keeps it
+closed. CI builds both platforms and a tag publishes them as a Release.
+**Not yet verified:** the Windows installer end to end on a real Windows machine
+(the CI job produces it, nobody has installed it yet), and the app builds with
+Electron's default icon-free branding beyond the generated icon.

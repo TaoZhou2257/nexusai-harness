@@ -133,6 +133,10 @@ export function apply(ctx: Context, config: ConfigType): void {
   }
   const connectorTools = new ConnectorTools(ctx, { rows: mcp, sse: mcpSse, sseConnectors })
   const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, mcpSse, skills, skillhub, localSkills, connectors, sseConnectors, refreshSse, connectorTools })
+  // Naming the resolved patch file up front is what makes "connectors don't
+  // work" diagnosable: a wrong profile writes rows into a file the host never
+  // loads, and nothing else in the logs would say so.
+  ctx.logger.info('nexusai: connector patch file %s', connectors.patchFile())
 
   // A surviving session means the account was logged in before restart;
   // re-register its tools and rewrite its MCP rows without blocking boot.

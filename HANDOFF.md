@@ -1,23 +1,23 @@
-# HANDOFF — 交接摘要（2026-10-12 · v1.0 carrier）
+# HANDOFF — 交接摘要（2026-10-13 · 发行版 0.1.1）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图），不是推理。
 
-## 本次交接（2026-10-12，`v1.0` 分支）
+## 本次交接（2026-10-13）
 
-**做了什么**：把仓库改成「单仓载体」式的开发/打包架构 —— **一个仓库全带走**：dsh 以 submodule 锁版本封装在内，插件保持在仓库根，新增薄 Electron 壳 `apps/nexusai-desktop`，一条命令出未签名安装包。
+**做了什么**：把 v1.0 的载体推成**可发布状态**，并发了第一个 Release。
 
-- `upstream.json` + `upstream/`（git submodule，锁定 commit `639ed015` = dsh `0.2.0-rc.2`）
-- `apps/nexusai-desktop/`：`src/main.cjs` 薄壳（~180 行，CJS 无构建步骤）、`scripts/prepare-runtime.mjs`（生成 `build/profile`）、`scripts/smoke-runtime.mjs`（无 GUI 冒烟）、`scripts/after-pack.cjs`（把运行时拷进包）、`electron-builder.config.cjs`
-- `.github/workflows/build.yml`：macOS + Windows 两个 job，各自宿主原生构建，产物传 Actions artifact
-- 新增远端 `github` → `https://github.com/TaoZhou2257/nexusai-harness.git`（原有 `origin` 是阿里云 Codeup，保留）
+- **修发行阻断 bug（profile 名）**：插件解析 patch 文件时默认 `profiles/desktop`，而打包版的 profile 叫 `nexusai` —— dev 环境恰好是 `desktop`，把这个错误盖住了。后果是打包版里 **NexusAI 的 MCP 行与自定义连接器全部写到宿主不加载的文件**（卡片有、工具不挂载）。现改为"找承载本插件行的那个 profile"（显式 `profilePatchFile` 仍优先），并加启动日志打印解析结果。
+- **运行时日志落盘**：`<home>/logs/runtime.log`（2MB 轮转一次，token 统一脱敏），菜单加 **帮助 → 打开日志目录 / 查看运行日志 / 关于**（关于显示应用版本、内置运行时版本、home 路径）。打包版没有终端，这是用户唯一能给回来的东西。
+- **首启自动弹登录**：未登录启动时弹一次登录框（延迟 1.2s 等壳稳定；关掉即记住，本会话不再弹）。**没做配置开关**：客户端拿不到插件配置，加开关要动 Typert 线协议（描述符必须同步），收益不抵风险 —— 触发条件本身已限定为"未登录"，dev 环境已登录不会触发。若日后觉得吵，再加开关。
+- **CI 两处失败修复**：`npm ci` 的 peer 图 ERESOLVE（仓库 `.npmrc` → `legacy-peer-deps`）；`prepare-runtime` 读 `upstream/package.json` 在 CI 上 ENOENT（CI 不检出 submodule）。
+- **类型依赖显式钉住**：16 个 dsh 类型包进 `devDependencies`（不进 `dependencies`，不影响产物），因为 `legacy-peer-deps` 让干净克隆不再装 peer，本地 `tsc` 会缺类型。
+- **Release 流程**：`.github/workflows/build.yml` 加 release job —— 打 tag（`v*`）后两端产物自动挂到 Release；分支推送仍只产 artifact。
 
-**架构（3 句话）**：内置 profile 是**普通 pnpm 工程** —— `@deepseek-ai/dsh`（按 upstream.json 版本从 npm 装）+ 两个官方 bundle + 本插件 tgz；运行时用**应用自己的 Electron 当 Node**（`ELECTRON_RUN_AS_NODE=1`），所以只发一个运行时；壳 spawn `dsh --profile nexusai --no-open`，读到 `dsh web: http://127.0.0.1:<port>/?token=…` 就开居中窗口。
+**已验证（本机 macOS arm64 + CI）**：`prepare:runtime` 组合通过；无 GUI 冒烟到达 web URL；**打包版 `.app` 从干净 home 启动开窗**；**profile 解析在打包布局与 dev home 分别得到 `profiles/nexusai` 与 `profiles/desktop`**（套件补 3 例，共 66 例）；**日志落盘且 token 无残留**；**未登录启动弹窗 1 次、点关闭后不再弹**（CDP 实测）；CI 全绿（mac DMG 225MB / win exe 211MB）；tag `v0.1.0` 的 Release 已发布。
 
-**已验证（macOS arm64 真机）**：`prepare:runtime` 组合出 profile 且含插件行；`smoke:runtime` 到达 web URL；**打包版 `.app` 从干净 home 启动并开窗**；DMG（237MB）挂载正常、`Resources/nexusai-runtime/profile/node_modules` 里 CLI 在位。
+**未验证**：Windows 上真正安装并登录用工具（唯一端到端盲区，需一台 Windows）；产物精简（内置 profile ~490MB）。
 
-**未验证**：Windows 安装包（要跑一次 CI 的 `windows` job，且需先 `gh auth login` 我才能读日志）；首启交互打磨；产物精简（内置 profile ~490MB）。**密钥现状**：仓库已转私有；那个曾公开过的 AES key 建议在服务端轮换一次（不急，但别忘）。
-
-**卡在哪**：`gh` 已安装但**未登录**（`gh auth status` 报 not logged in），所以我读不到 CI、也不能重跑；需要在本机跑一次 `gh auth login`（或给我 `GH_TOKEN`）。
+**密钥现状**：仓库已私有；那个曾公开过的 AES key 建议在服务端轮换一次。
 
 ## 0. 这是什么
 
@@ -222,6 +222,7 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 7. **dsh 不能按进度重置超时**：mcp-client 里没有任何 `progress`/`_meta.progressToken` 处理（已核对源码），`toolCallTimeoutMs` 是**一次性**预算，进度通知不会延长它。因此没有「长时间运行」开关（2026-10-10 已整体移除）—— 需要长任务就把「超时」直接填大。想真正"收到进度就续命"必须改 dsh 源码（红线不允许）
 8. **dsh 的 mcp-client 行能写什么**（写连接器/自定义 MCP 必看，源码 `packages/mcp/mcp-client/src/index.ts`）：只有两种传输 —— `stdio`（`command` 必填、`args[]`、`env{}`、`cwd`、`toolCallTimeoutMs`、`failOnStartupError`）与 `streamable-http`（`url` 必填、`headers{}`）；`serverName` 限 `[A-Za-z0-9_-]{1,32}` 且**必须在活实例间唯一**（legacy SSE **没有**这个传输 —— NexusAI 的 SSE 服务器与**用户自定义的 SSE 连接器**都靠本插件桥接成 dsh 工具；区别是前者来自目录、后者存在 `<dshHome>/mcp-sse-connectors.json` 并在每次 sync 时并入桥的输入）（工具名 `mcp__<serverName>__<tool>`）；行本身只有 `id`/`name`/`config`（**没有显示名字段**，所以我们的自定义连接器把显示名放进 id：`custom-mcp-<名字>`，面板读 id 后缀当标签）。`env` 是**叠加在净化过的环境上**，且 dsh **不走 shell** 启动子进程 → 命令要用绝对路径（PATH 里的 `npx`/`node` 可能找不到）；我们的 DXT/MCPB 安装对 `node` 包自动换成 `process.execPath` + `ELECTRON_RUN_AS_NODE=1`（用本应用自带的运行时，不依赖系统 node）
 9. **技能名与前置信息是硬约束**（写上传/导入类功能必看）：`packages/skill/skill-filesystem` 只认 `<root>/<目录>/SKILL.md`（或根下裸 `.md`），且要求 YAML 前置信息含 **name + description**，name 还要满足 `packages/skill/skill` 的 `^[a-z0-9]+(?:-[a-z0-9]+)*$`（**kebab-case ASCII**）。任何一条不满足 → **只写一条 logger 警告、技能被忽略**（界面完全不显示，磁盘上却躺着文件）。所以上传功能必须拦：中文名「测试上传技能A」就是被这条静默丢弃的。**还有一条更隐蔽**：dsh 用 YAML 解析后要求 name/description 是 **string** —— `name: 12306`（未加引号）会被解析成**数字**，同样被静默忽略（这台机器的 skills/ 里现在就躺着这样一个技能 `12306`，改成 `name: "12306"` 即可恢复）。本插件现已按 YAML 类型 + kebab-case 双重校验，并在错误里直接提示加引号
+10. **profile 名不是常量**（写任何"按 profile 定位文件"的代码必看）：dev 检出跑 `profiles/desktop`，而本项目的打包版内置 profile 叫 `nexusai`（`dsh --profile nexusai`）。**任何默认成 `desktop` 的路径都会在打包版里静默写错文件** —— 表现为连接器卡片在、工具永不挂载，dev 环境完全正常（因为恰好就是 `desktop`）。本插件已改为"找承载自己那一行的 profile"（`src/sync/patch-file.ts`，显式 `profilePatchFile` 仍优先），并在启动日志打印解析结果；套件有 3 例覆盖（真实打包 home 与 dev home 各验一次）
 
 ### C. 数据与接口
 1. **React 列表 key 必须唯一**：上游「天然主键」不可想当然（SkillHub 的 `publicSlug` 一页内重复，曾表现为「筛选失效」）→ 统一用 `namespace.canonicalName` 作身份。
@@ -267,6 +268,27 @@ node scripts/dev/brand-dev-app.mjs             # 改 dev 包应用名 + 访达�
 ./scripts/dev/start-desktop.sh                 # 或 ./scripts/dev/watch-window.sh center  # 窗口摆放（macOS）
 ```
 
+## 8b. 发行版（carrier）怎么出包与发版
+
+载体在 `apps/nexusai-desktop`（详见其 README）。本机一次完整出包：
+
+```bash
+cd apps/nexusai-desktop
+corepack pnpm install                    # 首次（国内加 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/）
+cp .env.example .env                     # NEXUSAI_BASE_URL / AES_KEY / AES_IV（.env 已被 gitignore）
+node scripts/prepare-runtime.mjs         # → build/profile（dsh 按 upstream.json 版本 + 本插件 tgz）
+node scripts/smoke-runtime.mjs           # 无 GUI：起运行时并等 web URL（改壳后必跑）
+corepack pnpm exec electron-builder --config electron-builder.config.cjs --mac --arm64
+#   ↑ 这条常被网络卡住，加 ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugging-port 的实例查首启弹窗
+```
+
+**发版**：改 `apps/nexusai-desktop/package.json` 的 version → 提交 → `git tag -a vX.Y.Z` → `git push github v1.0 vX.Y.Z`。CI 两个平台构建，release job 自动把 dmg/exe 挂到 Release（仓库私有 → 下载需登录）。
+
+**CI 需要的 secret**：`NEXUSAI_BASE_URL` / `NEXUSAI_AES_KEY` / `NEXUSAI_AES_IV`（仓库 Settings → Secrets；值与本机 `.env` 相同）。
+
+**两个只在打包版才暴露的坑**（本机 dev 掩盖，CI/发行必踩）：profile 名不是 `desktop`（见 §7-坑 B10）；`prepare-runtime` 不能读 `upstream/`（CI 不检出 submodule）。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
@@ -310,7 +332,12 @@ node scripts/dev/brand-dev-app.mjs             # 改 dev 包应用名 + 访达�
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
-| 10-13 | **carrier 发行化三件**：①应用图标/品牌（`resources/icon.svg` 派生 png/icns/ico，两端共用）②菜单收敛（去掉 Reload/Force Reload/DevTools 快捷键，另吞 ⌘R/Ctrl+R/F5）③运行时失败开窗显示输出（不再静默退出） | 打包版 .app 的 `CFBundleIconFile=icon.icns` 且与源一致；启动打印 `menu: minimal installed (4 top-level, no reload)`；干净 home 启动到 web URL 无失败 |
+| 10-13 | **发行阻断修复：profile 名**。插件默认解析 `profiles/desktop/cordis.patch.yml`，打包版 profile 叫 `nexusai` → MCP 行与自定义连接器写进宿主不加载的文件（dev 恰好是 `desktop`，掩盖了它）。改为解析"承载本插件行的 profile"，显式配置仍优先；启动日志打印解析结果 | 打包布局 home → `profiles/nexusai/…`、dev home → `profiles/desktop/…`（同一脚本对两个真实 home 各跑一次）；套件 +3 例（66 例全绿） |
+| 10-13 | **运行时日志落盘 + 菜单**：`<home>/logs/runtime.log`（2MB 轮转、token 脱敏）、帮助菜单（打开日志目录 / 查看运行日志 / 关于） | 日志文件含启动横幅/menu/ready 行且 token 残留计数 0；`--check` 语法与启动均通过 |
+| 10-13 | **首启自动弹登录**（未登录启动弹一次，关掉本会话不再弹；无配置开关，理由见交接段） | CDP 实测：未登录启动 `.nexusai-dialog` 计数 1；点「关闭」后 2.5s 仍为 0 |
+| 10-13 | **Release 流程**：tag（`v*`）触发 release job，把两端安装包挂到 Release；分支推送仍只产 artifact | tag `v0.1.0` → 三个 job 全绿，Release 含 dmg 226MB + exe 213MB |
+| 10-13 | **CI 修复**：`npm ci` peer 图 ERESOLVE（`.npmrc` legacy-peer-deps）；`prepare-runtime` 读 `upstream/package.json` 在 CI 上 ENOENT；devDependencies 显式钉 16 个 dsh 类型包 | 干净 clone：`npm ci` 94 包 + `tsc` 通过；CI 两次全绿 |
+| 10-13 | **carrier 发行化三件**：①应用图标/品牌（`resources/icon.svg` 派生 png/icns/ico，两端共用）②菜单收敛（去掉 Reload/Force Reload/DevTools 快捷键，另吞 ⌘R/Ctrl+R/F5）③运行时失败开窗显示输出（不再静默退出） | 打包版 .app 的 `CFBundleIconFile=icon.icns` 且与源一致；启动打印 `menu: minimal installed (5 top-level, no reload)`；干净 home 启动到 web URL 无失败 |
 | 10-13 | **修发行阻断 bug：独立 profile 必须装 peer**。dsh 把 `@deepseek-ai/cordis-plugin-{group,include,loader}` 等声明为 peerDependencies，而 `dsh-app-boot` 直接 import 它们；照抄 dev profile 的 `autoInstallPeers: false` 会让打包版启动即 `ERR_MODULE_NOT_FOUND`。改 `true`，并把 `@deepseek-ai/dsh-subprocess-local` 加进 allowBuilds（与 dsh 同决定） | 本机打包版从干净 home 启动成功；修前失败日志已捕获 |
 | 10-13 | **修 CI 首跑：`npm ci` 因 peer 图 ERESOLVE** → 仓库级 `.npmrc` 设 `legacy-peer-deps=true` | 从 GitHub 真实 clone 的干净副本：`npm ci` 通过（68 包）、`build.mjs` 出两产物、`npm pack` 出 tgz |
 | 10-12 | **v1.0 carrier（单仓载体架构）**：dsh 以 submodule 锁版本封装进仓库（`upstream.json` + `upstream/`）；新增 `apps/nexusai-desktop` 薄壳（Electron-as-Node 跑内置 dsh）+ `prepare-runtime`（按版本装 dsh 进 profile）+ `after-pack` + `smoke-runtime`；`.github/workflows/build.yml` 出 mac/win 未签名包 | macOS 真机：profile 组合通过、无 GUI 冒烟到达 web URL、**打包版 .app 从干净 home 启动开窗**、DMG 237MB 挂载含完整运行时 |

@@ -8,7 +8,7 @@
  * (the built-in account menu's own confirmation, kept because signing out
  * drops the tools and MCP rows those tasks may be using).
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, IconChevronDownOutlineRegular, IconLoadingOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { NexusaiSignInDialog } from './NexusaiSignInDialog'
 import type { NexusaiLocaleKey } from './locales'
@@ -41,6 +41,20 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
   // sampled when the menu item was chosen.
   const [signOutImpact, setSignOutImpact] = useState<boolean | 'unknown'>()
   const [signOutError, setSignOutError] = useState('')
+  // Sign-in offered on its own the first time this session starts signed out:
+  // the launcher is the only sign-in entry, and a fresh install gives no other
+  // hint that anything is missing. One shot per session, and a user who closes
+  // the dialog is not asked again.
+  const autoOffered = useRef(false)
+  const closedByUser = useRef(false)
+  const latestView = useRef<NexusaiSnapshot['view']>(undefined)
+  const unmounted = useRef(false)
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
+  // Clearing on unmount only: see the auto-offer effect below.
+  useEffect(() => () => {
+    unmounted.current = true
+    for (const timer of timers.current) clearTimeout(timer)
+  }, [])
 
   const view = snapshot?.view
   const signedIn = view?.loggedIn === true
@@ -50,6 +64,27 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
   // Host-side notice codes map to localized copy (e.g. a session lost to a 401).
   const notice = view?.notice === 'nexusai: session-lost' ? resolve('sessionLost') : ''
   const currentOrg = orgs.find(org => org.id === view?.orgId)
+  latestView.current = view
+
+  /**
+   * Offer sign-in once, after the shell has settled.
+   *
+   * The timer is deliberately not re-armed per snapshot and not cleared by the
+   * effect's own cleanup: deps include `view`, which changes on every push from
+   * the host, so clearing on each update would cancel the offer before it ever
+   * fired. The ref guard makes it a single shot; the decision is re-read when
+   * the timer fires, so signing in during the delay cancels it.
+   */
+  useEffect(() => {
+    if (autoOffered.current || view === undefined) return
+    autoOffered.current = true
+    const timer = setTimeout(() => {
+      if (unmounted.current || closedByUser.current) return
+      if (latestView.current?.loggedIn === true || latestView.current?.attempt != null) return
+      setDialogOpen(true)
+    }, 1200)
+    timers.current.push(timer)
+  }, [view])
 
   const switchOrg = async (orgId: string): Promise<void> => {
     if (auth === undefined || orgId === view?.orgId) return
@@ -169,7 +204,7 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
             auth={auth}
             getView={() => snapshot?.view}
             t={resolve}
-            close={() => { setDialogOpen(false) }}
+            close={() => { setDialogOpen(false); closedByUser.current = true }}
             openSettings={openSettings}
           />
         )}

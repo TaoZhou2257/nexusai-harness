@@ -425,6 +425,33 @@ check('every converted node is free of undefined-valued keys',
 check('converted parameters are lossless JSON',
   JSON.parse(JSON.stringify(converted)) !== null, '')
 
+console.log('profile patch resolution (打包版 profile 名不是 desktop):')
+// The packaged app bundles a profile named `nexusai` while a development
+// checkout runs `desktop`; resolving the wrong one writes rows into a file the
+// running host never loads.
+const profilesRoot = join(process.env.DSH_HOME, 'profiles')
+await mkdir(join(profilesRoot, 'desktop'), { recursive: true })
+await writeFile(join(profilesRoot, 'desktop', 'cordis.patch.yml'), '- id: ui-settings-account\n  disabled: true\n')
+await mkdir(join(profilesRoot, 'nexusai'), { recursive: true })
+await writeFile(join(profilesRoot, 'nexusai', 'cordis.patch.yml'),
+  "- insert:\n    - id: nexusai\n      name: '@toby/dsh-plugin-nexusai'\n      config:\n        baseUrl: 'http://h'\n")
+const autoResolved = new ConnectorRows({ profilePatchFile: '', serverNamePrefix: 'nexusai', toolCallTimeoutMs: 60_000, failOnStartupError: false })
+check('an empty config resolves the profile that mounts the plugin (not `desktop`)',
+  autoResolved.patchFile() === join(profilesRoot, 'nexusai', 'cordis.patch.yml'), autoResolved.patchFile())
+const explicit = new ConnectorRows({ profilePatchFile: join(work, 'explicit.yml'), serverNamePrefix: 'nexusai', toolCallTimeoutMs: 60_000, failOnStartupError: false })
+check('an explicit profilePatchFile still wins',
+  explicit.patchFile() === join(work, 'explicit.yml'), explicit.patchFile())
+// …and a home with no plugin-mounting profile keeps the desktop convention.
+const fallbackHome = join(work, 'other-home')
+await mkdir(join(fallbackHome, 'profiles', 'desktop'), { recursive: true })
+await writeFile(join(fallbackHome, 'profiles', 'desktop', 'cordis.patch.yml'), '[]\n')
+const previousHome = process.env.DSH_HOME
+process.env.DSH_HOME = fallbackHome
+const fallback = new ConnectorRows({ profilePatchFile: '', serverNamePrefix: 'nexusai', toolCallTimeoutMs: 60_000, failOnStartupError: false })
+check('a home without our row falls back to `desktop`',
+  fallback.patchFile() === join(fallbackHome, 'profiles', 'desktop', 'cordis.patch.yml'), fallback.patchFile())
+process.env.DSH_HOME = previousHome
+
 await rm(work, { recursive: true, force: true })
 console.log(`\n${passed} passed, ${failures.length} failed`)
 if (failures.length > 0) {

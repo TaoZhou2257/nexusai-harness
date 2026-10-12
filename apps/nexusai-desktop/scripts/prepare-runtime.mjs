@@ -24,7 +24,7 @@
  *   build/runtime-version.txt
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -126,7 +126,10 @@ if (existsSync(join(UPSTREAM_DIR, '.git'))) {
 say(`packing ${plugin.name}@${plugin.version}`)
 if (!skipPluginBuild) run('node', [join(PLUGIN_ROOT, 'scripts', 'build.mjs')], { cwd: PLUGIN_ROOT })
 mkdirSync(CACHE, { recursive: true })
-for (const stale of [join(CACHE, 'toby-dsh-plugin-nexusai-0.1.0.tgz')]) rmSync(stale, { force: true })
+// The cache holds only this run's artifact: a leftover tarball would keep the
+// profile pinned to a stale plugin build, since the file name is stable across
+// rebuilds and pnpm caches by integrity.
+for (const stale of readdirSync(CACHE)) rmSync(join(CACHE, stale), { force: true })
 const packedName = execFileSync('npm', ['pack', '--pack-destination', CACHE, '--silent'], {
   cwd: PLUGIN_ROOT,
   encoding: 'utf8',
