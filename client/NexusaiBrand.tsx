@@ -21,19 +21,49 @@ const DEFAULT_NAME = 'NexusAI DSH'
  * sidebar mounts once, so a module-level cache avoids a second round trip). */
 let cached: BrandingFace | undefined
 let inFlight: Promise<BrandingFace | undefined> | undefined
+/** Mounted readers, so a server change can push a fresh payload into them. */
+const reloads = new Set<() => void>()
+
+/**
+ * Drop the cached payload and make every mounted reader fetch again.
+ *
+ * The server address can change while the app runs — the sign-in dialog's
+ * 「应用」 switches deployments — and the brand that identifies the app has to
+ * follow it. Without this the sidebar keeps the previous deployment's
+ * name/logo/version until the app restarts (the dialog refreshes its own copy,
+ * so the mismatch reads as "the sidebar stopped updating").
+ */
+export function invalidateBranding(): void {
+  cached = undefined
+  inFlight = undefined
+  for (const reload of reloads) reload()
+}
 
 export function useBranding(auth: NexusaiAuthOps | undefined): BrandingFace | undefined {
   const [branding, setBranding] = useState<BrandingFace | undefined>(cached)
   useEffect(() => {
-    if (cached !== undefined || auth === undefined) return
-    inFlight ??= auth.getBranding().then(info => {
-      cached = info
-      return info
-    }, () => {
-      cached = undefined
-      return undefined
-    }).finally(() => { inFlight = undefined })
-    void inFlight.then(info => { if (info !== undefined) setBranding(info) })
+    if (auth === undefined) return undefined
+    let live = true
+    const load = (): void => {
+      if (cached !== undefined) {
+        setBranding(cached)
+        return
+      }
+      inFlight ??= auth.getBranding().then(info => {
+        cached = info
+        return info
+      }, () => {
+        cached = undefined
+        return undefined
+      }).finally(() => { inFlight = undefined })
+      void inFlight.then(info => { if (live && info !== undefined) setBranding(info) })
+    }
+    load()
+    reloads.add(load)
+    return () => {
+      live = false
+      reloads.delete(load)
+    }
   }, [auth])
   return branding
 }

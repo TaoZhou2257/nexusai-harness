@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, IconCheckCircleOutlineRegular, IconLoadingOutlineRegular, IconShieldOutlineRegular, IconWarningOutlineRegular, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { NexusaiLocaleKey } from './locales'
+import { invalidateBranding } from './NexusaiBrand'
 import type { BrandingFace } from './face'
 import type { AuthViewFace, NexusaiAuthOps } from './face'
 
@@ -192,8 +193,11 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
     try {
       await auth.testBaseUrl(target)
       await auth.setBaseUrl(target)
+      // The new server brings its own branding (title/logo/name/version) — the
+      // dialog refreshes its own copy below, and this drops the shared cache so
+      // the sidebar and the first-run hero follow along too.
+      invalidateBranding()
       setAppliedUrl(target)
-      // The new server brings its own branding (title/logo/name/version).
       await refreshBranding()
       const current = getView()
       const currentAttempt = current?.attempt ?? null

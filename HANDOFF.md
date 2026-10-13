@@ -226,6 +226,8 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 
 11. **home 比安装活得久，运行时链接会失效**（现场报过 `bundled dsh CLI is missing`）：用户目录里的 `profiles/nexusai/node_modules` 是指向**安装目录内**那份 profile 的链接（Windows 上是 junction）。应用被卸载、移动或换目录重装后，这个链接就指向别处/指向不存在的路径；而 **Windows 的 junction 即使目标没了也仍然占着这个名字**（`existsSync` 会沿链接解析 → 返回 false，于是"以为没人占"，真去创建又 EEXIST）。做法：标记里带上**应用版本**（升级/搬迁必然重链）、占用与否用 **`lstat`** 判断（能看到失效链接）、并在启动前**校验 CLI 是否存在**，缺了就重建链接一次；只有"不是本应用创建的目录"才拒绝（用户自己的运行时，绝不删）。CI 的 Windows 验收闸现在**第二个场景**就专门造一个"junction 指向别处 + 旧标记"的 home，断言它自愈启动（`scripts/ci/install-and-launch-check.ps1`）
 
+12. **品牌是模块级缓存，换服务器地址后不会自己更新**（用户问过"左上角是不是改坏了"）：`client/NexusaiBrand.tsx` 把品牌放在模块级 `cached` 里（当初为省一次往返），`useBranding` 见到缓存就早退；而登录弹窗的「应用」只刷新**弹窗自己**那份（`NexusaiSignInDialog` 里的 `refreshBranding`）。于是换地址后：弹窗是新服务器的品牌、**侧栏还是旧服务器的**。修法：导出 `invalidateBranding()`（清缓存并通知所有已挂载的读取方重取），在 `applyServer` 里 `setBaseUrl` 之后调用 —— 侧栏与首启 hero 一并跟随。这**不是**某一轮改坏的：缓存一直都在，只是品牌槽修好（`priority: -1`）之后我们自己的品牌才真正显示出来，这个"不跟随"才变得可见
+
 ### C. 数据与接口
 1. **React 列表 key 必须唯一**：上游「天然主键」不可想当然（SkillHub 的 `publicSlug` 一页内重复，曾表现为「筛选失效」）→ 统一用 `namespace.canonicalName` 作身份。
 2. **外部接口空值**不能只判 undefined/''：JSON `null` 与字面量 `"null"` 都出现过（曾导致图标裂图）。
@@ -459,6 +461,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **修「换服务器地址后左上角品牌不变」**（用户反馈）：品牌缓存是模块级的，`useBranding` 见缓存即早退，而「应用」只刷新弹窗自己那份 → 侧栏留着旧服务器的名称/logo。新增 `invalidateBranding()`（清缓存 + 通知已挂载读取方重取）并在 `applyServer` 中 `setBaseUrl` 之后调用 | 两服务器对比实测（A `agent.nexusai.net.cn` / B `221.226.155.134`，品牌字段确不同：`tab.title` A=NexusAgent Builder、B=KyloTynAI）：切换前侧栏 `NexusAgent Builder` + 字标 `f7ccac8b…`；点「应用」后变为 **`KyloTynAI` + 字标 `25f4e026…`**（版本号两台都是 v1.5.0.3，故不体现差异） |
 | 10-13 | **修「bundled dsh CLI is missing」（现场反馈）**：home 里的运行时链接在"应用移动/换目录重装"后失效，而旧逻辑只在版本串变化时重链、且用 `existsSync` 判占用（失效链接看到 false）→ 直接抛错。改为：标记含应用版本、`lstat` 判占用、启动前校验 CLI，缺则重建一次；用户自建目录仍拒绝覆盖。Windows 验收闸新增"残留 home 自愈"场景 | 本机（macOS）用"链接指向不存在路径 + 旧标记"的 home 实测：日志 `runtime link needs rebuilding (… cli missing)` → `runtime ready`，链接重建且 CLI 在位；反向用例（真实目录 + 无标记）实测仍拒绝并保住用户文件 |
 | 10-13 | **产物命名**（用户选定）：用仓库名且不含空格 —— mac `NexusAIHarness-<v>-arm64.dmg`、win `NexusAIHarness-Setup-<v>-x64.exe`；约定与理由记入 §8h。CI 的 glob（`dist/*.dmg`、`*Setup*.exe`）不受影响 | 本机打包实测 `NexusAIHarness-0.1.4-arm64.dmg`；Windows 命名由下次 CI 产出验证 |
 | 10-13 | **关掉 dsh 首启的「添加一个 API Key」引导**（用户要求）：该引导是 `ui-settings-models` 行的 `credentialOnboarding`（宿主发布成页面全局 `__DSH_MODELS_ONBOARDING__`），预置配置里设 `false` 即可，不改 dsh；新增 HANDOFF §8g 汇总预置 patch 的 5 段设置 | 干净 home 启动实测：`添加一个 API Key` 与 `稍后配置` 文案均搜不到，hero 标题可见、无登录框、launcher=1 |
