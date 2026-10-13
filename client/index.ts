@@ -23,11 +23,13 @@ import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { NexusaiLauncher } from './NexusaiLauncher'
 import { NexusaiBrandMark, NexusaiBrandName } from './NexusaiBrand'
+import { NexusaiHeroMark } from './NexusaiHero'
 import { NexusaiPanelIcon } from './NexusaiPanelIcon'
 import { NexusaiWorkbench } from './NexusaiWorkbench'
 import { en, zh, type NexusaiLocaleKey } from './locales'
@@ -253,6 +255,17 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
     inject: () => controller,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as never, NexusaiBrandName as never))
+
+  // The first-run hero's mark (dsh's own fish is the slot's fallback). This
+  // component also owns the hero's headline/badge text patch while it is
+  // mounted — see NexusaiHero.tsx for why those two are handled in the DOM.
+  consumer.slots.inject('conversation.hero.brand.mark', () => consumer.slots.register({
+    name: 'conversation.hero.brand.mark',
+    locale: NS,
+    registrant: 'nexusai',
+    inject: () => controller,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as never, NexusaiHeroMark as never))
 
   consumer.slots.inject('settings.launcher', () => consumer.slots.register({
     name: 'settings.launcher',

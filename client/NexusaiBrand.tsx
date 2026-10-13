@@ -22,7 +22,7 @@ const DEFAULT_NAME = 'NexusAI DSH'
 let cached: BrandingFace | undefined
 let inFlight: Promise<BrandingFace | undefined> | undefined
 
-function useBranding(auth: NexusaiAuthOps | undefined): BrandingFace | undefined {
+export function useBranding(auth: NexusaiAuthOps | undefined): BrandingFace | undefined {
   const [branding, setBranding] = useState<BrandingFace | undefined>(cached)
   useEffect(() => {
     if (cached !== undefined || auth === undefined) return

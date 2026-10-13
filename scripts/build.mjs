@@ -54,6 +54,8 @@ const client = await build({
   platform: 'browser',
   target: 'es2022',
   jsx: 'automatic',
+  // The hero mark is bundled as a data URL: the plugin ships as one JS file.
+  loader: { '.png': 'dataurl' },
   sourcemap: false,
   external: PLATFORM_EXTERNALS,
   write: false,

@@ -48,14 +48,20 @@ cp .env.example .env               # NEXUSAI_BASE_URL + NEXUSAI_AES_KEY/IV — s
 pnpm run prepare:runtime           # → build/profile, build/runtime-version.txt
 pnpm run smoke:runtime             # headless: proves the bundle boots
 pnpm start                         # run the shell from source
-pnpm run make:icons                # only when resources/icon.svg changes (macOS tools)
+pnpm run make:icons                # only when the brand mark changes (macOS tools)
 pnpm run dist:mac                  # → dist/NexusAgent Builder-<version>-arm64.dmg (unsigned)
 ```
 
-**Icons** — `resources/icon.svg` is the source of truth; `pnpm run make:icons`
-derives `icon.png` (1024), `icon.icns` and `icon.ico` from it with macOS's
-`qlmanage`/`sips`/`iconutil`. The generated binaries are committed on purpose so
-the Windows runner (which cannot run those tools) still packages the real icon.
+**Icons** — two steps, one source each: `scripts/compose-icon.py` puts the brand's
+transparent glyph (`resources/icon-source.png`) on the product's dark rounded
+plate and writes `resources/icon.png` (1024); `pnpm run make:icons` then derives
+`icon.icns` and `icon.ico` from it with macOS's `sips`/`iconutil`. Only the second
+step is needed in a build — the PNG is committed, so CI (and the Windows runner)
+package the real icon without Python or those tools.
+
+The source glyph is 256 px, so the 1024 icon is an upscale: crisp at Dock/taskbar
+sizes, soft in Finder previews. Drop a 1024 px (or vector) export in as
+`resources/icon-source.png` and re-run both commands to fix that.
 
 `prepare:runtime` is the only step that touches the network: it packs the plugin
 (`npm pack`) and installs the profile with pnpm. `--target=win-x64` runs the same

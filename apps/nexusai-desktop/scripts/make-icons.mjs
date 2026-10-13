@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Derive the app icons from `resources/icon.svg`.
+ * Derive the platform icon files from the composed `resources/icon.png`.
  *
- * Kept as a script (rather than checked-in binaries only) so the mark can be
- * changed in one editable file and regenerated predictably:
- *   svg ──qlmanage──▶ 1024 png ──sips──▶ .iconset ──iconutil──▶ .icns
- *                              └──▶ .ico (PNG payloads; no extra tooling)
+ * Two steps, each with one owner:
+ *   brand mark ──compose-icon.py──▶ resources/icon.png (1024, committed)
+ *   resources/icon.png ──sips──▶ .iconset ──iconutil──▶ .icns
+ *                      └──▶ .ico (PNG payloads; no extra tooling)
+ *
+ * `icon.png` is committed, so a build (and CI) needs no Python — see
+ * `compose-icon.py` for how it is produced from the brand's transparent mark.
  *
  * Usage: node scripts/make-icons.mjs
  */
@@ -17,33 +20,22 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(SCRIPT_DIR, '..')
 const RESOURCES = join(APP_ROOT, 'resources')
-const SOURCE = join(RESOURCES, 'icon.svg')
 const PNG = join(RESOURCES, 'icon.png')
 const ICNS = join(RESOURCES, 'icon.icns')
 const ICO = join(RESOURCES, 'icon.ico')
 const ICONSET = join(RESOURCES, '.icon.iconset')
 
-for (const tool of ['qlmanage', 'sips', 'iconutil']) {
+for (const tool of ['sips', 'iconutil']) {
   try {
     execFileSync('which', [tool], { stdio: 'ignore' })
   } catch {
     throw new Error(`${tool} is required (macOS only). Run this on a Mac, or commit the generated icons.`)
   }
 }
-if (!existsSync(SOURCE)) throw new Error(`missing ${SOURCE}`)
-
-// qlmanage writes `<name>.png` into the output directory; the SVG name is fixed.
-const render = () => {
-  rmSync(join(APP_ROOT, 'resources', 'icon.svg.png'), { force: true })
-  execFileSync('qlmanage', ['-t', '-s', '1024', '-o', RESOURCES, SOURCE], { stdio: 'ignore' })
-  const produced = join(RESOURCES, 'icon.svg.png')
-  if (!existsSync(produced)) throw new Error('qlmanage produced no PNG from icon.svg')
-  return produced
-}
-const rendered = render()
-writeFileSync(PNG, readFileSync(rendered))
-rmSync(rendered, { force: true })
-console.log(`icon.png      1024x1024`)
+if (!existsSync(PNG)) throw new Error(`missing ${PNG} — run scripts/compose-icon.py first`)
+const source = readFileSync(PNG)
+if (source.length < 5_000) throw new Error(`${PNG} looks too small to be a 1024 icon`)
+console.log(`icon.png      source ${(source.length / 1024).toFixed(0)} KB`)
 
 // macOS needs an .icns; the iconset covers the sizes the system actually asks for.
 rmSync(ICONSET, { recursive: true, force: true })

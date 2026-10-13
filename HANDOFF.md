@@ -342,6 +342,31 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 **若以后要"跟随系统语言"**（英文系统给英文）：不是删这行，而是给 `.app` 声明中文 localization（`mac.extendInfo.CFBundleLocalizations: ['zh-Hans','en']` + afterPack 里放一个空的 `zh-Hans.lproj`），让 macOS 按系统偏好排序，再删掉这行偏好。
 
+## 8f. 应用图标与首启画面（品牌素材落地）
+
+**图标链路**（单一真源，全部脚本化）：
+
+```
+品牌字标（透明 PNG）──scripts/compose-icon.py──▶ resources/icon.png (1024，深色圆角底)
+resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
+```
+
+- 素材来源：`~/Desktop/favicon/favicon_256.ico`（导出为 `resources/icon-source.png`）。它是**透明底字标**（非图标）：macOS 应用图标需要实心圆角方形，所以 `compose-icon.py` 把字标放在产品自己的深色底（#111113）上、按约 60% 内容占比居中 —— **若以后想换底色/占比，只改这个脚本重跑**。
+- **已知限制**：源图只有 256px，1024 图标是放大的（~4x）：Dock/任务栏尺寸清晰，Finder 预览偏软。要更好只需提供 1024 PNG 或矢量图，替换 `resources/icon-source.png` 后重跑两行命令。
+- 首启 hero 的字标用的是 128px 版本（`client/assets/icon-mark-128.png`，由 build.mjs 以 data URL 内联进 client bundle），所以插件保持"一个 JS 文件"即可分发。
+
+**首启 hero 的三处改动**（`client/NexusaiHero.tsx`）：
+
+| 元素 | 做法 | 依据 |
+|---|---|---|
+| 字标 | 贡献官方槽位 `conversation.hero.brand.mark`（dsh 的鱼是它的 fallback） | 该处代码是 `renderSlot(..., { fallback: <HeroFish/> })`，属支持的扩展点 |
+| 标题 → `探索 AGI 之无限可能` | **DOM 改写**（在槽位挂载期间生效，用 MutationObserver 幂等重写） | 该文案是 `hero.headline` 字典项，**插件无法覆盖**（同 namespace+locale 再注册会 throw），且没有槽位 |
+| 徽章 `预览版` → 版本号 | 同上改写 | 同上（`hero.preview`）；取值规则与左上角一致：平台版本（`branding.version`）优先，回落 dsh 构建号（`branding.dshVersion`，宿主本地补，连不上也有值） |
+
+选择器用 **CSS module 的局部名后缀**匹配（`[class*="_titleGroup"]:has(> [class*="_previewBadge"]) > span:first-child`、`[class*="_previewBadge"]`）：哈希每次构建会变，局部名稳定；且只在"包含 previewBadge 的 titleGroup"上动手，避免误伤别处同名类。dsh 若哪天改掉这些局部名，补丁会静默失效（退回 dsh 原文案），不会把界面改坏。
+
+**实测（打包版）**：远程可达 → 标题 `探索 AGI 之无限可能`、徽章 `v1.5.0.3`、字标为我们的 IMG；远程不可达 → 徽章 `0.2.0-rc.2`（dsh 构建号），标题与字标不变。
+
 ## 8d. 产物精简（内置 profile 的体积构成与已做的剪裁）
 
 `prepare-runtime.mjs` 在装完 profile 后跑 `pruneProfile(target)`，只删**这个目标平台永远加载不到**的东西，三类都有依据：
