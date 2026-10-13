@@ -346,6 +346,22 @@ node scripts/check-client-mounted.mjs 9224 3000  # 可选：对带 --remote-debu
 
 **若以后要"跟随系统语言"**（英文系统给英文）：不是删这行，而是给 `.app` 声明中文 localization（`mac.extendInfo.CFBundleLocalizations: ['zh-Hans','en']` + afterPack 里放一个空的 `zh-Hans.lproj`），让 macOS 按系统偏好排序，再删掉这行偏好。
 
+## 8e-2. 动态展示项盘点（名称 / logo / 版本）与"换服务器"验收清单
+
+所有随服务器变化的展示都来自**同一个**品牌载荷（`GET /v1/base/custom`），且现在**只有一个缓存**（`client/NexusaiBrand.tsx` 的模块级 `cached`，由 `invalidateBranding()` 清空并在 `setBaseUrl` 后触发重取）：
+
+| 展示项 | 取值 | 取不到时（首开/服务器不可达） |
+|---|---|---|
+| 侧栏名称 | `branding.name`（服务端 `tab.title`） | 回落 `NexusAI DSH` |
+| 侧栏字标 | `branding.markUrl`（方形 logo） | 回落插件自带 SVG 字标（不会裂图） |
+| 侧栏版本徽章 | `branding.version` → 回落 `branding.dshVersion` | 显示 dsh 构建串（如 `0.2.0-rc.2`），宿主持有该值 |
+| 首启 hero 版本徽章 | 同上（同一 hook） | 同上 |
+| 工作台「远程获取 · 名称」 | `branding.name` | 只显示「远程获取」，不带名称 |
+| 登录弹窗标题/欢迎语/logo/按钮色/版本 | 弹窗**自己**那份（要显示"待应用地址"的品牌） | 标题用不含名称的默认文案；logo/welcome/版本为空则整段不渲染 |
+| 应用图标 / 窗口图标 / About 里的版本 | **本地资产**（`resources/icon*`、`runtime-version.txt`） | 与服务器无关，不涉及动态获取 |
+
+**变更检测（换服务器地址后应逐项变）**：侧栏名称 + 字标、工作台「远程获取」标签、hero 徽章（版本号是否变取决于两台服务器的 `about.version` 是否不同 —— 曾遇到两台都报 `v1.5.0.3`，属正常）。**首启不可达**时应看到：默认名 `NexusAI DSH` + dsh 构建号 + 插件自带 SVG 字标，且**无裂图、无 `undefined`**（已实测）。
+
 ## 8f. 应用图标与首启画面（品牌素材落地）
 
 **图标链路**（单一真源，全部脚本化）：
@@ -461,6 +477,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **品牌统一为单一缓存**：工作台原先自己抓一份品牌（只在"登录状态翻转"时重取，漏掉"未登录时改地址"），现改用共享的 `useBranding` —— 侧栏/hero/工作台三者不会再各说各话。同时系统盘点所有动态展示项（名称/logo/版本/欢迎语/按钮色）与其取不到时的降级，写进 §8e-2 | 三场景实测：①换地址 → 侧栏 `KyloTynAI`、工作台标签同步；②**带已保存地址重启** → 侧栏 `KyloTynAI` + hero `v1.5.0.3`（宿主先应用覆盖值，无竞态）；③服务器不可达 → 默认名 + dsh 构建号 + 自带 SVG 字标、**裂图 0**、页面无 `undefined` |
 | 10-13 | **修「换服务器地址后左上角品牌不变」**（用户反馈）：品牌缓存是模块级的，`useBranding` 见缓存即早退，而「应用」只刷新弹窗自己那份 → 侧栏留着旧服务器的名称/logo。新增 `invalidateBranding()`（清缓存 + 通知已挂载读取方重取）并在 `applyServer` 中 `setBaseUrl` 之后调用 | 两服务器对比实测（A `agent.nexusai.net.cn` / B `221.226.155.134`，品牌字段确不同：`tab.title` A=NexusAgent Builder、B=KyloTynAI）：切换前侧栏 `NexusAgent Builder` + 字标 `f7ccac8b…`；点「应用」后变为 **`KyloTynAI` + 字标 `25f4e026…`**（版本号两台都是 v1.5.0.3，故不体现差异） |
 | 10-13 | **修「bundled dsh CLI is missing」（现场反馈）**：home 里的运行时链接在"应用移动/换目录重装"后失效，而旧逻辑只在版本串变化时重链、且用 `existsSync` 判占用（失效链接看到 false）→ 直接抛错。改为：标记含应用版本、`lstat` 判占用、启动前校验 CLI，缺则重建一次；用户自建目录仍拒绝覆盖。Windows 验收闸新增"残留 home 自愈"场景 | 本机（macOS）用"链接指向不存在路径 + 旧标记"的 home 实测：日志 `runtime link needs rebuilding (… cli missing)` → `runtime ready`，链接重建且 CLI 在位；反向用例（真实目录 + 无标记）实测仍拒绝并保住用户文件 |
 | 10-13 | **产物命名**（用户选定）：用仓库名且不含空格 —— mac `NexusAIHarness-<v>-arm64.dmg`、win `NexusAIHarness-Setup-<v>-x64.exe`；约定与理由记入 §8h。CI 的 glob（`dist/*.dmg`、`*Setup*.exe`）不受影响 | 本机打包实测 `NexusAIHarness-0.1.4-arm64.dmg`；Windows 命名由下次 CI 产出验证 |

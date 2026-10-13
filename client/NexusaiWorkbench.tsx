@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react'
 import { Button, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconDownloadOutlineRegular, IconLinkOutlineMedium, IconLoadingOutlineRegular, IconNewChatOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, IconSparkleMedium, IconUserOutlineMedium, IconQuestionOutlineRegular, IconWarningOutlineRegular, Input, Checkbox, Menu, Modal, Switch, Tooltip, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useBranding } from './NexusaiBrand'
 import { NexusaiSignInDialog } from './NexusaiSignInDialog'
 import type { NexusaiLocaleKey } from './locales'
 import type { ConnectorAuthorRequestFace, ConnectorBundleSummaryFace, ConnectorToolsResultFace, LocalSkillEntryFace, LocalSkillInstallRequestFace, NexusaiAuthOps, NexusaiCapabilitiesOps, NexusaiSnapshot, SkillHubCardFace, SkillHubDetailFace, SlashSkillFace, SlashSkillsOps } from './face'
@@ -128,8 +129,11 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   const [busy, setBusy] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   // Login-page branding from the server (GET /v1/base/custom, the same source
-  // the web frontend renders from); {name} slots in the tab descriptions.
-  const [productName, setProductName] = useState('')
+  // the web frontend renders from); {name} slots in the tab descriptions. Read
+  // through the shared hook so this and the sidebar cannot disagree: one cache,
+  // and one invalidation point (the address change in the sign-in dialog).
+  const branding = useBranding(auth)
+  const productName = (branding?.name ?? '').trim()
   // Skill sources: 本地 = the conversation "/" menu catalog (read live on
   // each visit), SkillHub = not integrated yet, 远程 = the NexusAI catalog
   // (fetched, downloadable).
@@ -206,14 +210,6 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   // effect even when the source was already SkillHub.
   const searchInput = useRef<HTMLInputElement | null>(null)
   const [searchFocus, setSearchFocus] = useState(0)
-
-  // The brand name belongs to the address currently in effect, so it is read
-  // again whenever the session flips (a fresh sign-in may be a different
-  // server) — not just on mount.
-  useEffect(() => {
-    void auth?.getBranding().then(branding => setProductName(branding.name), () => undefined)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn])
 
   /** Re-measure the category row: overflow at all, and reachable ends. */
   const measureChips = (): void => {
