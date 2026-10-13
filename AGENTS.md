@@ -16,5 +16,12 @@
 - NexusAI 接口先 curl 验证再接入。
 - 国内网络：Electron/Chromium/Cua 二进制用镜像（ELECTRON_MIRROR / npmmirror / PLAYWRIGHT_DOWNLOAD_HOST）。
 
+## 推送与构建（用户明确要求，务必遵守）
+- **功能开发完不要自动 `git push`，也不要自动触发 CI 构建**：`git push github` 会跑两个平台的构建
+  + 验收闸（每次约 20 分钟额度）。**每次推送/构建前先问用户**，得到同意再推。
+- 本地提交、本地验证（`tsc` / `build.mjs` / 两个 verify 套件 / 本机 `scripts/ci/*`）可以直接做，
+  不受此限 —— 需要问的只有"推到远端触发 CI"这一步。
+- 用户说"可以推"时按当时的分支与 tag 意图推；一次授权只对应一次推送。
+
 ## 交接要求
 - 每次切换工具前更新 HANDOFF.md（改了哪些文件、卡在哪、下一步）。
