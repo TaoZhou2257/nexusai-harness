@@ -289,47 +289,34 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 **两个只在打包版才暴露的坑**（本机 dev 掩盖，CI/发行必踩）：profile 名不是 `desktop`（见 §7-坑 B10）；`prepare-runtime` 不能读 `upstream/`（CI 不检出 submodule）。
 
-## 8c. 双轨 CI：Codeup/云效（默认）+ GitHub（手动兜底）
+## 8c. 构建走 GitHub（默认也是唯一轨道）；CI 步骤的唯一真源在 `scripts/ci/`
 
-**唯一真源在 `scripts/ci/`**，两套 CI 都只做「拉代码 → 调脚本 → 传产物」，因此不会各自演化：
+**决策（2026-10-13）**：构建默认走 GitHub。原因是核实过云效之后它并不合适 —— 见下方"为什么不迁云效"。
+
+**触发**（`git push github v1.0` 即自动跑；`git push origin` 只同步代码，不会构建）：
+
+| 你做什么 | 结果 |
+|---|---|
+| `git push github v1.0`（日常） | 两个平台各跑「构建 + 验收闸」，产出 artifacts |
+| `git push github vX.Y.Z`（打 tag） | 同上，并由 release job 发布 GitHub Release |
+| Actions 页 **Run workflow** | 手动重跑（排查用） |
+
+**唯一真源在 `scripts/ci/`**，工作流只做「拉代码 → 调脚本 → 传产物」，因此换轨道不用改构建：
 
 | 脚本 | 干什么 |
 |---|---|
-| `build-app.sh`（macOS） / `build-app.ps1`（Windows） | toolchain → 根 `npm ci` → 载体 `pnpm install` → `prepare:runtime` → `smoke:runtime` → `electron-builder`。**镜像默认值写在脚本里**（npm registry / COREPACK_NPM_REGISTRY / ELECTRON_MIRROR / ELECTRON_BUILDER_BINARIES_MIRROR），可用环境覆盖 —— 国内 runner 不必各自配置 |
+| `build-app.sh`（macOS） / `build-app.ps1`（Windows） | toolchain → 根 `npm ci` → 载体 `pnpm install` → `prepare:runtime` → `smoke:runtime` → `electron-builder`。**镜像默认值写在脚本里**（npm registry / COREPACK_NPM_REGISTRY / ELECTRON_MIRROR / ELECTRON_BUILDER_BINARIES_MIRROR），可用环境覆盖 |
 | `check-mac-app.sh` | 挂 DMG → 拷出 app → 干净 home 启动 → 断言运行时就绪 + profile 落位且含插件行。**验证不了 Gatekeeper**（CI 产物无 quarantine，人工「仍要打开」仍需一次） |
 | `install-and-launch-check.ps1` | 静默安装 → 断言落位 → 启动 → 断言 `runtime ready` → CDP 断言登录框（证明宿主 + client + 插件全挂上）→ 静默卸载。**验证不了 SmartScreen**，也不做真实账号登录（验证码） |
 
-**触发矩阵**（"默认走 Codeup，随时切 GitHub"就是这么落地的）：
+首跑实测：macOS 6m40s、Windows 16m20s，Windows 侧打印完整证据链（installer exit 0 → 落位 → 运行时 ready → profile 含插件行 → `{"dialogs":1}` → 卸载干净）。
 
-| 你做什么 | 跑哪套 | 产物 |
-|---|---|---|
-| `git push origin v1.0`（日常） | 云效：分支推送 | 云效构建物（不发版） |
-| `git push origin vX.Y.Z`（打 tag） | 云效 ← **默认发版路径** | 云效制品库 |
-| Actions 页 **Run workflow** | GitHub（手动） | GitHub artifacts |
-| `git push github vX.Y.Z` | GitHub（tag） | GitHub Release |
+**为什么不迁云效**（2026-10-13 抓官方文档核实，别重复调研）：
+1. **云效托管（公共）构建机只有 Linux**（对比表：公共=Linux、VPC托管=Linux、私有=Linux/Windows/macOS；默认环境 Linux/amd64、容器环境 Linux/amd64·arm64）。Windows 走私有集群（手动 Runner **或阿里云 ECS**），macOS 走私有集群且**仅手动 Runner**（macOS 不在 ECS 上）→ 迁过去要自备 Windows 机器/ECS **加**一台常开的 Mac，构建时都必须在线。GitHub 这两样都是免费托管的。
+2. **Codeup 发行版装不下安装包**：单个附件 **<50MB**（≤10 个、单库 <1GB），我们产物 213–228MB → 只能用制品仓库或 OSS 托管，发行版页只放说明。
+3. 结论：除非将来有"构建必须在内网平台"的合规要求，否则不迁。**真要迁**时照这套做法即可：新建流水线（代码源不要勾递归子模块）→ Windows/ macOS 各接一台私有构建节点 → 跑 `scripts/ci/*` 同两个脚本 → 变量组加三个 `NEXUSAI_*` → 产物传制品仓库。构建脚本无需改动。
 
-分支推送到 `github` **不再自动触发**（省额度，也避免两套同版本产物不知道哪个算数）。GitHub 侧的首跑验证：手动 run 全绿（macOS 6m40s；**Windows 16m20s，含安装+启动+登录框+卸载全链证据**）。
-
-**密钥**：`NEXUSAI_BASE_URL` / `NEXUSAI_AES_KEY` / `NEXUSAI_AES_IV` 两边各存一份（GitHub Secrets 与云效变量），轮换时两处都要改。
-
-**云效侧要在控制台做的**（我做不了，逐步照做即可）：
-1. 新建流水线，代码源选 Codeup 本仓；**不要勾选递归子模块**（`.gitmodules` 指向 GitHub，CI 也不需要它）
-2. Windows 任务：**构建集群要选能跑 Windows 的**（见下方结论：公共/托管集群只提供 Linux，需自备 Windows 机器或 Windows ECS 并在其上装 Runner）→ 步骤依次执行
-   - `powershell -NoProfile -File scripts/ci/build-app.ps1`（或 pwsh）
-   - `powershell -NoProfile -File scripts/ci/install-and-launch-check.ps1`
-   - 构建物上传 `apps/nexusai-desktop/dist/*.exe`
-3. 变量组加三个 `NEXUSAI_*`（勾选保密）
-4. macOS 任务：公共集群**没有** macOS，只能在你这台 Mac 上装 Runner 注册为**私有构建节点**，步骤同 Windows 但走 `scripts/ci/build-app.sh` + `check-mac-app.sh`，构建物为 `dist/*.dmg`
-5. 触发：分支推送（产 artifact）+ tag `v*`（发布）
-
-**已核实的两个结论**（2026-10-13，抓取官方文档；此前我给的"托管 Windows/macOS"是搜索摘要，与文档不符，现以文档为准）：
-- **云效托管（公共）构建机只有 Linux**：对比表为「公共=Linux、VPC托管=Linux、私有=Linux/Windows/macOS」；默认环境 Linux/amd64，容器环境 Linux/amd64·arm64。Windows 走私有集群（手动 Runner **或阿里云 ECS**），macOS 走私有集群（**仅手动 Runner**，即只能自带 Mac）。→ 迁云效的代价不是写流水线，而是**从此要养一台 Windows ECS + 你这台 Mac**。
-- **Codeup 发行版（Release）有，但附件上限 50 MB / 个**（≤10 个、单库 <1 GB）。我们的安装包 213–228 MB **放不进发行版附件** → 发布设计应为「**制品仓库（或 OSS）托管安装包** + 发行版写说明并指向下载」。
-
-**因此路线取舍**（等决策，未开工）：
-- **A. 云效默认**：Windows 用 Windows ECS 作私有构建节点、macOS 用本机 Mac；我的工时 3–4.5 天（外加 ECS 成本与双机运维；构建时机器必须在线）
-- **B. 构建留 GitHub、产物进 Codeup 制品库**（我推荐）：GitHub 免费托管 Windows + macOS arm64 已验证全绿（16m20s / 6m40s）；我加一步把 dmg/exe 推到云效制品仓库；工时 0.5 天
-- 两种都不影响 `scripts/ci/*` 这套真源：切的是驱动器，脚本不动。
+**若日后做"产物也留公司平台"**：最省事的是在 GitHub 这边加一步把 `dist/*.dmg|exe` 推到云效制品仓库（约 0.5 天），而不是把构建搬过去。
 
 ## 9. 换机器 / 新环境部署
 
@@ -374,7 +361,8 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
-| 10-13 | **CI 抽真源 + 双轨就绪**：构建步骤迁入 `scripts/ci/*`（两套 CI 共用，镜像默认值内置）；新增两道验收闸 —— mac「挂 DMG → 启动 → 断言就绪/插件行」、win「静默安装 → 启动 → 断言就绪 → CDP 断言登录框 → 静默卸载」；GitHub 改为手动兜底（分支推送不再触发，保留 tag 发版）；`prepare-runtime` 的 Windows 目录 symlink 改 junction | GitHub 手动 run 全绿：macOS 6m40s；**Windows 16m20s 打印完整证据链**（installer exit 0 → 落位 → 运行时 ready → profile 含插件行 → `{"dialogs":1}` → 卸载干净）。首跑即抓到两个真问题：`$home`/`$profile` 撞 PowerShell 只读自动变量 |
+| 10-13 | **构建轨道定为 GitHub**（默认也是唯一）：核实云效后决定不迁（托管构建机只有 Linux，Windows/macOS 需自备常开机器；Codeup 发行版附件上限 50MB 装不下安装包）——结论与"将来真要迁怎么做"一并写进 §8c，避免重复调研。工作流恢复分支推送自动触发，并保留 `scripts/ci/*` 真源与两道验收闸 | 分支推送触发全量跑（构建 + 验收闸），tag 仍发 Release |
+| 10-13 | **CI 抽真源 + 验收闸**：构建步骤迁入 `scripts/ci/*`（镜像默认值内置）；新增两道闸 —— mac「挂 DMG → 启动 → 断言就绪/插件行」、win「静默安装 → 启动 → 断言就绪 → CDP 断言登录框 → 静默卸载」；`prepare-runtime` 的 Windows 目录 symlink 改 junction | 手动 run 全绿：macOS 6m40s；**Windows 16m20s 打印完整证据链**（installer exit 0 → 落位 → 运行时 ready → profile 含插件行 → `{"dialogs":1}` → 卸载干净）。首跑即抓到两个真问题：`$home`/`$profile` 撞 PowerShell 只读自动变量 |
 | 10-13 | **修「mac 装不上」的根因：产物没有自己的签名**。`identity: null` 时 electron-builder 不做任何签名，而 afterPack 又在签名时机之后往 `Contents/Resources` 塞了 490MB 运行时 —— 结果 `.app` 连 `_CodeSignature` 都不存在（`spctl`：`code has no resources but signature indicates they must be present`）。**从网页下载的副本（带 quarantine）会被 Gatekeeper 以「已损坏，无法打开」拒掉**，且该对话框没有任何"仍要打开"入口 → 用户只能得出"没安装成功"。改为 ad-hoc 签名（`identity: '-'`）+ 显式权限文件（`disable-library-validation` 等，否则 hardened runtime 会拒绝载入运行时里的第三方原生库而启动即崩） | 签名后：`_CodeSignature/CodeResources` 生成、`codesign --verify --deep --strict` 报 valid、`spctl` 由"签名损坏"变为标准的"未受信任开发者"；**打包版实跑通过**（菜单 + 运行时 ready，无库校验错误）。带 quarantine 的副本仍被拦一次——这是未公证应用的正常流程，可用「系统设置 → 隐私与安全性 → 仍要打开」放行 |
 | 10-13 | 本机 shell 受限说明：`xattr -dr com.apple.quarantine` 在**沙箱化进程**里会被内核拒绝（`System Policy: deny file-write-xattr`），用户自己的终端不受此限 | 日志实证（syspolicyd/kernel Sandbox 拒写 xattr） |
 | 10-13 | **窗口默认尺寸改为 1200×800**（与团队使用的参照编辑器窗口同尺寸；此前是按屏幕比例算的 1352×714，偏矮）。摆放逻辑不变（center/bottom/fill），尺寸按显示器裁剪 | 实测窗口 1200×800 @ 156,70；同机参照窗口为 1200×800 @161,106（只对齐宽高，位置仍按我们的居中/贴底规则） |

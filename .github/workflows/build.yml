@@ -1,15 +1,14 @@
 name: build
 
-# The GitHub rail for the NexusAgent Builder installers. The default rail is
-# Aliyun Yunxiao/Codeup (origin); this one is kept as the manual fallback:
+# The build rail for the NexusAgent Builder installers.
 #
-#   - branch pushes no longer trigger it (they would double every build and
-#     leave two same-versioned artifacts with no way to tell which counts);
-#   - use "Run workflow" in the Actions UI, or push a tag to the `github` remote
-#     to also publish a GitHub Release.
+# Everything it runs lives in scripts/ci/ — this file only pulls code, calls the
+# scripts and moves the artifacts, so the steps stay single-sourced (see HANDOFF
+# §8b/§8c: a second rail can be added later without touching the build).
 #
-# Neither rail reimplements the build: both call scripts/ci/build-app.{sh,ps1},
-# which is what keeps them identical (see HANDOFF §8b).
+# Per push: both platforms build and then have to pass their acceptance gate —
+# macOS mounts the DMG and starts the app, Windows installs the installer and
+# starts what it installed (see scripts/ci/*). A tag publishes a Release.
 #
 # Required repository secrets:
 #   NEXUSAI_BASE_URL   e.g. http://agent.nexusai.net.cn:8081
@@ -18,9 +17,11 @@ name: build
 # They are baked into the bundled profile patch, so never commit them.
 
 on:
-  # A tag publishes the release below; branch pushes do nothing here.
   push:
+    branches: [master, main, v1.0]
+    # A tag publishes the release below; branch pushes only produce artifacts.
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 jobs:
