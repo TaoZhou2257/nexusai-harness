@@ -20,12 +20,12 @@ module.exports = {
   productName: 'NexusAgent Builder',
   copyright: 'NexusAI',
   ...(existsSync(electronDist) ? { electronDist } : {}),
-  // Artifact file names carry no spaces on purpose: GitHub replaces spaces in
-  // Release asset names with dots, so a spaced name reads differently on the
-  // download page than it does locally (NexusAgent Builder-… → NexusAgent.Builder-…)
-  // and looks like a mismatched download. The *app* keeps its spaced product
-  // name; only the files are hyphenated.
-  artifactName: 'NexusAgentBuilder-${version}-${arch}.${ext}',
+  // Artifact file names carry no spaces and use the repository's own name
+  // (`nexusai-harness`), not the product's display name: GitHub replaces spaces
+  // in Release asset names with dots, so a spaced name reads differently on the
+  // download page than it does locally. The *app* keeps its spaced product name;
+  // only the files are named after the project.
+  artifactName: 'nexusai-harness-${version}-${arch}.${ext}',
   directories: { output: 'dist', buildResources: 'resources' },
   // The shell is one CommonJS file plus its manifest; the runtime rides in
   // extraResources so it stays outside the asar (dsh reads it as real files).
@@ -62,7 +62,7 @@ module.exports = {
     icon: join(__dirname, 'resources', 'icon.ico'),
     // `Setup` kept in the Windows file name: it is an installer, and the name is
     // the only thing a user sees before running it.
-    artifactName: 'NexusAgentBuilder-Setup-${version}-${arch}.${ext}',
+    artifactName: 'nexusai-harness-Setup-${version}-${arch}.${ext}',
     target: [{ target: 'nsis', arch: ['x64'] }],
   },
   nsis: {

@@ -49,7 +49,7 @@ pnpm run prepare:runtime           # → build/profile, build/runtime-version.tx
 pnpm run smoke:runtime             # headless: proves the bundle boots
 pnpm start                         # run the shell from source
 pnpm run make:icons                # only when the brand mark changes (macOS tools)
-pnpm run dist:mac                  # → dist/NexusAgentBuilder-<version>-arm64.dmg (unsigned)
+pnpm run dist:mac                  # → dist/nexusai-harness-<version>-arm64.dmg (unsigned)
 ```
 
 **Icons** — two steps, one source each: `scripts/compose-icon.py` puts the brand's
