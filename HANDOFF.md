@@ -318,6 +318,30 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 **若日后做"产物也留公司平台"**：最省事的是在 GitHub 这边加一步把 `dist/*.dmg|exe` 推到云效制品仓库（约 0.5 天），而不是把构建搬过去。
 
+## 8e. 打包版的界面语言（为什么默认英文、怎么改成中文）
+
+**机制**：dsh 用页面里的 `navigator.languages` 去匹配它自己的字典 id（**只有 `en` 与 `zh`**，见 `dsh-client-locale/lib/types/locales/`），匹配不到就回退 `"en"`（源码：`resolveInitialLocale(locales, languages) ?? "en"`，`FALLBACK_LOCALE = "en"`）。那个语言列表**只有外壳交给它时才反映系统** —— dsh 自己的桌面壳会传，我们只开窗口加载它的网页。
+
+**为什么打包版是英文而 dev 是中文**（实测对照）：
+
+| 运行方式 | `navigator.languages` | 界面 |
+|---|---|---|
+| 开发模式（`electron .`，语言跟随系统） | `["zh-CN","zh-Hans-CN"]` | 中文 |
+| **打包版** | `["en-US","zh-Hans-CN"]` | **英文** ← 因为 `.app` 只声明英文 localization，macOS 把 en 排第一 |
+
+**修法**：预置 patch 里钉一行语言偏好（与 `ui-theme` 的 `preference: system` 同一"已存设置"机制）：
+
+```yaml
+- id: locale
+  name: '@deepseek-ai/dsh-client-locale'
+  config:
+    preference: 'zh'
+```
+
+界面里**没有**语言选择项，所以这一行就是默认语言的唯一来源。验证：打包版 `document.documentElement.lang === 'zh-CN'`、界面中文、无英文残留（`navigator.languages` 仍是 `["en-US","zh-Hans-CN"]`，根因可见）。
+
+**若以后要"跟随系统语言"**（英文系统给英文）：不是删这行，而是给 `.app` 声明中文 localization（`mac.extendInfo.CFBundleLocalizations: ['zh-Hans','en']` + afterPack 里放一个空的 `zh-Hans.lproj`），让 macOS 按系统偏好排序，再删掉这行偏好。
+
 ## 8d. 产物精简（内置 profile 的体积构成与已做的剪裁）
 
 `prepare-runtime.mjs` 在装完 profile 后跑 `pruneProfile(target)`，只删**这个目标平台永远加载不到**的东西，三类都有依据：
