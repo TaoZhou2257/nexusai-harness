@@ -403,6 +403,17 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 **首启实测（干净 home）**：无预览说明、无 API Key 引导、无登录框（登录完全手动）、侧栏显示远程品牌与版本、hero 显示品牌字标 + 「探索 AGI 之无限可能」+ 版本徽章。
 
+## 8h. 产物命名约定
+
+安装包文件名**不含空格**（`artifactName`，见 `electron-builder.config.cjs`）：
+
+| 平台 | 文件名 |
+|---|---|
+| macOS | `NexusAgentBuilder-<version>-arm64.dmg` |
+| Windows | `NexusAgentBuilder-Setup-<version>-x64.exe` |
+
+原因：**GitHub Release 会把资源名里的空格换成点**，带空格的旧命名在下载页显示成 `NexusAgent.Builder-0.1.3-arm64.dmg`，与本地文件不一致、容易让人以为下错了。应用本身的显示名（Finder / Dock / 开始菜单）仍是 `NexusAgent Builder`（`productName`），两者是独立的开关。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
@@ -446,6 +457,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **产物命名去空格**（用户选定）：mac `NexusAgentBuilder-<v>-arm64.dmg`、win `NexusAgentBuilder-Setup-<v>-x64.exe`；理由与约定记入 §8h。CI 的 glob（`dist/*.dmg`、`*Setup*.exe`）不受影响 | 本机打包实测文件名 `NexusAgentBuilder-0.1.4-arm64.dmg`；Windows 命名由下次 CI 产出验证 |
 | 10-13 | **关掉 dsh 首启的「添加一个 API Key」引导**（用户要求）：该引导是 `ui-settings-models` 行的 `credentialOnboarding`（宿主发布成页面全局 `__DSH_MODELS_ONBOARDING__`），预置配置里设 `false` 即可，不改 dsh；新增 HANDOFF §8g 汇总预置 patch 的 5 段设置 | 干净 home 启动实测：`添加一个 API Key` 与 `稍后配置` 文案均搜不到，hero 标题可见、无登录框、launcher=1 |
 | 10-13 | **语音输入改为保留**（用户要求开箱可用）：清空 `UNMOUNTED_FEATURE_PACKAGES`，语音/STT 链（sherpa-onnx 33MB + 实验性语音包）重新装回；剪裁只剩「源码映射 + 其它平台 prebuilds」两项（零功能影响） | profile 388→421 MB、DMG 208→217 MB；冒烟 + 挂 DMG 启动 + 组合校验三闸全过；包内 `sherpa-onnx-darwin-arm64` 与语音包都在 |
 | 10-13 | **Windows 真机验收通过**（用户确认 v0.1.2 安装后可正常启动）→ 载体两侧到此刻都跑在真机上；CI 每推都跑两道自动验收闸（mac 挂 DMG 启动 / win 静默安装+启动+登录框断言+卸载）。代码同步到 Codeup：`v1.0` 分支 + 三个 tag 已推 origin（Codeup 无流水线，推送不触发构建） | 用户真机确认；Codeup `refs/heads/v1.0` = 5bf98d4 与本地一致 |

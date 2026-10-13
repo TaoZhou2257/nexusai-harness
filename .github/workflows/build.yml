@@ -103,8 +103,8 @@ jobs:
           ls -la release-assets
           notes="内置 dsh 的 NexusAI 桌面端，**未签名**安装包。
 
-          - macOS (arm64)：\`NexusAgent Builder-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
-          - Windows (x64)：\`NexusAgent Builder Setup *.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
+          - macOS (arm64)：\`NexusAgentBuilder-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
+          - Windows (x64)：\`NexusAgentBuilder-Setup-*.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
 
           首次启动会在用户目录下生成 dsh home（macOS：\`~/Library/Application Support/NexusAgent Builder/dsh-home\`；Windows：\`%APPDATA%\\NexusAgent Builder\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
           # Filenames contain spaces; a glob keeps each match as one word, so it
