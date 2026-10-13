@@ -26,14 +26,14 @@ $installDir = Join-Path $env:LOCALAPPDATA 'Programs\NexusAgent Builder'
 $exe = Join-Path $installDir 'NexusAgent Builder.exe'
 # RUNNER_TEMP is GitHub's; Yunxiao has no equivalent, so fall back to the OS temp.
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
-$home = Join-Path $tempRoot "nexusai-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-$log = Join-Path $home 'logs\runtime.log'
+$dshHome = Join-Path $tempRoot "nexusai-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$log = Join-Path $dshHome 'logs\runtime.log'
 $proc = $null
 
 function Show-Evidence([string]$why) {
   Write-Host "--- $why ---"
   if (Test-Path $log) { Get-Content $log -Tail 60 } else { Write-Host '(no runtime log written)' }
-  Get-ChildItem (Join-Path $home 'profiles') -Recurse -Depth 1 -ErrorAction SilentlyContinue |
+  Get-ChildItem (Join-Path $dshHome 'profiles') -Recurse -Depth 1 -ErrorAction SilentlyContinue |
     Select-Object -First 10 FullName | Format-Table -AutoSize | Out-String | Write-Host
 }
 
@@ -47,7 +47,7 @@ try {
   Write-Host "OK: installed to $installDir"
 
   Write-Host '== launching the installed app with a clean home =='
-  $env:NEXUSAI_DSH_HOME = $home
+  $env:NEXUSAI_DSH_HOME = $dshHome
   $proc = Start-Process -FilePath $exe -ArgumentList "--remote-debugging-port=$Port" -PassThru
 
   $deadline = (Get-Date).AddMinutes(4)
@@ -62,9 +62,9 @@ try {
   if (-not $ready) { Show-Evidence "runtime never reported ready (exit=$($proc.HasExited))"; throw 'bundled runtime did not come up' }
   Write-Host 'OK: installed app started and its bundled runtime is up'
 
-  $profile = Join-Path $home 'profiles\nexusai'
-  if (-not (Test-Path (Join-Path $profile 'package.json'))) { Show-Evidence 'profile missing'; throw 'profile was not materialized' }
-  if (-not (Select-String -Path (Join-Path $profile 'cordis.patch.yml') -Pattern 'dsh-plugin-nexusai' -Quiet)) {
+  $dshProfile = Join-Path $dshHome 'profiles\nexusai'
+  if (-not (Test-Path (Join-Path $dshProfile 'package.json'))) { Show-Evidence 'profile missing'; throw 'profile was not materialized' }
+  if (-not (Select-String -Path (Join-Path $dshProfile 'cordis.patch.yml') -Pattern 'dsh-plugin-nexusai' -Quiet)) {
     throw 'bundled patch does not mount the plugin'
   }
   Write-Host 'OK: profile materialized with the plugin row'
