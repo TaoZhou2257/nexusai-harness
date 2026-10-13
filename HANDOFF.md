@@ -409,10 +409,10 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 平台 | 文件名 |
 |---|---|
-| macOS | `nexusai-harness-<version>-arm64.dmg` |
-| Windows | `nexusai-harness-Setup-<version>-x64.exe` |
+| macOS | `NexusAIHarness-<version>-arm64.dmg` |
+| Windows | `NexusAIHarness-Setup-<version>-x64.exe` |
 
-命名用**仓库名** `nexusai-harness`（用户选定），不是产品显示名 —— 应用在 Finder / Dock / 开始菜单里仍叫 `NexusAgent Builder`（`productName`），两者独立。同时**不含空格**：GitHub Release 会把资源名里的空格换成点，带空格的旧命名在下载页显示成 `NexusAgent.Builder-…`，与本地不一致、容易让人以为下错了。
+命名用品牌写法 `NexusAIHarness`（用户选定，与侧栏品牌同一拼写），不是带空格的产品显示名 —— 应用在 Finder / Dock / 开始菜单里仍叫 `NexusAgent Builder`（`productName`），两者独立。同时**不含空格**：GitHub Release 会把资源名里的空格换成点，带空格的旧命名在下载页显示成 `NexusAgent.Builder-…`，与本地不一致、容易让人以为下错了。
 
 ## 9. 换机器 / 新环境部署
 
@@ -457,7 +457,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
-| 10-13 | **产物命名**（用户选定）：用仓库名且不含空格 —— mac `nexusai-harness-<v>-arm64.dmg`、win `nexusai-harness-Setup-<v>-x64.exe`；约定与理由记入 §8h。CI 的 glob（`dist/*.dmg`、`*Setup*.exe`）不受影响 | 本机打包实测 `nexusai-harness-0.1.4-arm64.dmg`；Windows 命名由下次 CI 产出验证 |
+| 10-13 | **产物命名**（用户选定）：用仓库名且不含空格 —— mac `NexusAIHarness-<v>-arm64.dmg`、win `NexusAIHarness-Setup-<v>-x64.exe`；约定与理由记入 §8h。CI 的 glob（`dist/*.dmg`、`*Setup*.exe`）不受影响 | 本机打包实测 `NexusAIHarness-0.1.4-arm64.dmg`；Windows 命名由下次 CI 产出验证 |
 | 10-13 | **关掉 dsh 首启的「添加一个 API Key」引导**（用户要求）：该引导是 `ui-settings-models` 行的 `credentialOnboarding`（宿主发布成页面全局 `__DSH_MODELS_ONBOARDING__`），预置配置里设 `false` 即可，不改 dsh；新增 HANDOFF §8g 汇总预置 patch 的 5 段设置 | 干净 home 启动实测：`添加一个 API Key` 与 `稍后配置` 文案均搜不到，hero 标题可见、无登录框、launcher=1 |
 | 10-13 | **语音输入改为保留**（用户要求开箱可用）：清空 `UNMOUNTED_FEATURE_PACKAGES`，语音/STT 链（sherpa-onnx 33MB + 实验性语音包）重新装回；剪裁只剩「源码映射 + 其它平台 prebuilds」两项（零功能影响） | profile 388→421 MB、DMG 208→217 MB；冒烟 + 挂 DMG 启动 + 组合校验三闸全过；包内 `sherpa-onnx-darwin-arm64` 与语音包都在 |
 | 10-13 | **Windows 真机验收通过**（用户确认 v0.1.2 安装后可正常启动）→ 载体两侧到此刻都跑在真机上；CI 每推都跑两道自动验收闸（mac 挂 DMG 启动 / win 静默安装+启动+登录框断言+卸载）。代码同步到 Codeup：`v1.0` 分支 + 三个 tag 已推 origin（Codeup 无流水线，推送不触发构建） | 用户真机确认；Codeup `refs/heads/v1.0` = 5bf98d4 与本地一致 |
