@@ -145,13 +145,21 @@ equality*. The bundled patch therefore carries that acknowledgement, and
 upgraded, a new notice version means the popup returns once, which is the
 intended behaviour and not a bug.
 
-## v1.0 status
+## Status
 
 Verified on macOS (arm64): `prepare:runtime` composes the profile with the plugin
 row present, `smoke:runtime` reaches the web URL, the packaged `.app` boots from a
 clean home and opens its window, the DMG mounts with the full runtime inside, the
 sign-in dialog offers itself on a signed-out start, and closing it keeps it
-closed. CI builds both platforms and a tag publishes them as a Release.
-**Not yet verified:** the Windows installer end to end on a real Windows machine
-(the CI job produces it, nobody has installed it yet), and the app builds with
-Electron's default icon-free branding beyond the generated icon.
+closed.
+
+Verified by CI on every push (see `scripts/ci/`): the DMG's app launches with a
+clean home and materializes its profile; the Windows installer installs silently,
+the installed app launches, its bundled runtime comes up, the client plugin
+mounts, and the uninstaller removes it again.
+
+Verified by a person: the Windows installer runs on a real Windows machine
+(2026-10-13). Still manual, and the only things CI cannot reach: the macOS
+"unidentified developer" approval (a CI-built file carries no download
+quarantine), SmartScreen on a downloaded `.exe`, and signing in with a real
+account (the captcha blocks automation on purpose).

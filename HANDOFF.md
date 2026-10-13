@@ -15,7 +15,7 @@
 
 **已验证（本机 macOS arm64 + CI）**：`prepare:runtime` 组合通过；无 GUI 冒烟到达 web URL；**打包版 `.app` 从干净 home 启动开窗**；**profile 解析在打包布局与 dev home 分别得到 `profiles/nexusai` 与 `profiles/desktop`**（套件补 3 例，共 66 例）；**日志落盘且 token 无残留**；**未登录启动弹窗 1 次、点关闭后不再弹**（CDP 实测）；CI 全绿（mac DMG 225MB / win exe 211MB）；tag `v0.1.0` 的 Release 已发布。
 
-**未验证**：Windows 上真正安装并登录用工具（唯一端到端盲区，需一台 Windows）；产物精简（内置 profile ~490MB）。
+**未验证**：产物精简（内置 profile ~490MB）。**Windows 真机已由用户验证：安装后可正常启动**（2026-10-13，v0.1.2）；macOS v0.1.2 的「仍要打开」路径仍待用户确认（v0.1.1 那次是签名损坏，已在 0.1.2 修）。
 
 **密钥现状**：仓库已私有；那个曾公开过的 AES key 建议在服务端轮换一次。
 
@@ -361,7 +361,8 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
-| 10-13 | **构建轨道定为 GitHub**（默认也是唯一）：核实云效后决定不迁（托管构建机只有 Linux，Windows/macOS 需自备常开机器；Codeup 发行版附件上限 50MB 装不下安装包）——结论与"将来真要迁怎么做"一并写进 §8c，避免重复调研。工作流恢复分支推送自动触发，并保留 `scripts/ci/*` 真源与两道验收闸 | 分支推送触发全量跑（构建 + 验收闸），tag 仍发 Release |
+| 10-13 | **Windows 真机验收通过**（用户确认 v0.1.2 安装后可正常启动）→ 载体两侧到此刻都跑在真机上；CI 每推都跑两道自动验收闸（mac 挂 DMG 启动 / win 静默安装+启动+登录框断言+卸载）。代码同步到 Codeup：`v1.0` 分支 + 三个 tag 已推 origin（Codeup 无流水线，推送不触发构建） | 用户真机确认；Codeup `refs/heads/v1.0` = 5bf98d4 与本地一致 |
+| 10-13 | **构建轨道定为 GitHub**（默认也是唯一）：核实云效后决定不迁（托管构建机只有 Linux；Codeup 发行版附件上限 50MB 装不下安装包）——结论与"将来真要迁怎么做"写进 §8c | 分支推送触发全量跑，tag 仍发 Release |
 | 10-13 | **CI 抽真源 + 验收闸**：构建步骤迁入 `scripts/ci/*`（镜像默认值内置）；新增两道闸 —— mac「挂 DMG → 启动 → 断言就绪/插件行」、win「静默安装 → 启动 → 断言就绪 → CDP 断言登录框 → 静默卸载」；`prepare-runtime` 的 Windows 目录 symlink 改 junction | 手动 run 全绿：macOS 6m40s；**Windows 16m20s 打印完整证据链**（installer exit 0 → 落位 → 运行时 ready → profile 含插件行 → `{"dialogs":1}` → 卸载干净）。首跑即抓到两个真问题：`$home`/`$profile` 撞 PowerShell 只读自动变量 |
 | 10-13 | **修「mac 装不上」的根因：产物没有自己的签名**。`identity: null` 时 electron-builder 不做任何签名，而 afterPack 又在签名时机之后往 `Contents/Resources` 塞了 490MB 运行时 —— 结果 `.app` 连 `_CodeSignature` 都不存在（`spctl`：`code has no resources but signature indicates they must be present`）。**从网页下载的副本（带 quarantine）会被 Gatekeeper 以「已损坏，无法打开」拒掉**，且该对话框没有任何"仍要打开"入口 → 用户只能得出"没安装成功"。改为 ad-hoc 签名（`identity: '-'`）+ 显式权限文件（`disable-library-validation` 等，否则 hardened runtime 会拒绝载入运行时里的第三方原生库而启动即崩） | 签名后：`_CodeSignature/CodeResources` 生成、`codesign --verify --deep --strict` 报 valid、`spctl` 由"签名损坏"变为标准的"未受信任开发者"；**打包版实跑通过**（菜单 + 运行时 ready，无库校验错误）。带 quarantine 的副本仍被拦一次——这是未公证应用的正常流程，可用「系统设置 → 隐私与安全性 → 仍要打开」放行 |
 | 10-13 | 本机 shell 受限说明：`xattr -dr com.apple.quarantine` 在**沙箱化进程**里会被内核拒绝（`System Policy: deny file-write-xattr`），用户自己的终端不受此限 | 日志实证（syspolicyd/kernel Sandbox 拒写 xattr） |
