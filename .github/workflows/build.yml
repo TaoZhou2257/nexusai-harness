@@ -1,9 +1,15 @@
 name: build
 
-# Builds the NexusAgent Builder carrier for both platforms. Every step is
-# host-native on the runner it runs on — the whole point of using CI for Windows
-# is that dsh's packaging refuses to cross-build Windows from macOS, and pnpm
-# must resolve Windows native optional dependencies on Windows.
+# The GitHub rail for the NexusAgent Builder installers. The default rail is
+# Aliyun Yunxiao/Codeup (origin); this one is kept as the manual fallback:
+#
+#   - branch pushes no longer trigger it (they would double every build and
+#     leave two same-versioned artifacts with no way to tell which counts);
+#   - use "Run workflow" in the Actions UI, or push a tag to the `github` remote
+#     to also publish a GitHub Release.
+#
+# Neither rail reimplements the build: both call scripts/ci/build-app.{sh,ps1},
+# which is what keeps them identical (see HANDOFF §8b).
 #
 # Required repository secrets:
 #   NEXUSAI_BASE_URL   e.g. http://agent.nexusai.net.cn:8081
@@ -12,45 +18,30 @@ name: build
 # They are baked into the bundled profile patch, so never commit them.
 
 on:
+  # A tag publishes the release below; branch pushes do nothing here.
   push:
-    branches: [master, main, v1.0]
-    # A tag publishes the release below; branch pushes only produce artifacts.
     tags: ['v*']
-  pull_request:
   workflow_dispatch:
-
-defaults:
-  run:
-    shell: bash
 
 jobs:
   mac:
-    name: macOS (arm64, unsigned dmg)
+    name: macOS (arm64, dmg)
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
         # No submodule checkout: the bundle is built from the dsh version pinned
-        # in upstream.json, which CI reads directly.
+        # in upstream.json, which the build script reads directly.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Enable the pinned pnpm
-        run: corepack enable
-      - name: Install plugin dependencies
-        run: npm ci
-      - name: Install carrier dependencies
-        working-directory: apps/nexusai-desktop
-        run: pnpm install
-      - name: Prepare the bundled runtime
-        working-directory: apps/nexusai-desktop
+      - name: Build the installers
         env:
           NEXUSAI_BASE_URL: ${{ secrets.NEXUSAI_BASE_URL }}
           NEXUSAI_AES_KEY: ${{ secrets.NEXUSAI_AES_KEY }}
           NEXUSAI_AES_IV: ${{ secrets.NEXUSAI_AES_IV }}
-        run: pnpm run prepare:runtime
-      - name: Package (dmg, unsigned)
-        working-directory: apps/nexusai-desktop
-        run: pnpm exec electron-builder --config electron-builder.config.cjs --mac --arm64
+        run: bash scripts/ci/build-app.sh
+      - name: The packaged app launches and its runtime comes up
+        run: bash scripts/ci/check-mac-app.sh
       - uses: actions/upload-artifact@v4
         with:
           name: nexusai-builder-mac-arm64
@@ -58,30 +49,31 @@ jobs:
           if-no-files-found: error
 
   windows:
-    name: Windows (x64, unsigned nsis)
+    name: Windows (x64, nsis)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Enable the pinned pnpm
-        run: corepack enable
-      - name: Install plugin dependencies
-        run: npm ci
-      - name: Install carrier dependencies
-        working-directory: apps/nexusai-desktop
-        run: pnpm install
-      - name: Prepare the bundled runtime
-        working-directory: apps/nexusai-desktop
+      - name: Build the installer
+        shell: pwsh
         env:
           NEXUSAI_BASE_URL: ${{ secrets.NEXUSAI_BASE_URL }}
           NEXUSAI_AES_KEY: ${{ secrets.NEXUSAI_AES_KEY }}
           NEXUSAI_AES_IV: ${{ secrets.NEXUSAI_AES_IV }}
-        run: pnpm run prepare:runtime -- --target=win-x64
-      - name: Package (nsis, unsigned)
-        working-directory: apps/nexusai-desktop
-        run: pnpm exec electron-builder --config electron-builder.config.cjs --win --x64
+        run: scripts/ci/build-app.ps1
+      - name: The installer installs and the installed app launches
+        shell: pwsh
+        run: scripts/ci/install-and-launch-check.ps1
+      - name: Keep the runtime log even when a check failed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexusai-builder-win-logs
+          path: |
+            ${{ runner.temp }}/nexusai-home-*/logs/*.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: nexusai-builder-win-x64
@@ -89,8 +81,7 @@ jobs:
           if-no-files-found: error
 
   # Artifacts are per-run build output; a Release is the versioned download
-  # people actually look for. Both installers from this run are attached to the
-  # tag that triggered it.
+  # people look for. Both installers from this run are attached to the tag.
   release:
     name: Release (tag only)
     if: startsWith(github.ref, 'refs/tags/v')

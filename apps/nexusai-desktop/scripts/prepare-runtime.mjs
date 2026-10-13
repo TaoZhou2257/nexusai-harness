@@ -275,7 +275,10 @@ if (target.platform === process.platform) {
   const probeProfile = join(probeHome, 'profiles', PROFILE_NAME)
   rmSync(probeProfile, { recursive: true, force: true })
   mkdirSync(join(probeHome, 'profiles'), { recursive: true })
-  symlinkSync(PROFILE, probeProfile, 'dir')
+  // `junction` on Windows: a directory symlink needs elevation or developer
+  // mode there, while a junction does not — and the Windows job runs this
+  // probe, so a symlink would fail the build on a stock CI image.
+  symlinkSync(PROFILE, probeProfile, process.platform === 'win32' ? 'junction' : 'dir')
   const output = execFileSync(process.execPath, [cli, '--profile', PROFILE_NAME, '--dump-config'], {
     encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, DSH_HOME: probeHome },
   })
