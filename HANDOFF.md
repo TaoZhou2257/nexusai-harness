@@ -224,6 +224,8 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 9. **技能名与前置信息是硬约束**（写上传/导入类功能必看）：`packages/skill/skill-filesystem` 只认 `<root>/<目录>/SKILL.md`（或根下裸 `.md`），且要求 YAML 前置信息含 **name + description**，name 还要满足 `packages/skill/skill` 的 `^[a-z0-9]+(?:-[a-z0-9]+)*$`（**kebab-case ASCII**）。任何一条不满足 → **只写一条 logger 警告、技能被忽略**（界面完全不显示，磁盘上却躺着文件）。所以上传功能必须拦：中文名「测试上传技能A」就是被这条静默丢弃的。**还有一条更隐蔽**：dsh 用 YAML 解析后要求 name/description 是 **string** —— `name: 12306`（未加引号）会被解析成**数字**，同样被静默忽略（这台机器的 skills/ 里现在就躺着这样一个技能 `12306`，改成 `name: "12306"` 即可恢复）。本插件现已按 YAML 类型 + kebab-case 双重校验，并在错误里直接提示加引号
 10. **profile 名不是常量**（写任何"按 profile 定位文件"的代码必看）：dev 检出跑 `profiles/desktop`，而本项目的打包版内置 profile 叫 `nexusai`（`dsh --profile nexusai`）。**任何默认成 `desktop` 的路径都会在打包版里静默写错文件** —— 表现为连接器卡片在、工具永不挂载，dev 环境完全正常（因为恰好就是 `desktop`）。本插件已改为"找承载自己那一行的 profile"（`src/sync/patch-file.ts`，显式 `profilePatchFile` 仍优先），并在启动日志打印解析结果；套件有 3 例覆盖（真实打包 home 与 dev home 各验一次）
 
+11. **home 比安装活得久，运行时链接会失效**（现场报过 `bundled dsh CLI is missing`）：用户目录里的 `profiles/nexusai/node_modules` 是指向**安装目录内**那份 profile 的链接（Windows 上是 junction）。应用被卸载、移动或换目录重装后，这个链接就指向别处/指向不存在的路径；而 **Windows 的 junction 即使目标没了也仍然占着这个名字**（`existsSync` 会沿链接解析 → 返回 false，于是"以为没人占"，真去创建又 EEXIST）。做法：标记里带上**应用版本**（升级/搬迁必然重链）、占用与否用 **`lstat`** 判断（能看到失效链接）、并在启动前**校验 CLI 是否存在**，缺了就重建链接一次；只有"不是本应用创建的目录"才拒绝（用户自己的运行时，绝不删）。CI 的 Windows 验收闸现在**第二个场景**就专门造一个"junction 指向别处 + 旧标记"的 home，断言它自愈启动（`scripts/ci/install-and-launch-check.ps1`）
+
 ### C. 数据与接口
 1. **React 列表 key 必须唯一**：上游「天然主键」不可想当然（SkillHub 的 `publicSlug` 一页内重复，曾表现为「筛选失效」）→ 统一用 `namespace.canonicalName` 作身份。
 2. **外部接口空值**不能只判 undefined/''：JSON `null` 与字面量 `"null"` 都出现过（曾导致图标裂图）。
@@ -457,6 +459,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **修「bundled dsh CLI is missing」（现场反馈）**：home 里的运行时链接在"应用移动/换目录重装"后失效，而旧逻辑只在版本串变化时重链、且用 `existsSync` 判占用（失效链接看到 false）→ 直接抛错。改为：标记含应用版本、`lstat` 判占用、启动前校验 CLI，缺则重建一次；用户自建目录仍拒绝覆盖。Windows 验收闸新增"残留 home 自愈"场景 | 本机（macOS）用"链接指向不存在路径 + 旧标记"的 home 实测：日志 `runtime link needs rebuilding (… cli missing)` → `runtime ready`，链接重建且 CLI 在位；反向用例（真实目录 + 无标记）实测仍拒绝并保住用户文件 |
 | 10-13 | **产物命名**（用户选定）：用仓库名且不含空格 —— mac `NexusAIHarness-<v>-arm64.dmg`、win `NexusAIHarness-Setup-<v>-x64.exe`；约定与理由记入 §8h。CI 的 glob（`dist/*.dmg`、`*Setup*.exe`）不受影响 | 本机打包实测 `NexusAIHarness-0.1.4-arm64.dmg`；Windows 命名由下次 CI 产出验证 |
 | 10-13 | **关掉 dsh 首启的「添加一个 API Key」引导**（用户要求）：该引导是 `ui-settings-models` 行的 `credentialOnboarding`（宿主发布成页面全局 `__DSH_MODELS_ONBOARDING__`），预置配置里设 `false` 即可，不改 dsh；新增 HANDOFF §8g 汇总预置 patch 的 5 段设置 | 干净 home 启动实测：`添加一个 API Key` 与 `稍后配置` 文案均搜不到，hero 标题可见、无登录框、launcher=1 |
 | 10-13 | **语音输入改为保留**（用户要求开箱可用）：清空 `UNMOUNTED_FEATURE_PACKAGES`，语音/STT 链（sherpa-onnx 33MB + 实验性语音包）重新装回；剪裁只剩「源码映射 + 其它平台 prebuilds」两项（零功能影响） | profile 388→421 MB、DMG 208→217 MB；冒烟 + 挂 DMG 启动 + 组合校验三闸全过；包内 `sherpa-onnx-darwin-arm64` 与语音包都在 |

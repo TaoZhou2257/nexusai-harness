@@ -15,8 +15,8 @@
 const { app, BrowserWindow, Menu, dialog, shell, screen } = require('electron')
 const { spawn } = require('node:child_process')
 const {
-  cpSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync,
-  renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync,
+  cpSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync,
+  renameSync, rmSync, statSync, symlinkSync, writeFileSync,
 } = require('node:fs')
 const { dirname, join, resolve } = require('node:path')
 
@@ -102,21 +102,31 @@ function dshCli(profileDir) {
  *
  * Manifest files are copied (they are small and the user may edit them), while
  * `node_modules` is linked to the bundle so a first launch does not copy
- * hundreds of megabytes. The marker records which bundle version the home was
- * materialized from; a different version relinks. A `node_modules` the app did
- * not create is never deleted — that is a user's own runtime and we refuse to
- * clobber it.
+ * hundreds of megabytes.
+ *
+ * The link is treated as disposable and **verified**, because a home outlives an
+ * install: it can be left pointing at an app directory that was moved,
+ * uninstalled or replaced, and a Windows junction to a gone target still
+ * occupies the name (so `existsSync` — which resolves through the link — reports
+ * "nothing there" while creating a new one fails). The marker therefore carries
+ * the app version as well as the runtime version, occupancy is decided with
+ * `lstat` (which sees a dangling link), and the CLI is checked before and after:
+ * a stale link is simply rebuilt, and only a directory this app did not create
+ * is refused.
  */
 function materializeProfile(home) {
   const source = bundledProfileDir()
-  if (!existsSync(join(source, 'node_modules'))) {
-    throw new Error(`bundled runtime is incomplete (missing ${join(source, 'node_modules')})`)
+  const sourceModules = join(source, 'node_modules')
+  if (!existsSync(sourceModules)) {
+    throw new Error(`bundled runtime is incomplete (missing ${sourceModules})`)
   }
   const runtimeVersion = readFileSync(join(bundledRoot(), 'runtime-version.txt'), 'utf8').trim()
   const target = join(home, 'profiles', PROFILE_NAME)
-  const marker = join(target, '.nexusai-desktop-runtime')
-  const sourceModules = join(source, 'node_modules')
   const targetModules = join(target, 'node_modules')
+  const marker = join(target, '.nexusai-desktop-runtime')
+  // The app version belongs in the marker: reinstalling or moving the app has to
+  // re-point a home that was materialized by the previous one.
+  const expected = `${app.getVersion()}+${runtimeVersion}`
   mkdirSync(target, { recursive: true })
   // Inputs only: `cordis.yml` is dsh's composed output and is regenerated in
   // the user's home, so a stale copy from build time is never shipped.
@@ -124,25 +134,39 @@ function materializeProfile(home) {
     const from = join(source, name)
     if (existsSync(from)) cpSync(from, join(target, name), { force: true })
   }
-  const installed = existsSync(marker) ? readFileSync(marker, 'utf8').trim() : undefined
-  const linked = existsSync(targetModules)
-    ? (() => { try { return lstatSync(targetModules).isSymbolicLink() } catch { return false } })()
-    : false
-  if (existsSync(targetModules) && installed !== runtimeVersion) {
-    if (!linked) {
-      throw new Error(
-        `NexusAgent Builder cannot replace the runtime at ${targetModules}: it was not created by this app. `
-        + 'Move that directory, then reopen.',
-      )
-    }
-    try { readlinkSync(targetModules) } catch { /* readlink is only for diagnostics */ }
-    unlinkSync(targetModules)
+
+  const installed = readTextIfExists(marker)
+  const entry = lstatSync(targetModules, { throwIfNoEntry: false })
+  const ours = entry?.isSymbolicLink() === true
+  const cliPresent = () => existsSync(dshCli(target))
+  if (entry !== undefined && !ours && installed !== expected) {
+    throw new Error(
+      `NexusAgent Builder cannot replace the runtime at ${targetModules}: it was not created by this app. `
+      + 'Move that directory, then reopen.',
+    )
   }
-  if (!existsSync(targetModules)) {
+  if (ours && (installed !== expected || !cliPresent())) {
+    logLine(`runtime link needs rebuilding (marker ${installed ?? 'none'}, cli ${cliPresent() ? 'ok' : 'missing'})`)
+    // Removes the link itself, dangling or not; never the directory it points at.
+    rmSync(targetModules, { recursive: true, force: true })
+  }
+  if (lstatSync(targetModules, { throwIfNoEntry: false }) === undefined) {
     symlinkSync(sourceModules, targetModules, process.platform === 'win32' ? 'junction' : 'dir')
   }
-  writeFileSync(marker, `${runtimeVersion}\n`, 'utf8')
+  writeFileSync(marker, `${expected}\n`, 'utf8')
+  if (!cliPresent()) {
+    throw new Error(`bundled runtime is incomplete: ${dshCli(target)} is missing after linking ${sourceModules}`)
+  }
   return target
+}
+
+/** A file's trimmed text, or undefined when it is absent. */
+function readTextIfExists(path) {
+  try {
+    return readFileSync(path, 'utf8').trim()
+  } catch {
+    return undefined
+  }
 }
 
 /** What this app is, in the words a user can act on. */
