@@ -70,16 +70,17 @@ try {
   Write-Host 'OK: profile materialized with the plugin row'
 
   # The client half is the last thing that can be silently missing: if it did not
-  # mount, nobody could sign in at all. A signed-out start opens the sign-in
-  # dialog on its own, so its presence proves host + client + plugin are wired.
-  Write-Host '== checking the client plugin mounted (sign-in dialog) =='
+  # mount, nobody could sign in at all. Sign-in is user-driven, so the evidence is
+  # a stable marker the launcher carries — independent of copy and locale
+  # (asserting on the dialog, or on a label, would break in one of the two).
+  Write-Host '== checking the client plugin mounted (launcher marker) =='
   Push-Location $app
   try {
-    $out = node scripts/check-auto-signin.mjs $Port 6000 2>&1 | Out-String
+    $out = node scripts/check-client-mounted.mjs $Port 6000 2>&1 | Out-String
     Write-Host $out.Trim()
-    if ($out -notmatch '"dialogs":\s*1') { Show-Evidence 'sign-in dialog absent'; throw 'client plugin did not mount (no sign-in dialog)' }
+    if ($out -notmatch '"launcher":\s*[1-9]') { Show-Evidence 'launcher marker absent'; throw 'client plugin did not mount (no launcher marker)' }
   } finally { Pop-Location }
-  Write-Host 'OK: sign-in dialog present — host, client and plugin are all wired'
+  Write-Host 'OK: launcher marker present — host, client and plugin are all wired'
 
   Write-Host '== all checks passed =='
 } catch {

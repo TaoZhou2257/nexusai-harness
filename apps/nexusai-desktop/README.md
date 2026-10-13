@@ -137,10 +137,11 @@ plus an **关于** item showing the app version, the bundled runtime version and
 the home path. There is no terminal in a packaged app, so this file is the
 artifact to ask a user for when something goes wrong.
 
-The app also offers sign-in by itself: on a start that is signed out, the login
-dialog opens once, a moment after the shell settles. Closing it is remembered for
-the session. (`scripts/check-auto-signin.mjs <port>` checks this over CDP against
-a running instance.)
+Sign-in is entirely user-driven: the app never opens the login dialog on its own.
+On a signed-out start the bottom-left launcher is the entry (its label is the
+sign-in copy), and the workbench shows a sign-in call to action beside it. The
+launcher carries a stable `data-nexusai="launcher"` marker, which is what the CI
+gates assert on to prove the client half mounted (`scripts/check-client-mounted.mjs`).
 
 **First run shows the product, not dsh's onboarding popup.** dsh displays a
 preview notice until the user acknowledges it, keeping the acknowledged version

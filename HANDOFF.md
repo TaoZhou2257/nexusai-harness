@@ -8,7 +8,7 @@
 
 - **修发行阻断 bug（profile 名）**：插件解析 patch 文件时默认 `profiles/desktop`，而打包版的 profile 叫 `nexusai` —— dev 环境恰好是 `desktop`，把这个错误盖住了。后果是打包版里 **NexusAI 的 MCP 行与自定义连接器全部写到宿主不加载的文件**（卡片有、工具不挂载）。现改为"找承载本插件行的那个 profile"（显式 `profilePatchFile` 仍优先），并加启动日志打印解析结果。
 - **运行时日志落盘**：`<home>/logs/runtime.log`（2MB 轮转一次，token 统一脱敏），菜单加 **帮助 → 打开日志目录 / 查看运行日志 / 关于**（关于显示应用版本、内置运行时版本、home 路径）。打包版没有终端，这是用户唯一能给回来的东西。
-- **首启自动弹登录**：未登录启动时弹一次登录框（延迟 1.2s 等壳稳定；关掉即记住，本会话不再弹）。**没做配置开关**：客户端拿不到插件配置，加开关要动 Typert 线协议（描述符必须同步），收益不抵风险 —— 触发条件本身已限定为"未登录"，dev 环境已登录不会触发。若日后觉得吵，再加开关。
+- **登录完全由用户发起**（2026-10-13 按用户要求改）：应用**从不**自己弹登录框；未登录时入口是左下角启动器（标签即登录文案）+ 工作台里的登录 CTA。原先那版「未登录启动自动弹一次」已移除 —— 它同时是 CI 的 Windows 验收闸判断「client 半已挂载」的证据，现改判启动器上的 `data-nexusai="launcher"` 标记（不依赖文案与语言），见 `scripts/check-client-mounted.mjs`。
 - **CI 两处失败修复**：`npm ci` 的 peer 图 ERESOLVE（仓库 `.npmrc` → `legacy-peer-deps`）；`prepare-runtime` 读 `upstream/package.json` 在 CI 上 ENOENT（CI 不检出 submodule）。
 - **类型依赖显式钉住**：16 个 dsh 类型包进 `devDependencies`（不进 `dependencies`，不影响产物），因为 `legacy-peer-deps` 让干净克隆不再装 peer，本地 `tsc` 会缺类型。
 - **Release 流程**：`.github/workflows/build.yml` 加 release job —— 打 tag（`v*`）后两端产物自动挂到 Release；分支推送仍只产 artifact。
@@ -280,7 +280,7 @@ node scripts/prepare-runtime.mjs         # → build/profile（dsh 按 upstream.
 node scripts/smoke-runtime.mjs           # 无 GUI：起运行时并等 web URL（改壳后必跑）
 corepack pnpm exec electron-builder --config electron-builder.config.cjs --mac --arm64
 #   ↑ 这条常被网络卡住，加 ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
-node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugging-port 的实例查首启弹窗
+node scripts/check-client-mounted.mjs 9224 3000  # 可选：对带 --remote-debugging-port 的实例查 client 半是否挂载（看 data-nexusai 标记）
 ```
 
 **发版**：改 `apps/nexusai-desktop/package.json` 的 version → 提交 → `git tag -a vX.Y.Z` → `git push github v1.0 vX.Y.Z`。CI 两个平台构建，release job 自动把 dmg/exe 挂到 Release（仓库私有 → 下载需登录）。
@@ -438,10 +438,10 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 | 10-13 | **窗口摆放改为按工作区精确计算**：原 `center: true` 实测比工作区真正的中线高 41pt（y=73，应然 114）。改为自己取 `screen.getPrimaryDisplay().workArea` 算 x/y，支持 `center`（默认）/`bottom`（底边压 Dock）/`fill`（撑满）；来源优先级 env `NEXUSAI_WINDOW_PLACEMENT` > `<home>/window-placement` 文件 > 默认（文件是给双击启动的发行版用的，它没有 shell） | 三种模式各自实测（渲染进程读回屏幕坐标）：center `1352x714@80,114` 与理论 113 吻合；bottom `1352x712@80,194`（194+712=906=工作区底）；fill `1352x872@80,34`；文件模式日志显示 `from /tmp/…/window-placement` |
 | 10-13 | **修品牌槽失效**：`sidebar.brand.{mark,name}` 会渲染优先级最低的贡献，我们的注册漏写 `priority`（默认 0）→ 一直输给 dsh 自带的本地构建标签，服务端品牌从未生效。补 `priority: -1`（与同文件 settings.launcher 同一规则） | 同机同 home 重启实测：侧栏变 `NexusAgent Builder ｜ v1.5.0.3`，dsh 标签消失（页面上搜不到 deepseek 文案） |
 | 10-13 | **首启不弹 dsh 的「预览版说明」**：该提示用 `ui-settings-general.welcomeNoticeVersion` 与当前版本**精确相等**判定，预置配置里替用户确认即可。版本常量由 `prepare-runtime.mjs` 从装好的 `dsh-client-ui-settings-models` 包里读出（不硬编码；dsh 升级后新说明会再显一次，属预期） | 全新 home 启动：页面上 `预览版说明` / `预览阶段` 文案均搜不到；同一份 profile 的 patch 里出现 `welcomeNoticeVersion: '2026-09-28.1'` |
-| 10-13 | 新增 `scripts/capture-ui.mjs`（CDP 截应用自身界面，只含应用内容、不含桌面）+ `scripts/check-auto-signin.mjs`（首启弹窗检查） | 本轮全部截图与首启断言都用它们产出 |
+| 10-13 | 新增 `scripts/capture-ui.mjs`（CDP 截应用自身界面，只含应用内容、不含桌面）+ `scripts/check-client-mounted.mjs`（按 `data-nexusai` 标记判定 client 半是否挂载） | 本轮全部截图与断言都用它们产出 |
 | 10-13 | **发行阻断修复：profile 名**。插件默认解析 `profiles/desktop/cordis.patch.yml`，打包版 profile 叫 `nexusai` → MCP 行与自定义连接器写进宿主不加载的文件（dev 恰好是 `desktop`，掩盖了它）。改为解析"承载本插件行的 profile"，显式配置仍优先；启动日志打印解析结果 | 打包布局 home → `profiles/nexusai/…`、dev home → `profiles/desktop/…`（同一脚本对两个真实 home 各跑一次）；套件 +3 例（66 例全绿） |
 | 10-13 | **运行时日志落盘 + 菜单**：`<home>/logs/runtime.log`（2MB 轮转、token 脱敏）、帮助菜单（打开日志目录 / 查看运行日志 / 关于） | 日志文件含启动横幅/menu/ready 行且 token 残留计数 0；`--check` 语法与启动均通过 |
-| 10-13 | **首启自动弹登录**（未登录启动弹一次，关掉本会话不再弹；无配置开关，理由见交接段） | CDP 实测：未登录启动 `.nexusai-dialog` 计数 1；点「关闭」后 2.5s 仍为 0 |
+| 10-13 | ~~首启自动弹登录~~ → 当晚按用户要求**改回完全手动**（应用不自己弹登录框；验收闸改判 `data-nexusai="launcher"` 标记） | 打包版实测：未登录启动 `signInDialog` 计数 0、`launcher` 标记为 1 |
 | 10-13 | **Release 流程**：tag（`v*`）触发 release job，把两端安装包挂到 Release；分支推送仍只产 artifact | tag `v0.1.0` → 三个 job 全绿，Release 含 dmg 226MB + exe 213MB |
 | 10-13 | **CI 修复**：`npm ci` peer 图 ERESOLVE（`.npmrc` legacy-peer-deps）；`prepare-runtime` 读 `upstream/package.json` 在 CI 上 ENOENT；devDependencies 显式钉 16 个 dsh 类型包 | 干净 clone：`npm ci` 94 包 + `tsc` 通过；CI 两次全绿 |
 | 10-13 | **carrier 发行化三件**：①应用图标/品牌（`resources/icon.svg` 派生 png/icns/ico，两端共用）②菜单收敛（去掉 Reload/Force Reload/DevTools 快捷键，另吞 ⌘R/Ctrl+R/F5）③运行时失败开窗显示输出（不再静默退出） | 打包版 .app 的 `CFBundleIconFile=icon.icns` 且与源一致；启动打印 `menu: minimal installed (5 top-level, no reload)`；干净 home 启动到 web URL 无失败 |
