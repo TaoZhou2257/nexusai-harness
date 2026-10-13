@@ -119,6 +119,29 @@ try {
   Write-Host "OK: stale home — runtime came up; node_modules now points at $resolved"
   Stop-App
 
+  # ── scenario 3: the junction points at the app's own runtime ──────────────
+  # This is the field case that cost a reinstall: a home from a previous install
+  # whose link targets the app's bundled runtime, plus a stale marker, so the
+  # shell rebuilds the link. Rebuilding must not touch the target — a recursive
+  # remove that follows the junction would wipe the runtime the app ships.
+  $bundled = Join-Path $installDir 'resources\nexusai-runtime\profile\node_modules'
+  $bundledCli = Join-Path $bundled '@deepseek-ai\dsh\lib\bin.js'
+  if (-not (Test-Path $bundledCli)) { throw "bundled runtime missing the CLI before the check: $bundledCli" }
+  $pointed = Join-Path $tempRoot "nexusai-pointed-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+  $pointedProfile = Join-Path $pointed 'profiles\nexusai'
+  New-Item -ItemType Directory -Force -Path $pointedProfile | Out-Null
+  & cmd /c mklink /J "`"$(Join-Path $pointedProfile 'node_modules')`"" "`"$bundled`"" | Out-Null
+  Set-Content -Path (Join-Path $pointedProfile '.nexusai-desktop-runtime') -Value '0.0.0+stale' -Encoding utf8
+  Write-Host '== checking a link aimed at the bundled runtime survives its rebuild =='
+
+  if (-not (Test-AppBoots $pointed 'home pointing at the bundled runtime')) { Show-Evidence 'app did not come up' $pointed; throw 'the app did not survive rebuilding a link aimed at its own runtime' }
+  Stop-App
+  if (-not (Test-Path $bundledCli)) {
+    Show-Evidence 'the bundled runtime lost its CLI' $pointed
+    throw "rebuilding the link DELETED the app's own runtime ($bundledCli is gone) — that is destructive, never acceptable"
+  }
+  Write-Host 'OK: rebuilding the link left the app runtime intact'
+
   Write-Host '== all checks passed =='
 } catch {
   Write-Host "FAILED: $($_.Exception.Message)"

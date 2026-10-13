@@ -232,6 +232,10 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 
 14. **别覆盖 `DSH_AGENTS_HOME`（会屏蔽全机器技能库）**：dsh 的技能发现里，`dsh-skill-filesystem` 用 `config.agentsHome ?? process.env.DSH_AGENTS_HOME ?? ~/.agents` 定位**机器级技能根** —— 这是本机所有 agent 工具共享的目录（本机 `~/.agents/skills` 有 32 个技能）。壳里当初照抄参考实现写了 `DSH_AGENTS_HOME: join(home, 'agents')`，等于把它指到一个空目录：**对话里敲 `/` 什么都不列、技能页"本地"为 0**（现场反馈"以前能看到 dsh 自带的 skills，现在没有了"）。修法：**不要设这个变量**，让 dsh 用默认的 `~/.agents`。验证：去掉后打包版"本地 (31)"、`/` 菜单从"无"变回 40 项（命令 + 技能）。
 
+15. **删除链接绝不能用递归删除（会顺着链接删掉目标）**：清理"旧运行时链接"时我用了 `rmSync(target, { recursive: true, force: true })`，注释还写着"只删链接、不动目标" —— **在 Windows 上这是错的**：递归删除可能顺着 junction 进到目标里，而这里的目标**就是应用自带的运行时**（`resources
+exusai-runtime\profile
+ode_modules`）。后果是**把应用自己的运行时删空**，然后重链到空目录，报 `bundled runtime is incomplete: … bin.js is missing after linking …`（现场 Windows 就是这个）。修法：`removeLink()` 对符号链接/junction **只做非递归删除**（reparse point 的普通删除就是删链接本身），只有"真实目录且标记属于本应用"才递归删。CI 现在有第三个场景专门盯它：**让 home 的 junction 指向应用自己的运行时 + 旧标记**，断言重建后应用运行时**仍然完好**（`install-and-launch-check.ps1` scenario 3）
+
 15. **GUI 启动的应用 PATH 只有四个目录，必须补登录 shell 的 PATH**：从访达/Dock 启动时 macOS 只给 `/usr/bin:/bin:/usr/sbin:/sbin`，于是用户装的 `node`/`python3`/`git`/`ripgrep`/brew 工具对 agent 的 shell **全部不可见**。dsh 自己的桌面端用 `apps/desktop/src/login-shell-environment.ts` 读账号登录 shell 的环境来解决；我们的壳现在也做（`enrichedPath()`：依次试 `$SHELL`、`/bin/zsh`、`/bin/bash`、`/bin/sh`，`-ilc 'printf %s "$PATH"'`，5s 超时，取第一个成功的并把继承的 PATH 接在后面去重；Windows 不需要——GUI 进程从注册表继承用户 PATH）。**本机因为 GUI 会话 PATH 恰好很全而看不出问题**，属潜在坑；验证方式：用 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin` 启动，检查子进程 PATH 里 node/python3/git/rg 均可解析。
 
 ### C. 数据与接口
@@ -486,6 +490,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-14 | **修"重建链接反而删掉应用运行时"**（现场 Windows 报 `bundled runtime is incomplete … missing after linking`）：上一版把清理旧链接写成了 `rmSync(recursive:true)`，在 Windows 上可能顺着 junction 递归进入目标，把 `resources\nexusai-runtime\profile\node_modules`（应用自带运行时）删空。改为 `removeLink()`：链接只做**非递归**删除，真实目录（且标记属于本应用）才递归；并把报错改成能区分"链接坏了"与"包内运行时缺文件（需重装）" | 本机（macOS）用"home 链接指向 bundle 自身 + 旧标记"复现该路径：日志 `runtime link needs rebuilding …` → `runtime ready`，且 **bundle 完好（CLI 在、182 个顶层条目）**；CI 新增 scenario 3 在真 Windows 上断言同一点（源运行时不得被删） |
 | 10-14 | **补登录 shell 的 PATH**（承接"还有没有别的丢失"的自查）：GUI 启动的进程只有 `/usr/bin:/bin:/usr/sbin:/sbin`，dsh 的桌面端会读登录 shell 环境，我们没做 → 用户装的 node/python3/git/ripgrep 对 agent 不可见。新增 `enrichedPath()`（多候选 shell + 5s 超时 + 去重合并，Windows 跳过） | 以 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin` 启动：日志出现 `PATH from /bin/zsh: …`，子进程 PATH 里 node/python3/git/rg **全部可解析**（修复前只有系统四个目录） |
 | 10-13 | **修「对话里敲 `/` 没有技能了」**（现场反馈）：根因是壳覆盖了 `DSH_AGENTS_HOME`，把它指向自建空目录，于是 dsh 的机器级技能根（默认 `~/.agents`）被屏蔽 → 技能目录/斜杠菜单全空。改为不设该变量 | 修复前：本地 0、`/` 无菜单；修复后（源码与重新打包的打包版各测一次）：**本地 (31)**（= `~/.agents/skills` 的合法条目）、`/` 菜单 40 项（命令 + 技能）；列表内容与 `~/.agents/skills` 一致（`academic-paper-writer-pro`、`architecting-solutions`…） |
 | 10-13 | **应用名改为 `NexusAIHarness`**（用户指出菜单栏与窗口标题仍是旧名）：`productName` + 壳的 `APP_NAME` 同步；新增 `adoptLegacyHome()` —— 应用名变化会移动 userData 下的 dsh home，故首次启动把旧名（`NexusAgent Builder`）的 home **移动**过来，升级对用户无感。CI 里写死的安装目录/exe 名、workflow 发布说明与标题一并更新 | 本机打包实测：`NexusAIHarness.app`、`CFBundleName=NexusAIHarness`、**菜单栏截图显示 `NexusAIHarness`**、System Events 读到窗口名为 `NexusAIHarness`；接手测试：在旧目录放 `SENTINEL.txt` → 启动后日志 `adopted the home of NexusAgent Builder from …`、文件出现在新目录、旧目录已移走 |

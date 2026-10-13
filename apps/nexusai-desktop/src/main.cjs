@@ -175,17 +175,51 @@ function materializeProfile(home) {
   }
   if (ours && (installed !== expected || !cliPresent())) {
     logLine(`runtime link needs rebuilding (marker ${installed ?? 'none'}, cli ${cliPresent() ? 'ok' : 'missing'})`)
-    // Removes the link itself, dangling or not; never the directory it points at.
-    rmSync(targetModules, { recursive: true, force: true })
+    removeLink(targetModules)
   }
   if (lstatSync(targetModules, { throwIfNoEntry: false }) === undefined) {
     symlinkSync(sourceModules, targetModules, process.platform === 'win32' ? 'junction' : 'dir')
   }
   writeFileSync(marker, `${expected}\n`, 'utf8')
   if (!cliPresent()) {
-    throw new Error(`bundled runtime is incomplete: ${dshCli(target)} is missing after linking ${sourceModules}`)
+    // Say which side is broken: an ambiguous message here costs a reinstall.
+    const sourceCli = existsSync(join(sourceModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
+    const entryAfter = lstatSync(targetModules, { throwIfNoEntry: false })
+    const state = entryAfter === undefined
+      ? 'the link is absent'
+      : entryAfter.isSymbolicLink() ? 'the link is in place but does not resolve' : 'the path is a real directory, not our link'
+    logLine(`runtime unusable: source CLI ${sourceCli ? 'present' : 'MISSING'} at ${sourceModules}; ${state}; marker ${expected}`)
+    throw new Error(sourceCli
+      ? `bundled runtime link is broken: ${targetModules} → ${sourceModules} (${state}). Delete that path and reopen.`
+      : `the app's bundled runtime is missing files (${join(sourceModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js')}); reinstall the app.`)
   }
   return target
+}
+
+/**
+ * Remove a link without ever touching what it points at.
+ *
+ * Non-recursive on purpose: a recursive remove can follow a Windows junction
+ * into its target, and here the target is the app's own bundled runtime — that
+ * mistake wipes the runtime and resurfaces as "bundled runtime is incomplete".
+ * A junction or a symlink is a reparse point, so a plain remove deletes the link
+ * itself; a real directory (which the caller only reaches when the marker says
+ * this app made it) is removed recursively.
+ */
+function removeLink(path) {
+  const entry = lstatSync(path, { throwIfNoEntry: false })
+  if (entry === undefined) return
+  if (entry.isSymbolicLink()) {
+    try {
+      rmSync(path, { force: true })
+    } catch (error) {
+      // Some Windows builds refuse DeleteFile on a junction but accept rmdir.
+      rmSync(path, { recursive: false, force: true })
+      logLine(`removing the link needed a retry: ${error && error.message ? error.message : String(error)}`)
+    }
+    return
+  }
+  rmSync(path, { recursive: true, force: true })
 }
 
 /** A file's trimmed text, or undefined when it is absent. */
