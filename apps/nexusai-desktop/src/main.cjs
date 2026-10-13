@@ -419,7 +419,11 @@ function startRuntime(home, profileDir) {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       DSH_HOME: home,
-      DSH_AGENTS_HOME: join(home, 'agents'),
+      // `DSH_AGENTS_HOME` is deliberately NOT set. dsh's filesystem skill
+      // provider defaults it to `~/.agents` — the machine-level skills root that
+      // every agent tool on the machine shares — and overriding it with a
+      // directory inside our own home hides the user's whole skill library
+      // (learned the hard way: "/" in the composer listed nothing).
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,

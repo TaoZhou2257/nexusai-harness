@@ -230,6 +230,8 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 
 13. **打包版的窗口可能"创建了但从不显示"**（自查时撞到）：原来靠 `loadURL(url).then(() => window.show())` —— 页面加载的 promise 在某些情况下**永不 settle**（本次实测：日志有 `window: center …`、无任何报错、System Events 报 0 个窗口、页面 `visibilityState` 为 hidden），于是应用看起来"启动即死"。改为事件驱动：`did-finish-load` → `show()`，并加 `did-fail-load` 与 `.catch` 两条路径**无论如何都显示窗口**（失败也可见）+ 打一行 `window shown` 到日志。修完 System Events 能读到 1 个窗口且标题正确。注意：`document.visibilityState` 在窗口被其他窗口完全遮挡时也会是 `hidden`，**它不能当作"窗口没显示"的判据**，要看 System Events 的窗口数
 
+14. **别覆盖 `DSH_AGENTS_HOME`（会屏蔽全机器技能库）**：dsh 的技能发现里，`dsh-skill-filesystem` 用 `config.agentsHome ?? process.env.DSH_AGENTS_HOME ?? ~/.agents` 定位**机器级技能根** —— 这是本机所有 agent 工具共享的目录（本机 `~/.agents/skills` 有 32 个技能）。壳里当初照抄参考实现写了 `DSH_AGENTS_HOME: join(home, 'agents')`，等于把它指到一个空目录：**对话里敲 `/` 什么都不列、技能页"本地"为 0**（现场反馈"以前能看到 dsh 自带的 skills，现在没有了"）。修法：**不要设这个变量**，让 dsh 用默认的 `~/.agents`。验证：去掉后打包版"本地 (31)"、`/` 菜单从"无"变回 40 项（命令 + 技能）。
+
 ### C. 数据与接口
 1. **React 列表 key 必须唯一**：上游「天然主键」不可想当然（SkillHub 的 `publicSlug` 一页内重复，曾表现为「筛选失效」）→ 统一用 `namespace.canonicalName` 作身份。
 2. **外部接口空值**不能只判 undefined/''：JSON `null` 与字面量 `"null"` 都出现过（曾导致图标裂图）。
@@ -482,6 +484,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **修「对话里敲 `/` 没有技能了」**（现场反馈）：根因是壳覆盖了 `DSH_AGENTS_HOME`，把它指向自建空目录，于是 dsh 的机器级技能根（默认 `~/.agents`）被屏蔽 → 技能目录/斜杠菜单全空。改为不设该变量 | 修复前：本地 0、`/` 无菜单；修复后（源码与重新打包的打包版各测一次）：**本地 (31)**（= `~/.agents/skills` 的合法条目）、`/` 菜单 40 项（命令 + 技能）；列表内容与 `~/.agents/skills` 一致（`academic-paper-writer-pro`、`architecting-solutions`…） |
 | 10-13 | **应用名改为 `NexusAIHarness`**（用户指出菜单栏与窗口标题仍是旧名）：`productName` + 壳的 `APP_NAME` 同步；新增 `adoptLegacyHome()` —— 应用名变化会移动 userData 下的 dsh home，故首次启动把旧名（`NexusAgent Builder`）的 home **移动**过来，升级对用户无感。CI 里写死的安装目录/exe 名、workflow 发布说明与标题一并更新 | 本机打包实测：`NexusAIHarness.app`、`CFBundleName=NexusAIHarness`、**菜单栏截图显示 `NexusAIHarness`**、System Events 读到窗口名为 `NexusAIHarness`；接手测试：在旧目录放 `SENTINEL.txt` → 启动后日志 `adopted the home of NexusAgent Builder from …`、文件出现在新目录、旧目录已移走 |
 | 10-13 | **修「打包版窗口创建了但从不显示」**（自查发现）：`loadURL().then(show)` 在 promise 不 settle 时不显示，且无任何日志。改为 `did-finish-load` 事件驱动 + `did-fail-load`/`.catch` 兜底显示，并记录 `window shown` | 修前：System Events 报 0 个窗口、`visibilityState=hidden`、日志无报错；修后：`window shown` 打印、System Events 报 1 个窗口且标题为 `NexusAIHarness` |
 | 10-13 | **品牌统一为单一缓存**：工作台原先自己抓一份品牌（只在"登录状态翻转"时重取，漏掉"未登录时改地址"），现改用共享的 `useBranding` —— 侧栏/hero/工作台三者不会再各说各话。同时系统盘点所有动态展示项（名称/logo/版本/欢迎语/按钮色）与其取不到时的降级，写进 §8e-2 | 三场景实测：①换地址 → 侧栏 `KyloTynAI`、工作台标签同步；②**带已保存地址重启** → 侧栏 `KyloTynAI` + hero `v1.5.0.3`（宿主先应用覆盖值，无竞态）；③服务器不可达 → 默认名 + dsh 构建号 + 自带 SVG 字标、**裂图 0**、页面无 `undefined` |
