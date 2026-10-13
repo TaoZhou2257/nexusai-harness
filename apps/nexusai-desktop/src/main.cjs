@@ -13,7 +13,7 @@
  * CommonJS on purpose: no build step, no module-format surprises under Electron.
  */
 const { app, BrowserWindow, Menu, dialog, shell, screen } = require('electron')
-const { spawn } = require('node:child_process')
+const { spawn, spawnSync } = require('node:child_process')
 const {
   cpSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync,
   renameSync, rmSync, statSync, symlinkSync, writeFileSync,
@@ -409,6 +409,53 @@ let runtime
 let mainWindow
 let quitting = false
 
+/**
+ * The PATH a GUI-launched app should hand to dsh.
+ *
+ * macOS gives an app started from Finder/Dock only `/usr/bin:/bin:/usr/sbin:/sbin`,
+ * so every tool the user installed elsewhere — node, python3, git, ripgrep, brew
+ * — is invisible to the agent's shell. dsh's own desktop solves this by asking
+ * the account's login shell for its environment; this is the same idea, kept
+ * small: try the shells a Mac has, keep the first PATH that comes back, and
+ * give up quietly if none answer.
+ *
+ * Windows needs none of it: a GUI process inherits the user PATH from the
+ * registry, which is the shell's own.
+ */
+function loginShellPath() {
+  if (process.platform === 'win32') return ''
+  const shells = [process.env.SHELL, '/bin/zsh', '/bin/bash', '/bin/sh']
+    .filter((shell, index, all) => typeof shell === 'string' && shell !== '' && all.indexOf(shell) === index)
+  for (const shell of shells) {
+    try {
+      const result = spawnSync(shell, ['-ilc', 'printf %s "$PATH"'], {
+        encoding: 'utf8',
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      const path = (result.stdout ?? '').trim()
+      if (path !== '') {
+        logLine(`PATH from ${shell}: ${path}`)
+        return path
+      }
+    } catch { /* try the next shell */ }
+  }
+  logLine('could not read a login-shell PATH; using the inherited one')
+  return ''
+}
+
+/** Merge the login shell's PATH into the inherited one, keeping both orders' intent. */
+function enrichedPath() {
+  const inherited = process.env.PATH ?? ''
+  const fromShell = loginShellPath()
+  if (fromShell === '') return inherited
+  const seen = new Set()
+  const parts = [...fromShell.split(':'), ...inherited.split(':')]
+    .map(part => part.trim())
+    .filter(part => part !== '' && !seen.has(part) && seen.add(part) !== undefined)
+  return parts.join(':')
+}
+
 function startRuntime(home, profileDir) {
   const cli = dshCli(profileDir)
   if (!existsSync(cli)) throw new Error(`bundled dsh CLI is missing: ${cli}`)
@@ -419,6 +466,8 @@ function startRuntime(home, profileDir) {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       DSH_HOME: home,
+      // The user's real toolchain, not the four directories a GUI app inherits.
+      PATH: enrichedPath(),
       // `DSH_AGENTS_HOME` is deliberately NOT set. dsh's filesystem skill
       // provider defaults it to `~/.agents` — the machine-level skills root that
       // every agent tool on the machine shares — and overriding it with a
