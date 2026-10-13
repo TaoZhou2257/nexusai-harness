@@ -234,6 +234,15 @@ function profilePatch() {
     "  name: '@deepseek-ai/dsh-client-locale'",
     '  config:',
     "    preference: 'zh'",
+    // dsh's first-run "添加一个 API Key 开始使用" prompt is this row's
+    // `credentialOnboarding` (default true): the host publishes it as the page
+    // global `__DSH_MODELS_ONBOARDING__` before client plugins activate. Off
+    // means the app opens on the workbench and users configure a model
+    // themselves (设置 → 模型) — which is what the product wants.
+    '- id: ui-settings-models',
+    "  name: '@deepseek-ai/dsh-client-ui-settings-models'",
+    '  config:',
+    '    credentialOnboarding: false',
     '- insert:',
     '    - id: nexusai',
     `      name: '${plugin.name}'`,

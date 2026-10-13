@@ -389,6 +389,20 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 - **语音** 33 MB（sherpa-onnx）+ 实验性语音包 —— **保留**（用户要求开箱可用）。
 - 17 MB 遥测（otel 行挂着，删了起不来）、18 MB sharp（附件功能）、开放模型 SDK（openai/anthropic/google）—— 都保留。
 
+## 8g. 首启体验：预置 patch 里到底设了什么
+
+生成的 `cordis.patch.yml` 共 5 段，每段对应一件产品决定（改这些都在 `prepare-runtime.mjs` 的 `profilePatch()`）：
+
+| 行 | 设置 | 为什么 |
+|---|---|---|
+| `ui-settings-account` | `disabled: true` | 隐藏 dsh 内置的 DeepSeek 账号 UI（NexusAI 登录替代它）；**宿主 `deepseek-account` 行不能禁**（见 §7 坑 B2） |
+| `ui-settings-general` | `welcomeNoticeVersion: <当前>` | 代用户确认 dsh 的「预览版说明」，首启不弹（版本从装好的 client bundle 读出，不硬编码） |
+| `locale` | `preference: 'zh'` | 界面默认中文。dsh 只有 `en`/`zh` 两个 id 且取不到就回退 `en`；打包版因只声明英文 localization 会被判成 `en`（详见 §8e） |
+| `ui-settings-models` | `credentialOnboarding: false` | **关掉 dsh 首启的「添加一个 API Key 开始使用」引导**（该行的配置项，宿主会发布成页面全局 `__DSH_MODELS_ONBOARDING__`）。用户自己在「设置 → 模型」配模型 —— 与"模型由用户自配"的产品口径一致 |
+| `insert: nexusai` | 本插件行 | baseUrl + AES key/iv |
+
+**首启实测（干净 home）**：无预览说明、无 API Key 引导、无登录框（登录完全手动）、侧栏显示远程品牌与版本、hero 显示品牌字标 + 「探索 AGI 之无限可能」+ 版本徽章。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
@@ -432,6 +446,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **关掉 dsh 首启的「添加一个 API Key」引导**（用户要求）：该引导是 `ui-settings-models` 行的 `credentialOnboarding`（宿主发布成页面全局 `__DSH_MODELS_ONBOARDING__`），预置配置里设 `false` 即可，不改 dsh；新增 HANDOFF §8g 汇总预置 patch 的 5 段设置 | 干净 home 启动实测：`添加一个 API Key` 与 `稍后配置` 文案均搜不到，hero 标题可见、无登录框、launcher=1 |
 | 10-13 | **语音输入改为保留**（用户要求开箱可用）：清空 `UNMOUNTED_FEATURE_PACKAGES`，语音/STT 链（sherpa-onnx 33MB + 实验性语音包）重新装回；剪裁只剩「源码映射 + 其它平台 prebuilds」两项（零功能影响） | profile 388→421 MB、DMG 208→217 MB；冒烟 + 挂 DMG 启动 + 组合校验三闸全过；包内 `sherpa-onnx-darwin-arm64` 与语音包都在 |
 | 10-13 | **Windows 真机验收通过**（用户确认 v0.1.2 安装后可正常启动）→ 载体两侧到此刻都跑在真机上；CI 每推都跑两道自动验收闸（mac 挂 DMG 启动 / win 静默安装+启动+登录框断言+卸载）。代码同步到 Codeup：`v1.0` 分支 + 三个 tag 已推 origin（Codeup 无流水线，推送不触发构建） | 用户真机确认；Codeup `refs/heads/v1.0` = 5bf98d4 与本地一致 |
 | 10-13 | **构建轨道定为 GitHub**（默认也是唯一）：核实云效后决定不迁（托管构建机只有 Linux；Codeup 发行版附件上限 50MB 装不下安装包）——结论与"将来真要迁怎么做"写进 §8c | 分支推送触发全量跑，tag 仍发 Release |
