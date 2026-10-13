@@ -289,6 +289,41 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 **两个只在打包版才暴露的坑**（本机 dev 掩盖，CI/发行必踩）：profile 名不是 `desktop`（见 §7-坑 B10）；`prepare-runtime` 不能读 `upstream/`（CI 不检出 submodule）。
 
+## 8c. 双轨 CI：Codeup/云效（默认）+ GitHub（手动兜底）
+
+**唯一真源在 `scripts/ci/`**，两套 CI 都只做「拉代码 → 调脚本 → 传产物」，因此不会各自演化：
+
+| 脚本 | 干什么 |
+|---|---|
+| `build-app.sh`（macOS） / `build-app.ps1`（Windows） | toolchain → 根 `npm ci` → 载体 `pnpm install` → `prepare:runtime` → `smoke:runtime` → `electron-builder`。**镜像默认值写在脚本里**（npm registry / COREPACK_NPM_REGISTRY / ELECTRON_MIRROR / ELECTRON_BUILDER_BINARIES_MIRROR），可用环境覆盖 —— 国内 runner 不必各自配置 |
+| `check-mac-app.sh` | 挂 DMG → 拷出 app → 干净 home 启动 → 断言运行时就绪 + profile 落位且含插件行。**验证不了 Gatekeeper**（CI 产物无 quarantine，人工「仍要打开」仍需一次） |
+| `install-and-launch-check.ps1` | 静默安装 → 断言落位 → 启动 → 断言 `runtime ready` → CDP 断言登录框（证明宿主 + client + 插件全挂上）→ 静默卸载。**验证不了 SmartScreen**，也不做真实账号登录（验证码） |
+
+**触发矩阵**（"默认走 Codeup，随时切 GitHub"就是这么落地的）：
+
+| 你做什么 | 跑哪套 | 产物 |
+|---|---|---|
+| `git push origin v1.0`（日常） | 云效：分支推送 | 云效构建物（不发版） |
+| `git push origin vX.Y.Z`（打 tag） | 云效 ← **默认发版路径** | 云效制品库 |
+| Actions 页 **Run workflow** | GitHub（手动） | GitHub artifacts |
+| `git push github vX.Y.Z` | GitHub（tag） | GitHub Release |
+
+分支推送到 `github` **不再自动触发**（省额度，也避免两套同版本产物不知道哪个算数）。GitHub 侧的首跑验证：手动 run 全绿（macOS 6m40s；**Windows 16m20s，含安装+启动+登录框+卸载全链证据**）。
+
+**密钥**：`NEXUSAI_BASE_URL` / `NEXUSAI_AES_KEY` / `NEXUSAI_AES_IV` 两边各存一份（GitHub Secrets 与云效变量），轮换时两处都要改。
+
+**云效侧要在控制台做的**（我做不了，逐步照做即可）：
+1. 新建流水线，代码源选 Codeup 本仓；**不要勾选递归子模块**（`.gitmodules` 指向 GitHub，CI 也不需要它）
+2. Windows 任务：构建集群选**公共（Windows 2019/2022）** → 步骤依次执行
+   - `powershell -NoProfile -File scripts/ci/build-app.ps1`（或 pwsh）
+   - `powershell -NoProfile -File scripts/ci/install-and-launch-check.ps1`
+   - 构建物上传 `apps/nexusai-desktop/dist/*.exe`
+3. 变量组加三个 `NEXUSAI_*`（勾选保密）
+4. macOS 任务（二期）：先确认公共集群是否有 macOS 镜像；没有就把本机 Mac 装 Runner 注册为**私有构建节点**，步骤同 Windows 但走 `scripts/ci/build-app.sh` + `check-mac-app.sh`，构建物为 `dist/*.dmg`
+5. 触发：分支推送（产 artifact）+ tag `v*`（发布）
+
+**两个待你在控制台核实的点**（我文档口径不一，别当已知）：① 云效公共构建集群是否真有托管 macOS；② Codeup 是否有"发行版/Release"页面（没有就用制品仓库，必要时再挂 OSS 直链）。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
@@ -332,6 +367,7 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **CI 抽真源 + 双轨就绪**：构建步骤迁入 `scripts/ci/*`（两套 CI 共用，镜像默认值内置）；新增两道验收闸 —— mac「挂 DMG → 启动 → 断言就绪/插件行」、win「静默安装 → 启动 → 断言就绪 → CDP 断言登录框 → 静默卸载」；GitHub 改为手动兜底（分支推送不再触发，保留 tag 发版）；`prepare-runtime` 的 Windows 目录 symlink 改 junction | GitHub 手动 run 全绿：macOS 6m40s；**Windows 16m20s 打印完整证据链**（installer exit 0 → 落位 → 运行时 ready → profile 含插件行 → `{"dialogs":1}` → 卸载干净）。首跑即抓到两个真问题：`$home`/`$profile` 撞 PowerShell 只读自动变量 |
 | 10-13 | **修「mac 装不上」的根因：产物没有自己的签名**。`identity: null` 时 electron-builder 不做任何签名，而 afterPack 又在签名时机之后往 `Contents/Resources` 塞了 490MB 运行时 —— 结果 `.app` 连 `_CodeSignature` 都不存在（`spctl`：`code has no resources but signature indicates they must be present`）。**从网页下载的副本（带 quarantine）会被 Gatekeeper 以「已损坏，无法打开」拒掉**，且该对话框没有任何"仍要打开"入口 → 用户只能得出"没安装成功"。改为 ad-hoc 签名（`identity: '-'`）+ 显式权限文件（`disable-library-validation` 等，否则 hardened runtime 会拒绝载入运行时里的第三方原生库而启动即崩） | 签名后：`_CodeSignature/CodeResources` 生成、`codesign --verify --deep --strict` 报 valid、`spctl` 由"签名损坏"变为标准的"未受信任开发者"；**打包版实跑通过**（菜单 + 运行时 ready，无库校验错误）。带 quarantine 的副本仍被拦一次——这是未公证应用的正常流程，可用「系统设置 → 隐私与安全性 → 仍要打开」放行 |
 | 10-13 | 本机 shell 受限说明：`xattr -dr com.apple.quarantine` 在**沙箱化进程**里会被内核拒绝（`System Policy: deny file-write-xattr`），用户自己的终端不受此限 | 日志实证（syspolicyd/kernel Sandbox 拒写 xattr） |
 | 10-13 | **窗口默认尺寸改为 1200×800**（与团队使用的参照编辑器窗口同尺寸；此前是按屏幕比例算的 1352×714，偏矮）。摆放逻辑不变（center/bottom/fill），尺寸按显示器裁剪 | 实测窗口 1200×800 @ 156,70；同机参照窗口为 1200×800 @161,106（只对齐宽高，位置仍按我们的居中/贴底规则） |
