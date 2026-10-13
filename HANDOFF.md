@@ -234,7 +234,12 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 
 15. **删除链接绝不能用递归删除（会顺着链接删掉目标）**：清理"旧运行时链接"时我用了 `rmSync(target, { recursive: true, force: true })`，注释还写着"只删链接、不动目标" —— **在 Windows 上这是错的**：递归删除可能顺着 junction 进到目标里，而这里的目标**就是应用自带的运行时**（`resources
 exusai-runtime\profile
-ode_modules`）。后果是**把应用自己的运行时删空**，然后重链到空目录，报 `bundled runtime is incomplete: … bin.js is missing after linking …`（现场 Windows 就是这个）。修法：`removeLink()` 对符号链接/junction **只做非递归删除**（reparse point 的普通删除就是删链接本身），只有"真实目录且标记属于本应用"才递归删。CI 现在有第三个场景专门盯它：**让 home 的 junction 指向应用自己的运行时 + 旧标记**，断言重建后应用运行时**仍然完好**（`install-and-launch-check.ps1` scenario 3）
+ode_modules`）。后果是**把应用自己的运行时删空**，然后重链到空目录，报 `bundled runtime is incomplete: … bin.js is missing after linking …`（现场 Windows 就是这个）。修法：`removeLink()` **按平台依次用 unlink → rmdir**，绝不用递归删除。Windows 上的确切行为（CI 实测抓到的）：
+   - `rmSync(junction, { force: true })`（非递归）→ 报 **`Error: Path is a directory`**（Node 的 rm 对目录天生拒绝非递归）；
+   - `rmSync(junction, { recursive: true })` → 会删掉链接**并且可能连带目标内容**（这就是把应用运行时删空的那条路）；
+   - **`rmdirSync(junction)` → 正确**：只摘掉 reparse point，目标毫发无损。
+   所以先 unlink（POSIX 的目录软链、Windows 的**文件**软链走这条），失败再 rmdir（Windows 的 junction / 目录软链）。只有"真实目录且标记属于本应用"才递归删。
+   CI 现在有第三个场景专门盯它：**让 home 的 junction 指向应用自己的运行时 + 旧标记**，断言重建后应用运行时**仍然完好**（`install-and-launch-check.ps1` scenario 3）；第二个场景（junction 指向空目录）则保证"重建能成功"
 
 15. **GUI 启动的应用 PATH 只有四个目录，必须补登录 shell 的 PATH**：从访达/Dock 启动时 macOS 只给 `/usr/bin:/bin:/usr/sbin:/sbin`，于是用户装的 `node`/`python3`/`git`/`ripgrep`/brew 工具对 agent 的 shell **全部不可见**。dsh 自己的桌面端用 `apps/desktop/src/login-shell-environment.ts` 读账号登录 shell 的环境来解决；我们的壳现在也做（`enrichedPath()`：依次试 `$SHELL`、`/bin/zsh`、`/bin/bash`、`/bin/sh`，`-ilc 'printf %s "$PATH"'`，5s 超时，取第一个成功的并把继承的 PATH 接在后面去重；Windows 不需要——GUI 进程从注册表继承用户 PATH）。**本机因为 GUI 会话 PATH 恰好很全而看不出问题**，属潜在坑；验证方式：用 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin` 启动，检查子进程 PATH 里 node/python3/git/rg 均可解析。
 

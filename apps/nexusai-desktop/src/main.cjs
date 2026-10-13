@@ -16,7 +16,7 @@ const { app, BrowserWindow, Menu, dialog, shell, screen } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const {
   cpSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync,
-  renameSync, rmSync, statSync, symlinkSync, writeFileSync,
+  renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync,
 } = require('node:fs')
 const { dirname, join, resolve } = require('node:path')
 
@@ -199,27 +199,34 @@ function materializeProfile(home) {
 /**
  * Remove a link without ever touching what it points at.
  *
- * Non-recursive on purpose: a recursive remove can follow a Windows junction
- * into its target, and here the target is the app's own bundled runtime — that
- * mistake wipes the runtime and resurfaces as "bundled runtime is incomplete".
- * A junction or a symlink is a reparse point, so a plain remove deletes the link
- * itself; a real directory (which the caller only reaches when the marker says
- * this app made it) is removed recursively.
+ * Three tools, in the order the platform needs them, and never a recursive one:
+ * `unlink` works for POSIX directory symlinks and for Windows file symlinks;
+ * `rmdir` is what removes a Windows junction or directory symlink (it detaches
+ * the reparse point and leaves the target alone) — and it is the reason this
+ * function is not just `rm -r`, because a recursive remove is both the thing
+ * that failed here on Windows (it refuses junctions) and the thing that can walk
+ * into the target, which is the app's own bundled runtime.
  */
 function removeLink(path) {
   const entry = lstatSync(path, { throwIfNoEntry: false })
   if (entry === undefined) return
-  if (entry.isSymbolicLink()) {
-    try {
-      rmSync(path, { force: true })
-    } catch (error) {
-      // Some Windows builds refuse DeleteFile on a junction but accept rmdir.
-      rmSync(path, { recursive: false, force: true })
-      logLine(`removing the link needed a retry: ${error && error.message ? error.message : String(error)}`)
-    }
+  if (!entry.isSymbolicLink()) {
+    // A real directory this app created (the caller checked the marker).
+    rmSync(path, { recursive: true, force: true })
     return
   }
-  rmSync(path, { recursive: true, force: true })
+  try {
+    rmSync(path, { force: true })
+    return
+  } catch (error) {
+    logLine(`link remove: unlink failed (${error && error.message ? error.message : String(error)}); trying rmdir`)
+  }
+  try {
+    rmdirSync(path)
+  } catch (error) {
+    logLine(`link remove: rmdir failed: ${error && error.message ? error.message : String(error)}`)
+    throw error
+  }
 }
 
 /** A file's trimmed text, or undefined when it is absent. */
