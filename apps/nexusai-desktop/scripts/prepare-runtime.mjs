@@ -209,7 +209,8 @@ writeFileSync(join(PROFILE, 'cordis.patch.yml'), profilePatch())
  *    notice version — read out of the installed client bundle after install
  *    (`welcomeNoticeVersion()`), never hardcoded, or a dsh upgrade silently
  *    brings the popup back;
- * 3. mount this plugin.
+ * 3. pin the interface language (see the `locale` row below);
+ * 4. mount this plugin.
  */
 function profilePatch() {
   const acknowledged = welcomeNoticeVersion()
@@ -223,6 +224,16 @@ function profilePatch() {
       '  config:',
       `    welcomeNoticeVersion: '${acknowledged}'`,
     ]),
+    // Interface language: `zh` is dsh's own dictionary id for 简体中文 (it ships
+    // `en` and `zh`). dsh matches the page's `navigator.languages` against those
+    // ids and falls back to `en`, and that list only reflects the machine when a
+    // shell supplies it — our window loads dsh's web app directly, and its
+    // Chromium reports this bundle's localization, which is English-only. So the
+    // preference (the same stored-setting mechanism the theme uses) is set here.
+    '- id: locale',
+    "  name: '@deepseek-ai/dsh-client-locale'",
+    '  config:',
+    "    preference: 'zh'",
     '- insert:',
     '    - id: nexusai',
     `      name: '${plugin.name}'`,
