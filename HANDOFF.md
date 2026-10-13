@@ -318,6 +318,25 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 **若日后做"产物也留公司平台"**：最省事的是在 GitHub 这边加一步把 `dist/*.dmg|exe` 推到云效制品仓库（约 0.5 天），而不是把构建搬过去。
 
+## 8d. 产物精简（内置 profile 的体积构成与已做的剪裁）
+
+`prepare-runtime.mjs` 在装完 profile 后跑 `pruneProfile(target)`，只删**这个目标平台永远加载不到**的东西，三类都有依据：
+
+| 删什么 | mac-arm64 可省 | 依据 |
+|---|---|---|
+| 源码映射 `*.map` | 49 MB | 发布产物不解析它，只影响栈回溯可读性 |
+| 其它平台的 `prebuilds/*`（node-pty 等） | 26 MB | 加载器按运行时平台取一份，别的平台永远不会被读；只删形如 `darwin-*`/`linux-*`/`win32-*` 的目录，命名怪的一律保留 |
+| 本 profile 不挂载的功能包（语音/STT 链：`sherpa-onnx-*`、`dsh-experimental-*voice*`/`speech*`） | 46 MB | 组合配置里 **0 行**（`grep -c voice dump-config.yml` = 0），且 dsh 自己的界面写「首次使用需安装依赖」——"缺失"本来就是它预期的状态 |
+
+**实测**：profile 493 MB → **388 MB**；DMG 228 MB → **207 MB**（原始体积省 105 MB，但删掉的多是文本，压缩后只少 21 MB）。
+
+**刻意没删**（各有硬理由，别手滑）：
+- `@opentelemetry/*`（17 MB）：`otel` 行是**挂着**的（经 `dsh-base` 进来），删了起不来；
+- `@img/sharp*`（18 MB）：`dsh-base` → `dsh-attachment-local`，附件功能要用；
+- `openai` / `@anthropic-ai/sdk` / `@google/genai`：用户自配置模型时对应的 provider SDK。
+
+**剩下唯一的体积大头是办公**：`libreoffice-kit-darwin-arm64` **148 MB**（+ 文档预览 UI 15 MB）。它与 `office-to-pdf`（**挂载中**的行）和办公技能绑定，删掉 = 放弃"文档转 PDF / 文档预览"这类能力 —— 属产品取舍，待用户决定；若决定去，做法是：预置 patch 里 `disabled: true` 那两个行 + 把这两个包加进 `UNMOUNTED_FEATURE_PACKAGES`（预计安装包再降 ~60 MB）。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录

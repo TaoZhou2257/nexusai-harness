@@ -24,7 +24,7 @@
  *   build/runtime-version.txt
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -247,6 +247,121 @@ function welcomeNoticeVersion() {
   return found?.[1]
 }
 
+/**
+ * Packages whose features this profile does not mount at all.
+ *
+ * Evidence, not guesswork: the composed config (`--dump-config`) contains no row
+ * for any of them, and dsh's own plugins page describes 语音输入 as needing its
+ * dependencies installed on first use — i.e. their absence is a state dsh
+ * expects. Deleting them turns those features into "install on first use"
+ * rather than breaking anything that is currently mounted.
+ *
+ * Deliberately NOT in this list, both for good reason:
+ * - `@opentelemetry/*` — the `otel` row IS mounted (it arrives through
+ *   `dsh-base`), so removing its libraries breaks boot.
+ * - `@deepseek-ai/libreoffice-kit-*` — `office-to-pdf` is a mounted row; the
+ *   148 MB it costs is a product decision, not a free win.
+ */
+const UNMOUNTED_FEATURE_PACKAGES = [
+  'sherpa-onnx-node',
+  'sherpa-onnx-darwin-arm64', 'sherpa-onnx-darwin-x64', 'sherpa-onnx-win32-x64', 'sherpa-onnx-linux-x64',
+  '@deepseek-ai/dsh-experimental-voice-input-bundle',
+  '@deepseek-ai/dsh-experimental-speech-to-text',
+  '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice',
+  '@deepseek-ai/dsh-experimental-api-speech-to-text',
+  '@deepseek-ai/dsh-experimental-client-ui-voice-input',
+]
+
+/**
+ * Trim the installed profile to what this target can actually load.
+ *
+ * Three provably-safe removals, each with the reason it cannot be read back:
+ * 1. **source maps** — debugging metadata; nothing in a shipped runtime resolves
+ *    them (`*.map` under node_modules, ~49 MB here);
+ * 2. **other platforms' prebuilt binaries** — packages like node-pty ship every
+ *    platform's `prebuilds/` and pick one at require time, so the rest can never
+ *    be read on this target (~26 MB);
+ * 3. **packages of features this profile does not mount** (see above, ~46 MB).
+ *
+ * Everything else stays: the point is dropping what is unreachable, not what is
+ * merely optional. The compose probe and the runtime smoke that follow are what
+ * prove the result still boots.
+ */
+function pruneProfile(target) {
+  const modules = join(PROFILE, 'node_modules')
+  let freed = 0
+  const drop = path => {
+    freed += directorySize(path)
+    rmSync(path, { recursive: true, force: true })
+  }
+
+  // 1. source maps
+  for (const file of findFiles(modules, name => name.endsWith('.map'))) drop(file)
+
+  // 2. other platforms' prebuilds — only names that are unambiguously another
+  //    platform's (`darwin-arm64`, `linux-x64`, …); anything else stays, because
+  //    a package may name its tree something we cannot classify.
+  const keepPrebuild = target.os === 'win32' ? `win32-${target.arch}` : `darwin-${target.arch}`
+  const foreignPrebuild = /^(?:darwin|win32|linux|freebsd|openbsd|android)-/
+  for (const dir of findDirectories(modules, name => name === 'prebuilds')) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && foreignPrebuild.test(entry.name) && entry.name !== keepPrebuild) {
+        drop(join(dir, entry.name))
+      }
+    }
+  }
+
+  // 3. features this profile never mounts
+  for (const name of UNMOUNTED_FEATURE_PACKAGES) {
+    const path = join(modules, ...name.split('/'))
+    if (existsSync(path)) drop(path)
+  }
+
+  say(`pruned ${(freed / 1024 / 1024).toFixed(0)} MB the ${targetName} target cannot load ` +
+    `(kept prebuilds/${keepPrebuild})`)
+}
+
+/** Bytes under a path (0 when it is missing). */
+function directorySize(path) {
+  const info = statSync(path, { throwIfNoEntry: false })
+  if (info === undefined) return 0
+  if (!info.isDirectory()) return info.size
+  let total = 0
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    total += directorySize(join(path, entry.name))
+  }
+  return total
+}
+
+/** Every file below `root` matching a name predicate (depth-first, no symlink following). */
+function findFiles(root, matches) {
+  const found = []
+  const walk = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const child = join(dir, entry.name)
+      if (entry.isDirectory()) walk(child)
+      else if (entry.isFile() && matches(entry.name)) found.push(child)
+    }
+  }
+  if (existsSync(root)) walk(root)
+  return found
+}
+
+/** Every directory below `root` whose own name matches (depth-first). */
+function findDirectories(root, matches) {
+  const found = []
+  const walk = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const child = join(dir, entry.name)
+      if (matches(entry.name)) { found.push(child); continue }
+      walk(child)
+    }
+  }
+  if (existsSync(root)) walk(root)
+  return found
+}
+
 // ── 3. install (target-aware) ───────────────────────────────────────────────
 say(`installing the profile with pnpm ${pinnedPnpm} (target ${target.platform}-${target.arch})`)
 pnpm(['--dir', PROFILE, 'install'], APP_ROOT)
@@ -262,7 +377,10 @@ say(acknowledged === undefined
 const cli = join(PROFILE, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 if (!existsSync(cli)) throw new Error(`dsh CLI missing after install: ${cli}`)
 
-// ── 4. marker + a compose check that proves the bundle actually boots ───────
+// ── 4. prune what this target can never load ────────────────────────────────
+pruneProfile(target)
+
+// ── 5. marker + a compose check that proves the bundle actually boots ───────
 const runtimeVersion = `${plugin.version}+dsh-${dshVersion}+${targetName}`
 writeFileSync(join(BUILD, 'runtime-version.txt'), `${runtimeVersion}\n`)
 
