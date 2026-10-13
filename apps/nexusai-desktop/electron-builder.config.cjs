@@ -32,11 +32,21 @@ module.exports = {
   compression: 'maximum',
   removePackageScripts: true,
   mac: {
-    // `identity: null` = unsigned. Users open it with right-click → 打开 the
-    // first time; that is the accepted trade-off for shipping without a
-    // Developer ID.
-    identity: null,
+    // Ad-hoc sign (`'-'`) rather than no signature at all. The afterPack hook
+    // adds the whole runtime to Contents/Resources *after* the Electron
+    // framework is copied, so without re-signing the bundle has no
+    // `_CodeSignature` and Gatekeeper rejects a downloaded copy with
+    // "已损坏，无法打开" — the misleading message for a broken seal, not a
+    // virus. Ad-hoc signing reseals the final contents, which turns that into
+    // the documented "unidentified developer" flow (System Settings → Privacy &
+    // Security → 仍要打开). A Developer ID here replaces this entirely.
+    identity: '-',
     category: 'public.app-category.developer-tools',
+    // Ad-hoc signing does not get electron-builder's default entitlements, and
+    // without `disable-library-validation` the hardened runtime refuses to load
+    // the runtime's third-party natives and the app dies at launch.
+    entitlements: join(__dirname, 'resources', 'entitlements.mac.plist'),
+    entitlementsInherit: join(__dirname, 'resources', 'entitlements.mac.plist'),
     // Both icons are generated from resources/icon.svg by scripts/make-icons.mjs.
     icon: join(__dirname, 'resources', 'icon.icns'),
     target: [{ target: 'dmg', arch: ['arm64'] }],

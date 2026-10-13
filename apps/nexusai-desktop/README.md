@@ -84,6 +84,27 @@ host-native and where dsh's own packaging would refuse to cross-build anyway.
   this wrong writes MCP rows and custom connectors into a file the running host
   never loads, so the UI lists connectors whose tools never appear.
 
+## macOS signing
+
+The app is **ad-hoc signed** (`mac.identity: '-'`), not unsigned. That is not
+cosmetic: the `afterPack` hook adds the whole runtime to `Contents/Resources`
+after Electron's framework is copied, so without re-signing the bundle has no
+`_CodeSignature` at all. macOS then calls a *downloaded* copy "已损坏，无法打开"
+— the "damaged" wording for a broken seal — and there is no UI path around it.
+Ad-hoc signing reseals the final contents, which turns that into the ordinary
+"unidentified developer" flow: the first launch is blocked once, then
+**系统设置 → 隐私与安全性 → 仍要打开**.
+
+`resources/entitlements.mac.plist` is required alongside it: hardened runtime's
+library validation would otherwise refuse the runtime's third-party natives
+(sherpa-onnx, node-pty, ripgrep) and the app would die on launch.
+electron-builder only applies its default entitlements template for real
+identities, so ours is spelled out explicitly.
+
+Removing the one-time approval entirely needs a Developer ID certificate plus
+notarization (`CSC_LINK`, `APPLE_API_KEY*`); dsh's own packaging has that path,
+and this config's only change would be swapping `'-'` for that identity.
+
 ## Window placement
 
 Default size is **1200×800** (clamped to the display), positioned explicitly
