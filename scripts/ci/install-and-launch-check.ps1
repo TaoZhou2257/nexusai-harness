@@ -28,8 +28,8 @@ $app = Join-Path $root 'apps\nexusai-desktop'
 $installer = Get-ChildItem (Join-Path $app 'dist') -Filter '*Setup*.exe' | Select-Object -First 1
 if (-not $installer) { throw "no *Setup*.exe in $app\dist — run build-app.ps1 first" }
 
-$installDir = Join-Path $env:LOCALAPPDATA 'Programs\NexusAgent Builder'
-$exe = Join-Path $installDir 'NexusAgent Builder.exe'
+$installDir = Join-Path $env:LOCALAPPDATA 'Programs\NexusAIHarness'
+$exe = Join-Path $installDir 'NexusAIHarness.exe'
 # RUNNER_TEMP is GitHub's; Yunxiao has no equivalent, so fall back to the OS temp.
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $script:proc = $null

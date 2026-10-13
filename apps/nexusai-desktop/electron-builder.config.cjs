@@ -17,7 +17,7 @@ const electronDist = join(__dirname, 'node_modules', 'electron', 'dist')
 
 module.exports = {
   appId: 'com.nexusai.builder',
-  productName: 'NexusAgent Builder',
+  productName: 'NexusAIHarness',
   copyright: 'NexusAI',
   ...(existsSync(electronDist) ? { electronDist } : {}),
   // Artifact file names carry no spaces and use the brand's spelling

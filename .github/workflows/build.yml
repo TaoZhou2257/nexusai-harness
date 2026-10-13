@@ -1,6 +1,6 @@
 name: build
 
-# The build rail for the NexusAgent Builder installers.
+# The build rail for the NexusAIHarness installers.
 #
 # Everything it runs lives in scripts/ci/ — this file only pulls code, calls the
 # scripts and moves the artifacts, so the steps stay single-sourced (see HANDOFF
@@ -106,11 +106,11 @@ jobs:
           - macOS (arm64)：\`NexusAIHarness-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
           - Windows (x64)：\`NexusAIHarness-Setup-*.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
 
-          首次启动会在用户目录下生成 dsh home（macOS：\`~/Library/Application Support/NexusAgent Builder/dsh-home\`；Windows：\`%APPDATA%\\NexusAgent Builder\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
+          首次启动会在用户目录下生成 dsh home（升级自旧版本的应用名时会自动接管旧目录）（macOS：\`~/Library/Application Support/NexusAIHarness/dsh-home\`；Windows：\`%APPDATA%\\NexusAIHarness\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
           # Filenames contain spaces; a glob keeps each match as one word, so it
           # is correct here where an unquoted variable would split.
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "NexusAgent Builder $GITHUB_REF_NAME" \
+            --title "NexusAIHarness $GITHUB_REF_NAME" \
             --notes "$notes" \
             release-assets/*.dmg release-assets/*.exe

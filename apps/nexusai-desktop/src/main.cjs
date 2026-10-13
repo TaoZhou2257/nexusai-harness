@@ -1,5 +1,5 @@
 /**
- * NexusAgent Builder — minimal Electron carrier for a bundled dsh profile.
+ * NexusAIHarness — minimal Electron carrier for a bundled dsh profile.
  *
  * What it does, in order:
  *   1. resolve its own dsh home (`<userData>/dsh-home`);
@@ -21,7 +21,9 @@ const {
 const { dirname, join, resolve } = require('node:path')
 
 const PROFILE_NAME = 'nexusai'
-const APP_NAME = process.env.NEXUSAI_APP_NAME || 'NexusAgent Builder'
+const APP_NAME = process.env.NEXUSAI_APP_NAME || 'NexusAIHarness'
+/** The app name earlier builds shipped with; their home is adopted on first launch. */
+const LEGACY_APP_NAME = 'NexusAgent Builder'
 const READY_PATTERN = /dsh web:\s+(http:\/\/127\.0\.0\.1:\d+\/?\?token=[^\s]+)/u
 
 /** Bundled runtime root: `resources/nexusai-runtime` in a packaged app, `build/` when running from source. */
@@ -39,6 +41,32 @@ function bundledProfileDir() {
 function runtimeHome() {
   if (process.env.NEXUSAI_DSH_HOME) return resolve(process.env.NEXUSAI_DSH_HOME)
   return join(app.getPath('userData'), 'dsh-home')
+}
+
+/**
+ * Take over the home an earlier release left behind.
+ *
+ * Electron derives `userData` from the app name, so renaming the app moves the
+ * default home — an existing install would otherwise boot "fresh", with its
+ * session, skills and connectors stranded under the old directory. Moving that
+ * one directory (rather than the whole userData: the rest is disposable Electron
+ * state) keeps the upgrade invisible, and it is the same volume, so this is a
+ * rename.
+ */
+function adoptLegacyHome(home) {
+  if (existsSync(home)) return home
+  const legacy = join(app.getPath('appData'), LEGACY_APP_NAME, 'dsh-home')
+  if (!existsSync(legacy)) return home
+  try {
+    mkdirSync(dirname(home), { recursive: true })
+    renameSync(legacy, home)
+    logLine(`adopted the home of ${LEGACY_APP_NAME} from ${legacy}`)
+  } catch (error) {
+    // Leaving it be is the safe direction: the app then starts fresh instead of
+    // risking anything.
+    logLine(`could not adopt ${legacy}: ${error && error.message ? error.message : String(error)}`)
+  }
+  return home
 }
 
 /** Where the runtime's output is kept, for the user to send with a bug report. */
@@ -141,7 +169,7 @@ function materializeProfile(home) {
   const cliPresent = () => existsSync(dshCli(target))
   if (entry !== undefined && !ours && installed !== expected) {
     throw new Error(
-      `NexusAgent Builder cannot replace the runtime at ${targetModules}: it was not created by this app. `
+      `${APP_NAME} cannot replace the runtime at ${targetModules}: it was not created by this app. `
       + 'Move that directory, then reopen.',
     )
   }
@@ -328,7 +356,22 @@ function openWindow(url) {
     if (target.startsWith('https://') || target.startsWith('http://')) void shell.openExternal(target)
     return { action: 'deny' }
   })
-  void window.loadURL(url).then(() => window.show())
+  // Show on the load event, not on the promise: a load that never settles (or
+  // settles after something went wrong) otherwise leaves a window that exists
+  // but is never visible — the app looks dead while its log says it started.
+  window.webContents.once('did-finish-load', () => {
+    window.show()
+    logLine('window shown')
+  })
+  window.webContents.once('did-fail-load', (_event, code, description, failedUrl) => {
+    logLine(`window load failed (${code} ${description}) ${failedUrl}`)
+    // Showing the window regardless is what makes a failure visible at all.
+    window.show()
+  })
+  void window.loadURL(url).catch(error => {
+    logLine(`loadURL rejected: ${error && error.message ? error.message : String(error)}`)
+    window.show()
+  })
   window.on('closed', () => { mainWindow = undefined })
   mainWindow = window
 }
@@ -429,7 +472,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!mainWindow) { app.relaunch(); app.quit() }
   })
   app.whenReady().then(() => {
-    const home = runtimeHome()
+    const home = adoptLegacyHome(runtimeHome())
     openLog(home)
     const chosen = resolvePlacement(home)
     windowPlacement = ['bottom', 'fill'].includes(chosen.value) ? chosen.value : 'center'

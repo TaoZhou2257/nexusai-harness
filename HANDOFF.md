@@ -228,6 +228,8 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 
 12. **品牌是模块级缓存，换服务器地址后不会自己更新**（用户问过"左上角是不是改坏了"）：`client/NexusaiBrand.tsx` 把品牌放在模块级 `cached` 里（当初为省一次往返），`useBranding` 见到缓存就早退；而登录弹窗的「应用」只刷新**弹窗自己**那份（`NexusaiSignInDialog` 里的 `refreshBranding`）。于是换地址后：弹窗是新服务器的品牌、**侧栏还是旧服务器的**。修法：导出 `invalidateBranding()`（清缓存并通知所有已挂载的读取方重取），在 `applyServer` 里 `setBaseUrl` 之后调用 —— 侧栏与首启 hero 一并跟随。这**不是**某一轮改坏的：缓存一直都在，只是品牌槽修好（`priority: -1`）之后我们自己的品牌才真正显示出来，这个"不跟随"才变得可见
 
+13. **打包版的窗口可能"创建了但从不显示"**（自查时撞到）：原来靠 `loadURL(url).then(() => window.show())` —— 页面加载的 promise 在某些情况下**永不 settle**（本次实测：日志有 `window: center …`、无任何报错、System Events 报 0 个窗口、页面 `visibilityState` 为 hidden），于是应用看起来"启动即死"。改为事件驱动：`did-finish-load` → `show()`，并加 `did-fail-load` 与 `.catch` 两条路径**无论如何都显示窗口**（失败也可见）+ 打一行 `window shown` 到日志。修完 System Events 能读到 1 个窗口且标题正确。注意：`document.visibilityState` 在窗口被其他窗口完全遮挡时也会是 `hidden`，**它不能当作"窗口没显示"的判据**，要看 System Events 的窗口数
+
 ### C. 数据与接口
 1. **React 列表 key 必须唯一**：上游「天然主键」不可想当然（SkillHub 的 `publicSlug` 一页内重复，曾表现为「筛选失效」）→ 统一用 `namespace.canonicalName` 作身份。
 2. **外部接口空值**不能只判 undefined/''：JSON `null` 与字面量 `"null"` 都出现过（曾导致图标裂图）。
@@ -427,10 +429,13 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 安装包文件名**不含空格**（`artifactName`，见 `electron-builder.config.cjs`）：
 
-| 平台 | 文件名 |
-|---|---|
-| macOS | `NexusAIHarness-<version>-arm64.dmg` |
-| Windows | `NexusAIHarness-Setup-<version>-x64.exe` |
+| 层面 | 值 | 来源 |
+|---|---|---|
+| 安装包文件名 | `NexusAIHarness-<version>-arm64.dmg` / `NexusAIHarness-Setup-<version>-x64.exe` | electron-builder `artifactName` |
+| **应用名**（菜单栏首项 / Dock / 访达 / 窗口标题 / Windows 安装目录与 exe 名） | **`NexusAIHarness`** | `productName`（构建期）+ 壳里的 `APP_NAME`（窗口标题，可用 `NEXUSAI_APP_NAME` 覆盖） |
+| 应用内品牌（侧栏名称/字标/版本） | 登录服务器的品牌 | 远程 `GET /v1/base/custom`（见 §8e-2） |
+
+⚠️ **改名会移动 home**：dsh home 在 `app.getPath('userData')` 下，而 userData 由应用名派生。壳里加了 `adoptLegacyHome()`：新 home 不存在而旧名（`NexusAgent Builder`）的那份存在时，把它**移动**过来（同卷 rename），使升级对用户无感；移动失败则保持原地不动（宁可"看起来全新"，也不冒丢数据的风险）。
 
 命名用品牌写法 `NexusAIHarness`（用户选定，与侧栏品牌同一拼写），不是带空格的产品显示名 —— 应用在 Finder / Dock / 开始菜单里仍叫 `NexusAgent Builder`（`productName`），两者独立。同时**不含空格**：GitHub Release 会把资源名里的空格换成点，带空格的旧命名在下载页显示成 `NexusAgent.Builder-…`，与本地不一致、容易让人以为下错了。
 
@@ -477,6 +482,8 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **应用名改为 `NexusAIHarness`**（用户指出菜单栏与窗口标题仍是旧名）：`productName` + 壳的 `APP_NAME` 同步；新增 `adoptLegacyHome()` —— 应用名变化会移动 userData 下的 dsh home，故首次启动把旧名（`NexusAgent Builder`）的 home **移动**过来，升级对用户无感。CI 里写死的安装目录/exe 名、workflow 发布说明与标题一并更新 | 本机打包实测：`NexusAIHarness.app`、`CFBundleName=NexusAIHarness`、**菜单栏截图显示 `NexusAIHarness`**、System Events 读到窗口名为 `NexusAIHarness`；接手测试：在旧目录放 `SENTINEL.txt` → 启动后日志 `adopted the home of NexusAgent Builder from …`、文件出现在新目录、旧目录已移走 |
+| 10-13 | **修「打包版窗口创建了但从不显示」**（自查发现）：`loadURL().then(show)` 在 promise 不 settle 时不显示，且无任何日志。改为 `did-finish-load` 事件驱动 + `did-fail-load`/`.catch` 兜底显示，并记录 `window shown` | 修前：System Events 报 0 个窗口、`visibilityState=hidden`、日志无报错；修后：`window shown` 打印、System Events 报 1 个窗口且标题为 `NexusAIHarness` |
 | 10-13 | **品牌统一为单一缓存**：工作台原先自己抓一份品牌（只在"登录状态翻转"时重取，漏掉"未登录时改地址"），现改用共享的 `useBranding` —— 侧栏/hero/工作台三者不会再各说各话。同时系统盘点所有动态展示项（名称/logo/版本/欢迎语/按钮色）与其取不到时的降级，写进 §8e-2 | 三场景实测：①换地址 → 侧栏 `KyloTynAI`、工作台标签同步；②**带已保存地址重启** → 侧栏 `KyloTynAI` + hero `v1.5.0.3`（宿主先应用覆盖值，无竞态）；③服务器不可达 → 默认名 + dsh 构建号 + 自带 SVG 字标、**裂图 0**、页面无 `undefined` |
 | 10-13 | **修「换服务器地址后左上角品牌不变」**（用户反馈）：品牌缓存是模块级的，`useBranding` 见缓存即早退，而「应用」只刷新弹窗自己那份 → 侧栏留着旧服务器的名称/logo。新增 `invalidateBranding()`（清缓存 + 通知已挂载读取方重取）并在 `applyServer` 中 `setBaseUrl` 之后调用 | 两服务器对比实测（A `agent.nexusai.net.cn` / B `221.226.155.134`，品牌字段确不同：`tab.title` A=NexusAgent Builder、B=KyloTynAI）：切换前侧栏 `NexusAgent Builder` + 字标 `f7ccac8b…`；点「应用」后变为 **`KyloTynAI` + 字标 `25f4e026…`**（版本号两台都是 v1.5.0.3，故不体现差异） |
 | 10-13 | **修「bundled dsh CLI is missing」（现场反馈）**：home 里的运行时链接在"应用移动/换目录重装"后失效，而旧逻辑只在版本串变化时重链、且用 `existsSync` 判占用（失效链接看到 false）→ 直接抛错。改为：标记含应用版本、`lstat` 判占用、启动前校验 CLI，缺则重建一次；用户自建目录仍拒绝覆盖。Windows 验收闸新增"残留 home 自愈"场景 | 本机（macOS）用"链接指向不存在路径 + 旧标记"的 home 实测：日志 `runtime link needs rebuilding (… cli missing)` → `runtime ready`，链接重建且 CLI 在位；反向用例（真实目录 + 无标记）实测仍拒绝并保住用户文件 |
