@@ -314,15 +314,22 @@ node scripts/check-auto-signin.mjs 9224 6000   # 可选：对带 --remote-debugg
 
 **云效侧要在控制台做的**（我做不了，逐步照做即可）：
 1. 新建流水线，代码源选 Codeup 本仓；**不要勾选递归子模块**（`.gitmodules` 指向 GitHub，CI 也不需要它）
-2. Windows 任务：构建集群选**公共（Windows 2019/2022）** → 步骤依次执行
+2. Windows 任务：**构建集群要选能跑 Windows 的**（见下方结论：公共/托管集群只提供 Linux，需自备 Windows 机器或 Windows ECS 并在其上装 Runner）→ 步骤依次执行
    - `powershell -NoProfile -File scripts/ci/build-app.ps1`（或 pwsh）
    - `powershell -NoProfile -File scripts/ci/install-and-launch-check.ps1`
    - 构建物上传 `apps/nexusai-desktop/dist/*.exe`
 3. 变量组加三个 `NEXUSAI_*`（勾选保密）
-4. macOS 任务（二期）：先确认公共集群是否有 macOS 镜像；没有就把本机 Mac 装 Runner 注册为**私有构建节点**，步骤同 Windows 但走 `scripts/ci/build-app.sh` + `check-mac-app.sh`，构建物为 `dist/*.dmg`
+4. macOS 任务：公共集群**没有** macOS，只能在你这台 Mac 上装 Runner 注册为**私有构建节点**，步骤同 Windows 但走 `scripts/ci/build-app.sh` + `check-mac-app.sh`，构建物为 `dist/*.dmg`
 5. 触发：分支推送（产 artifact）+ tag `v*`（发布）
 
-**两个待你在控制台核实的点**（我文档口径不一，别当已知）：① 云效公共构建集群是否真有托管 macOS；② Codeup 是否有"发行版/Release"页面（没有就用制品仓库，必要时再挂 OSS 直链）。
+**已核实的两个结论**（2026-10-13，抓取官方文档；此前我给的"托管 Windows/macOS"是搜索摘要，与文档不符，现以文档为准）：
+- **云效托管（公共）构建机只有 Linux**：对比表为「公共=Linux、VPC托管=Linux、私有=Linux/Windows/macOS」；默认环境 Linux/amd64，容器环境 Linux/amd64·arm64。Windows 走私有集群（手动 Runner **或阿里云 ECS**），macOS 走私有集群（**仅手动 Runner**，即只能自带 Mac）。→ 迁云效的代价不是写流水线，而是**从此要养一台 Windows ECS + 你这台 Mac**。
+- **Codeup 发行版（Release）有，但附件上限 50 MB / 个**（≤10 个、单库 <1 GB）。我们的安装包 213–228 MB **放不进发行版附件** → 发布设计应为「**制品仓库（或 OSS）托管安装包** + 发行版写说明并指向下载」。
+
+**因此路线取舍**（等决策，未开工）：
+- **A. 云效默认**：Windows 用 Windows ECS 作私有构建节点、macOS 用本机 Mac；我的工时 3–4.5 天（外加 ECS 成本与双机运维；构建时机器必须在线）
+- **B. 构建留 GitHub、产物进 Codeup 制品库**（我推荐）：GitHub 免费托管 Windows + macOS arm64 已验证全绿（16m20s / 6m40s）；我加一步把 dmg/exe 推到云效制品仓库；工时 0.5 天
+- 两种都不影响 `scripts/ci/*` 这套真源：切的是驱动器，脚本不动。
 
 ## 9. 换机器 / 新环境部署
 
