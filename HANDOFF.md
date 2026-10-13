@@ -375,16 +375,19 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 |---|---|---|
 | 源码映射 `*.map` | 49 MB | 发布产物不解析它，只影响栈回溯可读性 |
 | 其它平台的 `prebuilds/*`（node-pty 等） | 26 MB | 加载器按运行时平台取一份，别的平台永远不会被读；只删形如 `darwin-*`/`linux-*`/`win32-*` 的目录，命名怪的一律保留 |
-| 本 profile 不挂载的功能包（语音/STT 链：`sherpa-onnx-*`、`dsh-experimental-*voice*`/`speech*`） | 46 MB | 组合配置里 **0 行**（`grep -c voice dump-config.yml` = 0），且 dsh 自己的界面写「首次使用需安装依赖」——"缺失"本来就是它预期的状态 |
+| ~~本 profile 不挂载的功能包（语音/STT 链 46 MB）~~ | — | **已按用户要求保留**（2026-10-13）：语音输入要开箱可用，所以 `UNMOUNTED_FEATURE_PACKAGES` 现在是**空的**，别照着旧记录再删一次 |
 
-**实测**：profile 493 MB → **388 MB**；DMG 228 MB → **207 MB**（原始体积省 105 MB，但删掉的多是文本，压缩后只少 21 MB）。
+**实测（当前状态：只做前两项）**：profile 493 MB → **421 MB**（保留语音后），DMG 228 MB → **217 MB**。语音链 33 MB 原始体积只让安装包 +9 MB（原生库本就不太压得动）。
 
 **刻意没删**（各有硬理由，别手滑）：
 - `@opentelemetry/*`（17 MB）：`otel` 行是**挂着**的（经 `dsh-base` 进来），删了起不来；
 - `@img/sharp*`（18 MB）：`dsh-base` → `dsh-attachment-local`，附件功能要用；
 - `openai` / `@anthropic-ai/sdk` / `@google/genai`：用户自配置模型时对应的 provider SDK。
 
-**剩下唯一的体积大头是办公**：`libreoffice-kit-darwin-arm64` **148 MB**（+ 文档预览 UI 15 MB）。它与 `office-to-pdf`（**挂载中**的行）和办公技能绑定，删掉 = 放弃"文档转 PDF / 文档预览"这类能力 —— 属产品取舍，待用户决定；若决定去，做法是：预置 patch 里 `disabled: true` 那两个行 + 把这两个包加进 `UNMOUNTED_FEATURE_PACKAGES`（预计安装包再降 ~60 MB）。
+**体积大头（都按用户决定保留）**：
+- **办公** `libreoffice-kit-darwin-arm64` **148 MB** + 文档预览 UI 15 MB —— 与 `office-to-pdf`（挂载中的行）和办公技能绑定，**保留**；若哪天要瘦，做法是预置 patch 里 `disabled: true` 那两行 + 把包加进 `UNMOUNTED_FEATURE_PACKAGES`（约再降 67 MB 安装包，实测压缩后 163 MB→67 MB）。
+- **语音** 33 MB（sherpa-onnx）+ 实验性语音包 —— **保留**（用户要求开箱可用）。
+- 17 MB 遥测（otel 行挂着，删了起不来）、18 MB sharp（附件功能）、开放模型 SDK（openai/anthropic/google）—— 都保留。
 
 ## 9. 换机器 / 新环境部署
 
@@ -429,6 +432,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-13 | **语音输入改为保留**（用户要求开箱可用）：清空 `UNMOUNTED_FEATURE_PACKAGES`，语音/STT 链（sherpa-onnx 33MB + 实验性语音包）重新装回；剪裁只剩「源码映射 + 其它平台 prebuilds」两项（零功能影响） | profile 388→421 MB、DMG 208→217 MB；冒烟 + 挂 DMG 启动 + 组合校验三闸全过；包内 `sherpa-onnx-darwin-arm64` 与语音包都在 |
 | 10-13 | **Windows 真机验收通过**（用户确认 v0.1.2 安装后可正常启动）→ 载体两侧到此刻都跑在真机上；CI 每推都跑两道自动验收闸（mac 挂 DMG 启动 / win 静默安装+启动+登录框断言+卸载）。代码同步到 Codeup：`v1.0` 分支 + 三个 tag 已推 origin（Codeup 无流水线，推送不触发构建） | 用户真机确认；Codeup `refs/heads/v1.0` = 5bf98d4 与本地一致 |
 | 10-13 | **构建轨道定为 GitHub**（默认也是唯一）：核实云效后决定不迁（托管构建机只有 Linux；Codeup 发行版附件上限 50MB 装不下安装包）——结论与"将来真要迁怎么做"写进 §8c | 分支推送触发全量跑，tag 仍发 Release |
 | 10-13 | **CI 抽真源 + 验收闸**：构建步骤迁入 `scripts/ci/*`（镜像默认值内置）；新增两道闸 —— mac「挂 DMG → 启动 → 断言就绪/插件行」、win「静默安装 → 启动 → 断言就绪 → CDP 断言登录框 → 静默卸载」；`prepare-runtime` 的 Windows 目录 symlink 改 junction | 手动 run 全绿：macOS 6m40s；**Windows 16m20s 打印完整证据链**（installer exit 0 → 落位 → 运行时 ready → profile 含插件行 → `{"dialogs":1}` → 卸载干净）。首跑即抓到两个真问题：`$home`/`$profile` 撞 PowerShell 只读自动变量 |

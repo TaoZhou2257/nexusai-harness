@@ -259,29 +259,22 @@ function welcomeNoticeVersion() {
 }
 
 /**
- * Packages whose features this profile does not mount at all.
+ * Packages to delete because this profile never mounts their feature.
  *
- * Evidence, not guesswork: the composed config (`--dump-config`) contains no row
- * for any of them, and dsh's own plugins page describes 语音输入 as needing its
- * dependencies installed on first use — i.e. their absence is a state dsh
- * expects. Deleting them turns those features into "install on first use"
- * rather than breaking anything that is currently mounted.
+ * **Currently empty on purpose.** The only thing that ever qualified was the
+ * voice chain (`sherpa-onnx-*`, `@deepseek-ai/dsh-experimental-*voice*` /
+ * `*speech*`, ~46 MB) — dsh composes no row for it and its own plugins page says
+ * 语音输入 installs its dependencies on first use, so deleting them was
+ * defensible. The product decision went the other way: voice input ships ready,
+ * so keep them and do not re-add the list without asking.
  *
- * Deliberately NOT in this list, both for good reason:
+ * Two packages are permanently excluded from this list, for different reasons:
  * - `@opentelemetry/*` — the `otel` row IS mounted (it arrives through
- *   `dsh-base`), so removing its libraries breaks boot.
+ *   `dsh-base`), so removing its libraries breaks boot;
  * - `@deepseek-ai/libreoffice-kit-*` — `office-to-pdf` is a mounted row; the
- *   148 MB it costs is a product decision, not a free win.
+ *   148 MB it costs is a product decision (currently: keep).
  */
-const UNMOUNTED_FEATURE_PACKAGES = [
-  'sherpa-onnx-node',
-  'sherpa-onnx-darwin-arm64', 'sherpa-onnx-darwin-x64', 'sherpa-onnx-win32-x64', 'sherpa-onnx-linux-x64',
-  '@deepseek-ai/dsh-experimental-voice-input-bundle',
-  '@deepseek-ai/dsh-experimental-speech-to-text',
-  '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice',
-  '@deepseek-ai/dsh-experimental-api-speech-to-text',
-  '@deepseek-ai/dsh-experimental-client-ui-voice-input',
-]
+const UNMOUNTED_FEATURE_PACKAGES = []
 
 /**
  * Trim the installed profile to what this target can actually load.
