@@ -253,7 +253,7 @@ ode_modules`）。后果是**把应用自己的运行时删空**，然后重链�
 ### D. 流程纪律
 1. **脚本化改代码必须断言**：曾因为锚点写错又没断言，替换静默失败（渲染仍是旧的 `skills.map`）。改完 `assert '<新片段>' in s` 复核。
 2. **凭据磁盘/进程内状态一致**（已用插桩定案）：干净运行下会话**不会自己消失**。历史上几次"磁盘没 session"都是测试自己造的：把 endpoint 换成另一台服务器（或恢复了不匹配的备份）→ 下次调用 401 → 插件按设计清会话并登出。恢复 = `cp` 回**同服务器**且含 session 的备份 + **重启**；备份前先 `grep -c 'nexusai/session'` 确认，并比对 `baseUrl:` 一致。
-3. **环境：dsh 基线 0.2.0-rc.2（developer preview）**：升级 dsh 后要跑 `npm run check:dsh` + tsc + CDP 回归，再更新 `dshBaseline`。
+3. **环境：dsh 基线 0.2.1-alpha.2（developer preview）**：升级 dsh 后跑 `npm run check:dsh` + tsc + 两个自研套件 + 打包版真机走查，再更新 `dshBaseline`。**升级 dsh 时的核对表见 §8i**（我们只依赖 5 类面，逐条核对即可，不必全量回归）。
 
 ## 8. 改动后的标准流程
 
@@ -452,6 +452,31 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 命名用品牌写法 `NexusAIHarness`（用户选定，与侧栏品牌同一拼写），不是带空格的产品显示名 —— 应用在 Finder / Dock / 开始菜单里仍叫 `NexusAgent Builder`（`productName`），两者独立。同时**不含空格**：GitHub Release 会把资源名里的空格换成点，带空格的旧命名在下载页显示成 `NexusAgent.Builder-…`，与本地不一致、容易让人以为下错了。
 
+## 8i. 升级 dsh 基线的核对表（只核对我们依赖的面）
+
+dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交的代码都**不依赖 dsh 源码**（版本号从 `upstream.json` 读、包从 npm 装、CI 不检出 submodule），所以升级的实际风险面只有下面 5 类。逐条核对即可，**不必全量回归**：
+
+| # | 依赖面 | 我们这边在哪 | 怎么核对 | 断了会怎样 |
+|---|---|---|---|---|
+| 1 | **hero 文案靠 CSS module 局部名** | `client/NexusaiHero.tsx:29-31` 的 `[class*="_titleGroup"]` / `_previewBadge` | `grep -oE "[A-Za-z0-9]+_(titleGroup\|previewBadge)" <dsh>/packages/client/ui-conversation/{src,lib}` | 补丁静默失效，标题退回 dsh 原文案（**不会报错**，最容易漏） |
+| 2 | **4 个槽位名** | `client/index.ts`：`sidebar.brand.mark` / `sidebar.brand.name` / `settings.launcher` / `conversation.hero.brand.mark` | 在 dsh 源码 `grep -r "<槽位名>" packages/client/*/src` | 对应 UI 整块消失（品牌/启动器/hero 字标） |
+| 3 | **设置键与 namespace** | `prepare-runtime.mjs` 生成的 patch：`ui-settings-account(disabled)` / `ui-settings-general.welcomeNoticeVersion` / `locale.preference` / `ui-settings-models.credentialOnboarding` | `grep` 这些键在 dsh 里是否仍存在（`WELCOME_NOTICE_VERSION` 常量位置也要在） | 首启重新弹预览说明/API Key 引导，或语言/账号 UI 失效 |
+| 4 | **CLI 输出与参数** | 壳 `main.cjs` 的 `/dsh web:\s+(http:\/\/127\.0\.0\.1:\d+…token=/`、`--profile`、`--no-open`；`prepare-runtime.mjs` 用 `--dump-config` | 起一次 `smoke:runtime`（它就是在等同一行）；`grep "dsh web:" <dsh>/packages/bundle/web-app/src` | 窗口**永不打开**（表现为"启动即死"，且不报错） |
+| 5 | **profile 结构与包内文件** | `profiles/<name>/node_modules/@deepseek-ai/dsh/lib/bin.js`（CLI 入口）、`cordis.patch.yml`（用户层）、`~/.agents`（技能根，靠**不设** `DSH_AGENTS_HOME` 保住） | `--dump-config` 能组合成功 + 技能页"本地"数量正常 | 启动失败，或技能全空 |
+
+**另外两处我们自己的配套**（升级时一起改）：`check-dsh-version.mjs` 的 baseline（即根 `package.json` 的 `dsh.dshBaseline`）、以及 `dsh.client.inject` 列表（客户端平台包若新增/改名）。
+
+**升级操作顺序**（0.2.0-rc.2 → 0.2.1-alpha.2 时走通的路径）：
+1. 上游取 tag 与**解引用后的提交**：`git ls-remote --tags origin`（annotated tag 会多一行 `^{}`，`upstream.json.commit` 要钉**解引用值**，否则 submodule 与 json 不一致）；
+2. 改 `upstream.json`（version/tag/commit）、根 `package.json`（`dshBaseline` + 所有 `@deepseek-ai/*` 的 devDependencies）、`apps/nexusai-desktop/package.json` 应用版本号；
+3. `git -C upstream fetch --tags && git -C upstream checkout <tag>`；`npm install`（重生成 lockfile）；
+4. **`tsc` 会指出类型层面 breaking**（本次撞到一个：`ctx.sessions` 的类型改由 `@deepseek-ai/dsh-api-session-controller` 声明 —— 这个包本来就在我们的 `dsh.client.inject` 里，只是没做类型导入；补一行 `import type {} from '…/client'` + 把它加进 devDependencies 即可）；
+5. 按上表 1–5 逐条 `grep`（**第 1 条最容易漏**，它不会报错）；
+6. 运行层：`prepare-runtime` → `smoke:runtime` → 打包 → `check-mac-app.sh`，再起打包版看品牌/hero/语言/两个引导/技能数；
+7. 提交后推 GitHub 由 CI 验证 Windows 三关，再打 tag 发版。
+
+**这次（→ 0.2.1-alpha.2）的实测结果**：静态层 tsc/build/check:dsh/两个套件全绿；运行层 smoke + 打包 + 挂 DMG 启动通过；打包版逐项确认 —— 侧栏品牌 `NexusAgent Builder ｜ v1.5.0.3`、hero 标题「探索 AGI 之无限可能」+ 徽章 `v1.5.0.3` + 我们的字标、语言 `zh-CN`、无预览说明、无 API Key 引导、无登录框、启动器标记在、技能「本地 31」。唯一需要改我们代码的是第 4 步里那个 `sessions` 类型导入。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
@@ -495,6 +520,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-14 | **dsh 基线 0.2.0-rc.2 → 0.2.1-alpha.2**：`upstream.json`（version/tag/**解引用后**的 commit）、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/*` devDeps）、submodule、lockfile 同步；唯一代码改动是补 `@deepseek-ai/dsh-api-session-controller/client` 的类型导入（`ctx.sessions` 的类型声明换了持有包）。新增 §8i「升级 dsh 的核对表」（5 类依赖面 + 操作顺序 + 本次实测结果） | 静态：tsc / build / check:dsh(0.2.1-alpha.2) / 66 例 / 16 例全绿。运行：preview notice 仍能读出、`--dump-config` 组合成功、`smoke:runtime` 通过、打包 + `check-mac-app.sh` 通过。打包版逐项：品牌/hero 标题+徽章+字标、`zh-CN`、无预览说明、无 API Key 引导、无登录框、`launcher=1`、技能本地 31 |
 | 10-14 | **修"重建链接反而删掉应用运行时"**（现场 Windows 报 `bundled runtime is incomplete … missing after linking`）：上一版把清理旧链接写成了 `rmSync(recursive:true)`，在 Windows 上可能顺着 junction 递归进入目标，把 `resources\nexusai-runtime\profile\node_modules`（应用自带运行时）删空。改为 `removeLink()`：链接只做**非递归**删除，真实目录（且标记属于本应用）才递归；并把报错改成能区分"链接坏了"与"包内运行时缺文件（需重装）" | 本机（macOS）用"home 链接指向 bundle 自身 + 旧标记"复现该路径：日志 `runtime link needs rebuilding …` → `runtime ready`，且 **bundle 完好（CLI 在、182 个顶层条目）**；CI 新增 scenario 3 在真 Windows 上断言同一点（源运行时不得被删） |
 | 10-14 | **补登录 shell 的 PATH**（承接"还有没有别的丢失"的自查）：GUI 启动的进程只有 `/usr/bin:/bin:/usr/sbin:/sbin`，dsh 的桌面端会读登录 shell 环境，我们没做 → 用户装的 node/python3/git/ripgrep 对 agent 不可见。新增 `enrichedPath()`（多候选 shell + 5s 超时 + 去重合并，Windows 跳过） | 以 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin` 启动：日志出现 `PATH from /bin/zsh: …`，子进程 PATH 里 node/python3/git/rg **全部可解析**（修复前只有系统四个目录） |
 | 10-13 | **修「对话里敲 `/` 没有技能了」**（现场反馈）：根因是壳覆盖了 `DSH_AGENTS_HOME`，把它指向自建空目录，于是 dsh 的机器级技能根（默认 `~/.agents`）被屏蔽 → 技能目录/斜杠菜单全空。改为不设该变量 | 修复前：本地 0、`/` 无菜单；修复后（源码与重新打包的打包版各测一次）：**本地 (31)**（= `~/.agents/skills` 的合法条目）、`/` 菜单 40 项（命令 + 技能）；列表内容与 `~/.agents/skills` 一致（`academic-paper-writer-pro`、`architecting-solutions`…） |

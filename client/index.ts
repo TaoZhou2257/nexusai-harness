@@ -27,6 +27,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+// Type-only: merges the `sessions` client service (Session object layer) onto Context.
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import { NexusaiLauncher } from './NexusaiLauncher'
 import { NexusaiBrandMark, NexusaiBrandName } from './NexusaiBrand'
 import { NexusaiHeroMark } from './NexusaiHero'
