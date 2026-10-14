@@ -493,6 +493,35 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 **已装机器想迁移**（工作区已登记在旧路径上，`initializeDefault` 见已有登记就跳过）：需要一次性处理 —— 把 `<文档>/deepseek-harness` 移走（或删掉其中不再需要的 `default-workspace`）、让链接建起来，并清掉该 home 的 `storages/workspace.json` 让 dsh 重新创建默认工作区（会话数据不受影响）。**这一步动的是用户的目录，所以留给用户/经确认后再做**，壳不会自动迁移。
 
+## 8k. 办公技能开箱可用（内置 primary runtime）
+
+**背景**：`office-docx` / `office-pptx` / `office-xlsx` 三个技能按 dsh 的设计要调 `load_workspace_dependencies` 拿"**自带的 Python + 办公库**"（python-docx/pptx/openpyxl/Pillow/lxml/XlsxWriter…），而不是去找系统 python。所以在挂载 `skill-office` 之前，必须先有一份可用载荷 —— workdsh 也是这么做的（它自带 primary runtime 并把同样两行写进 patch）。
+
+**我们这版做了什么**（全部在载体侧，dsh 一行未改）：
+
+| 件 | 说明 |
+|---|---|
+| `apps/nexusai-desktop/scripts/prepare-primary-runtime.mjs` | 产出 `build/runtime/{primary-runtime,office-skills}`：node 24.21 + pnpm 11.7 + python 3.12.14 + 13 个库（lock 数据见下）。**不需要 dsh 检出、不需要它的 node_modules** —— CI 不检出 submodule 也能出包 |
+| `apps/nexusai-desktop/primary-runtime-lock.json` | 内联自 dsh 的 `scripts/primary-runtime/lock.json`（10KB：node/python 版本与 sha256、每目标 wheel 列表）。**升级 dsh 时要刷新它**（见 §8i） |
+| 壳 `main.cjs` | 给 dsh 传 `DSH_BUNDLED_PRIMARY_RUNTIME=<bundle>/primary-runtime`（打包版在 `resources/nexusai-runtime/`，源码模式回落 `build/runtime/`） |
+| `after-pack.cjs` | 把 `primary-runtime` 与 `office-skills` 一起拷进 `resources/nexusai-runtime/` |
+| 预置 patch 两行 | `workspace-dependencies`（`source`/`root`）与 `skill-office`（`assetRoot`/`node`），表达式用 `!!js` **双引号包裹**（见坑） |
+
+**踩到的两个坑**：
+1. **`!!js` 必须加引号**：表达式里的三元 `? … : …` 含 `": "`，不加引号会被 YAML 当成嵌套映射，报 `bad indentation of a mapping entry`（dsh 自己的 patch 也是加引号的）。
+2. **python 树里带绝对符号链接**：用系统 tar 解包后，`python/bin/2to3` 等是指向**构建时临时目录**的绝对链接；直接打进包会指向不存在的路径。`prepare-primary-runtime.mjs` 因此有一趟 `materializeSymlinks()`（把每个链接替换成目标实体的拷贝，悬空链接删除），产出后 `find build/runtime -type l` 必须为 **0**。
+3. 下载源（nodejs.org / github.com astral-sh / files.pythonhosted.org）**都不读镜像变量**；本机 github 不可达时可复用 dsh 自己的缓存：`--cache=<dsh>/apps/desktop/.desktop-build/downloads`（缓存按 sha256 命名，所以能直接命中）。
+
+**实测（macOS arm64）**：
+- 产出：`primary-runtime` 332 MB（node+pnpm+python+wheels）、`office-skills` 44 KB；`find -type l` = 0；
+- 载荷可用性：调 `installPrimaryRuntime(source, <home>/dsh-runtimes/dsh-primary-runtime)` 安装后，用它自己的 python 执行 `import docx, pptx, openpyxl, PIL, lxml` → **office libs ok**；
+- 应用（源码与**打包版各一次**）：技能页出现 `office-docx`/`office-pptx`/`office-xlsx`，本地技能 31 → **34**，启动无报错；`check-mac-app.sh` 通过；
+- 体积：DMG **218 MB → 323 MB**（+105 MB）。
+
+**仍待验证**：真 Windows 上跑一次 CI（Windows 会现场下载 win-x64 的 node/python/wheels 并产出载荷）；以及"agent 真生成一份 .docx"——那需要配好模型，属你的界面操作。
+
+**Windows 已知约束**：安装路径 `…\dsh-home\dsh-runtimes\dsh-primary-runtime\` 会比本机的构建目录更深；本机实测最长相对路径 140 字符，最坏总长 235（**上限 260**，仅约 25 字符余量）—— 用户名或 home 路径特别长时可能触顶（dsh 自身同样受此约束）。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
@@ -536,6 +565,8 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-14 | **办公技能开箱可用（方案 C）**：内置 primary runtime（node 24.21 + pnpm 11.7 + python 3.12 + 13 个办公库）与 office-skills 资源，并在预置 patch 挂上 `workspace-dependencies` / `skill-office` 两行（照 workdsh 的做法，dsh 一行未改）。产出脚本自包含（只需内联的 lock，CI 不检出 submodule） | 载荷：安装后用其 python `import docx,pptx,openpyxl,PIL,lxml` → office libs ok；应用（源码 + 打包版）：技能出现 office-docx/pptx/xlsx、本地 31→34、无报错、`check-mac-app.sh` 通过；DMG 218→**323 MB**。详见 §8k |
+| 10-14 | **§8i 升级核对表补一项**：升级 dsh 时要刷新内联的 `primary-runtime-lock.json`（node/python/wheels 版本与 sha 会随 dsh 变） | — |
 | 10-14 | **首次使用的工作区目录名改为 `nexusai-harness`**（用户要求；前段=系统文档目录、叶子=`default-workspace` 两条规则保持不变）：中段在 dsh 里是写死的字面量，故改由壳在首次启动时把 `<文档>/deepseek-harness` 做成指向 `<文档>/nexusai-harness` 的链接 —— dsh 建目录后会 `realpath()`，登记与显示因此都是 `…/nexusai-harness/default-workspace`。**未改 dsh 一行** | 临时文档目录 + dsh 的 `documentsDirectory` 覆盖下端到端实测：登记 `path = …/nexusai-harness/default-workspace`、`title = default-workspace`（仍是自动标题），链接未被破坏；`<文档>/deepseek-harness` 已存在时脚本跳过（不覆盖真实目录）。详见 §8j |
 | 10-14 | **dsh 基线 0.2.0-rc.2 → 0.2.1-alpha.2**：`upstream.json`（version/tag/**解引用后**的 commit）、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/*` devDeps）、submodule、lockfile 同步；唯一代码改动是补 `@deepseek-ai/dsh-api-session-controller/client` 的类型导入（`ctx.sessions` 的类型声明换了持有包）。新增 §8i「升级 dsh 的核对表」（5 类依赖面 + 操作顺序 + 本次实测结果） | 静态：tsc / build / check:dsh(0.2.1-alpha.2) / 66 例 / 16 例全绿。运行：preview notice 仍能读出、`--dump-config` 组合成功、`smoke:runtime` 通过、打包 + `check-mac-app.sh` 通过。打包版逐项：品牌/hero 标题+徽章+字标、`zh-CN`、无预览说明、无 API Key 引导、无登录框、`launcher=1`、技能本地 31 |
 | 10-14 | **修"重建链接反而删掉应用运行时"**（现场 Windows 报 `bundled runtime is incomplete … missing after linking`）：上一版把清理旧链接写成了 `rmSync(recursive:true)`，在 Windows 上可能顺着 junction 递归进入目标，把 `resources\nexusai-runtime\profile\node_modules`（应用自带运行时）删空。改为 `removeLink()`：链接只做**非递归**删除，真实目录（且标记属于本应用）才递归；并把报错改成能区分"链接坏了"与"包内运行时缺文件（需重装）" | 本机（macOS）用"home 链接指向 bundle 自身 + 旧标记"复现该路径：日志 `runtime link needs rebuilding …` → `runtime ready`，且 **bundle 完好（CLI 在、182 个顶层条目）**；CI 新增 scenario 3 在真 Windows 上断言同一点（源运行时不得被删） |

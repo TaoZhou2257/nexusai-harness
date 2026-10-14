@@ -34,5 +34,17 @@ exports.default = async function afterPack(context) {
     filter: path => path !== join(source, 'cordis.yml'),
   })
   cpSync(marker, join(destination, 'runtime-version.txt'))
+  // The primary runtime (Node + Python + Office libraries) and the Office skill
+  // assets ride beside the profile; the shell points dsh at them with
+  // DSH_BUNDLED_PRIMARY_RUNTIME and `--dump-config` resolves them at startup.
+  const runtime = join(projectDir, 'build', 'runtime')
+  if (!existsSync(runtime)) {
+    throw new Error('build/runtime is missing — run `pnpm run prepare:primary-runtime` first')
+  }
+  for (const name of ['primary-runtime', 'office-skills']) {
+    const from = join(runtime, name)
+    if (!existsSync(from)) throw new Error(`build/runtime/${name} is missing`)
+    cpSync(from, join(destination, name), { recursive: true, dereference: true })
+  }
   console.log(`  • bundled runtime  ${destination}`)
 }

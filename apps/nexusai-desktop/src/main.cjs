@@ -120,6 +120,13 @@ function runtimeVersion() {
   }
 }
 
+/** Where the bundled primary runtime lives: packaged layout, else the build tree. */
+function bundledPrimaryRuntime() {
+  const packed = join(bundledRoot(), 'primary-runtime')
+  if (existsSync(packed)) return packed
+  return join(bundledRoot(), 'runtime', 'primary-runtime')
+}
+
 /** dsh CLI entry inside the bundled profile. */
 function dshCli(profileDir) {
   return join(profileDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
@@ -574,6 +581,10 @@ function startRuntime(home, profileDir) {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       DSH_HOME: home,
+      // The payload Office skills execute (a real Python with their libraries,
+      // plus Node and pnpm). dsh's `workspace-dependencies` row installs it into
+      // the home on first use; see §8k.
+      DSH_BUNDLED_PRIMARY_RUNTIME: bundledPrimaryRuntime(),
       // The user's real toolchain, not the four directories a GUI app inherits.
       PATH: enrichedPath(),
       // `DSH_AGENTS_HOME` is deliberately NOT set. dsh's filesystem skill

@@ -243,7 +243,25 @@ function profilePatch() {
     "  name: '@deepseek-ai/dsh-client-ui-settings-models'",
     '  config:',
     '    credentialOnboarding: false',
+    // Office skills run a *bundled* Python (with python-docx/pptx/openpyxl…) and
+    // the bundled Node, never a system interpreter — dsh's own desktop wires the
+    // same two rows. `source` is the payload this app ships, `root` is where the
+    // tool installs it inside the home, and the skill's assetRoot/node come from
+    // that payload; all three are resolved at startup, so the absolute paths are
+    // never baked into the bundle.
     '- insert:',
+    '    - id: workspace-dependencies',
+    "      name: '@deepseek-ai/dsh-tool-workspace-dependencies'",
+    '      config:',
+    // Quoted on purpose: an unquoted `!!js` scalar containing a ternary's "? … : …"
+    // reads as a nested mapping to YAML (dsh's own patch files quote them too).
+    '        source: !!js "process.env.DSH_BUNDLED_PRIMARY_RUNTIME"',
+    '        root: !!js "process.getBuiltinModule(\'node:path\').join(process.env.DSH_HOME, \'dsh-runtimes\', \'dsh-primary-runtime\')"',
+    '    - id: skill-office',
+    "      name: '@deepseek-ai/dsh-skill-office'",
+    '      config:',
+    '        assetRoot: !!js "process.getBuiltinModule(\'node:path\').join(process.env.DSH_BUNDLED_PRIMARY_RUNTIME, \'..\', \'office-skills\')"',
+    '        node: !!js "process.getBuiltinModule(\'node:path\').join(process.env.DSH_BUNDLED_PRIMARY_RUNTIME, \'dependencies\', \'node\', \'bin\', process.platform === \'win32\' ? \'node.exe\' : \'node\')"',
     '    - id: nexusai',
     `      name: '${plugin.name}'`,
     '      config:',
@@ -386,6 +404,14 @@ writeFileSync(join(PROFILE, 'cordis.patch.yml'), profilePatch())
 say(acknowledged === undefined
   ? 'preview notice: version unknown — the popup will show once and stay acknowledged'
   : `preview notice: acknowledged as ${acknowledged} (no popup on first run)`)
+
+// ── 3b. the payload the Office skills execute ───────────────────────────────
+if (!args.includes('--skip-primary-runtime')) {
+  say('preparing the primary runtime (Node + Python + Office libraries)')
+  run(process.execPath, [join(APP_ROOT, 'scripts', 'prepare-primary-runtime.mjs'), `--target=${targetName}`], {
+    cwd: APP_ROOT,
+  })
+}
 
 const cli = join(PROFILE, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 if (!existsSync(cli)) throw new Error(`dsh CLI missing after install: ${cli}`)
