@@ -1,23 +1,49 @@
-# HANDOFF — 交接摘要（2026-10-13 · 发行版 0.1.1）
+# HANDOFF — 交接摘要（2026-10-14 · 发行版 0.1.8）
 
-> 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图），不是推理。
+> 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 本次交接（2026-10-13）
+## 本次交接（2026-10-14）
 
-**做了什么**：把 v1.0 的载体推成**可发布状态**，并发了第一个 Release。
+**一句话状态**：载体（carrier）已产品化，「本机出包 + GitHub CI 双平台验收 + GitHub Release」整条链路跑通；当前发行版 **0.1.8**，内置 dsh **0.2.1-alpha.2**，两个平台的安装包已发布。**没有卡住的阻断项**。
 
-- **修发行阻断 bug（profile 名）**：插件解析 patch 文件时默认 `profiles/desktop`，而打包版的 profile 叫 `nexusai` —— dev 环境恰好是 `desktop`，把这个错误盖住了。后果是打包版里 **NexusAI 的 MCP 行与自定义连接器全部写到宿主不加载的文件**（卡片有、工具不挂载）。现改为"找承载本插件行的那个 profile"（显式 `profilePatchFile` 仍优先），并加启动日志打印解析结果。
-- **运行时日志落盘**：`<home>/logs/runtime.log`（2MB 轮转一次，token 统一脱敏），菜单加 **帮助 → 打开日志目录 / 查看运行日志 / 关于**（关于显示应用版本、内置运行时版本、home 路径）。打包版没有终端，这是用户唯一能给回来的东西。
-- **登录完全由用户发起**（2026-10-13 按用户要求改）：应用**从不**自己弹登录框；未登录时入口是左下角启动器（标签即登录文案）+ 工作台里的登录 CTA。原先那版「未登录启动自动弹一次」已移除 —— 它同时是 CI 的 Windows 验收闸判断「client 半已挂载」的证据，现改判启动器上的 `data-nexusai="launcher"` 标记（不依赖文案与语言），见 `scripts/check-client-mounted.mjs`。
-- **CI 两处失败修复**：`npm ci` 的 peer 图 ERESOLVE（仓库 `.npmrc` → `legacy-peer-deps`）；`prepare-runtime` 读 `upstream/package.json` 在 CI 上 ENOENT（CI 不检出 submodule）。
-- **类型依赖显式钉住**：16 个 dsh 类型包进 `devDependencies`（不进 `dependencies`，不影响产物），因为 `legacy-peer-deps` 让干净克隆不再装 peer，本地 `tsc` 会缺类型。
-- **Release 流程**：`.github/workflows/build.yml` 加 release job —— 打 tag（`v*`）后两端产物自动挂到 Release；分支推送仍只产 artifact。
+**这一轮（10-13 → 10-14）做完的事**
 
-**已验证（本机 macOS arm64 + CI）**：`prepare:runtime` 组合通过；无 GUI 冒烟到达 web URL；**打包版 `.app` 从干净 home 启动开窗**；**profile 解析在打包布局与 dev home 分别得到 `profiles/nexusai` 与 `profiles/desktop`**（套件补 3 例，共 66 例）；**日志落盘且 token 无残留**；**未登录启动弹窗 1 次、点关闭后不再弹**（CDP 实测）；CI 全绿（mac DMG 225MB / win exe 211MB）；tag `v0.1.0` 的 Release 已发布。
+1. **载体成型**（对应用户说的"像 workdsh 那样，方便开发和打包"）：`apps/nexusai-desktop` 是薄 Electron 壳；`upstream.json` 钉死 dsh 的 repo/tag/commit（CI 不检出 submodule，按版本号从 npm 装）；`build/profile` 是本机装好的 pnpm 工程（dsh + 两个官方 bundle + 本插件 tgz），首启只把 `node_modules` 链进 home，不复制几百 MB。详见 §4、§8b。
+2. **CI 双平台 + 验收闸**：`scripts/ci/*` 是唯一真源，workflow 只做「拉代码 → 调脚本 → 传产物」。mac 闸：挂 DMG → 干净 home 启动 → 断言运行时就绪 + profile 含插件行；win 闸：静默安装 → 启动 → 断言运行时就绪 → CDP 断言 client 半挂载 → 静默卸载（另含两个自愈场景）。见 §8c。
+3. **办公技能开箱可用（方案 C）**：包内自带 Node 24.21 + pnpm 11.7 + Python 3.12 + 13 个办公库（python-docx/pptx、openpyxl、Pillow、lxml…）与 office-skills，预置 patch 挂上 `workspace-dependencies` / `skill-office` 两行。**dsh 一行未改。** 见 §8k。
+4. **首启体验**：不弹 dsh 预览说明、不弹 API Key 引导、**不自动弹登录框**（登录完全由用户发起）；侧栏/hero 用远程品牌与版本；首次使用的工作区目录名改为 `nexusai-harness`。见 §8g、§8e-2、§8j。
+5. **dsh 基线 0.2.0-rc.2 → 0.2.1-alpha.2**：唯一代码改动是补一个 client 类型导入（`dsh-api-session-controller/client`）；升级该核什么写在 §8i。
+6. **两处命名残留修复**：`dmg.title`（DMG 挂载卷名）与 `nsis.shortcutName`（Windows 快捷方式名）——**两者的默认值都不跟 `productName` 走**，改名时最易漏。§8h 有"改名要核的五处"表。
+7. **两起事故记录在案**：我误删过打包版的 userData（§12，用户数据丢失，此后先备份再动）；GitHub Actions **私有仓库免费额度打满**导致 release job 起不来（§8b：额度按 mac ×10 / win ×2 计费，我们一轮约 126 计费分钟）。后者已随仓库转 **public**（公共仓库标准 runner 不限量）解决。
 
-**未验证**：产物精简（内置 profile ~490MB）。**Windows 真机已由用户验证：安装后可正常启动**（2026-10-13，v0.1.2）；macOS v0.1.2 的「仍要打开」路径仍待用户确认（v0.1.1 那次是签名损坏，已在 0.1.2 修）。
+**现在的坐标**
 
-**密钥现状**：仓库已私有；那个曾公开过的 AES key 建议在服务端轮换一次。
+| 项 | 值 |
+|---|---|
+| 发行版 | **0.1.8**（`apps/nexusai-desktop/package.json`） |
+| 内置 dsh | **0.2.1-alpha.2**（`upstream.json` 的 version/tag/commit 三者必须一致） |
+| 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
+| 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（`v1.0` 同步，无流水线） |
+| 分支 / 提交 | `v1.0`；**已推送到 GitHub 的末笔是 `4bad92a`**；其后还有未推送的本地提交（本文档重写 + 两道 CI 闸增强） |
+| Release | `v0.1.8`（Latest）：`NexusAIHarness-0.1.8-arm64.dmg`、`NexusAIHarness-Setup-0.1.8-x64.exe` |
+
+**已验证 / 未验证**
+
+- 已验证：静态四件套（tsc / build / `check:dsh`=0.2.1-alpha.2 / 66 例 + 16 例）；本机 `prepare:runtime` 组合 + `smoke:runtime`；**打包版**（源码与 DMG 各一次）首启无预览说明/无 API Key 引导/无登录框、品牌与版本来自远程、技能列表含办公技能、`launcher` 标记在；mac DMG 过 `check-mac-app.sh`；包内 python `import docx,pptx,openpyxl,PIL,lxml` 全过；win exe 拆包确认 node+python+office-skills 齐全；CI 双平台各轮全绿（含 tag 那轮的 mac 8m43s / win 18m20s）。
+- 未验证：**Windows 真机上让 agent 真写一个 docx**（需要一个配好模型的账号，属人工操作）；v0.1.8 的 Windows **快捷方式名仍是旧名**（那个 exe 是修复前 CI 打的，下一次构建才生效）；macOS 的「仍要打开」放行路径自 0.1.2 后未再人工确认。
+
+**下一步（建议顺序）**
+
+1. 想拿到"短名也正确"的 Windows 安装包：下次构建即可（CI 已恢复）；或直接打 `v0.1.9` 发版。
+2. Windows 真机跑一次办公技能（用户侧，需要模型）。
+3. 服务端轮换那个**曾公开过**的 AES key（仓库一度 public，键值进过公开的 git 历史；轮换后别忘了把新值同步到本机 `.env` 与 GitHub Secrets）。
+4. 其余待办见 §11。
+
+**接手须知（最容易忽略的三条）**
+
+- **推送前先问用户**：`git push github` 会触发两个平台的完整构建 + 验收闸（AGENTS.md、§7-D5）；本机提交与 `scripts/ci/*` 本地跑不受限。
+- **client 改动必须重启桌面端，禁止 `Page.reload`**；同时只能跑一个实例（§7-A3）。
+- **取 GitHub artifact 用并行分块**（`gh run download` 单连接会卡死，§7-D4）。
 
 ## 0. 这是什么
 
@@ -27,7 +53,7 @@
 | 位置 | 路径 |
 |---|---|
 | 插件仓库（本项目，可自由改） | `~/GoLandProjects/nexusai-harness` |
-| dsh 源码（**不要改**） | `~/IdeaProjects/deepseek-harness`（检出 tag `dsh-v0.2.0-rc.2`，git 干净） |
+| dsh 源码（**不要改**） | `~/IdeaProjects/deepseek-harness`（检出 tag `dsh-v0.2.1-alpha.2`，git 干净） |
 | dsh 运行目录（dev home，配置文件在这） | `~/IdeaProjects/deepseek-harness/apps/desktop/.desktop-build/development/home` |
 | NexusAI 服务器（当前用） | `http://agent.nexusai.net.cn:8081`（另有 `http://221.226.155.134:8081`；SkillHub 用公网 `api.skillhub.cn`） |
 
@@ -42,7 +68,7 @@
 cd ~/GoLandProjects/nexusai-harness
 npx tsc --noEmit        # 期望：无输出（0 错误）
 node scripts/build.mjs  # 期望：lib/index.js（宿主）+ lib/client.js（客户端）两个产物
-npm run check:dsh       # 期望：check-dsh-version: ok (dsh 0.2.0-rc.2)
+npm run check:dsh       # 期望：check-dsh-version: ok (dsh 0.2.1-alpha.2)
 DSH_CDP_PORT=9223 node scripts/verify/cdp-eval.mjs "'ok'"   # 期望："ok"（能连上运行中的桌面端）
 ```
 
@@ -176,7 +202,7 @@ scripts/
   dev/install-into-dsh.mjs  新机器接线（构建 + 软链 + patch 行，幂等）
   dev/brand-dev-app.mjs     dev 包改名 + 换访达/Dock 图标（取服务端品牌，幂等）
   dev/{center-window.mjs,start-desktop.sh,watch-window.sh}  窗口摆放（macOS 专属，需辅助功能权限）
-upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit 639ed015 = 0.2.0-rc.2）
+upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit d743267 = 0.2.1-alpha.2）
 apps/nexusai-desktop/       **v1.0 carrier**：薄 Electron 壳 + 运行时准备 + electron-builder（未签名）
   src/main.cjs              壳：home → 预置 profile → spawn 内置 dsh（Electron-as-Node）→ 读 token URL → 开居中窗
   scripts/prepare-runtime.mjs  npm pack 插件 + pnpm 装 profile（含 supportedArchitectures 与 allowBuilds）
@@ -383,7 +409,7 @@ CI 那轮的 artifact 用 `gh api .../actions/artifacts/<id>/zip` 取（见 §7-
 |---|---|---|
 | 侧栏名称 | `branding.name`（服务端 `tab.title`） | 回落 `NexusAI DSH` |
 | 侧栏字标 | `branding.markUrl`（方形 logo） | 回落插件自带 SVG 字标（不会裂图） |
-| 侧栏版本徽章 | `branding.version` → 回落 `branding.dshVersion` | 显示 dsh 构建串（如 `0.2.0-rc.2`），宿主持有该值 |
+| 侧栏版本徽章 | `branding.version` → 回落 `branding.dshVersion` | 显示 dsh 构建串（如 `0.2.1-alpha.2`），宿主持有该值 |
 | 首启 hero 版本徽章 | 同上（同一 hook） | 同上 |
 | 工作台「远程获取 · 名称」 | `branding.name` | 只显示「远程获取」，不带名称 |
 | 登录弹窗标题/欢迎语/logo/按钮色/版本 | 弹窗**自己**那份（要显示"待应用地址"的品牌） | 标题用不含名称的默认文案；logo/welcome/版本为空则整段不渲染 |
@@ -414,7 +440,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 选择器用 **CSS module 的局部名后缀**匹配（`[class*="_titleGroup"]:has(> [class*="_previewBadge"]) > span:first-child`、`[class*="_previewBadge"]`）：哈希每次构建会变，局部名稳定；且只在"包含 previewBadge 的 titleGroup"上动手，避免误伤别处同名类。dsh 若哪天改掉这些局部名，补丁会静默失效（退回 dsh 原文案），不会把界面改坏。
 
-**实测（打包版）**：远程可达 → 标题 `探索 AGI 之无限可能`、徽章 `v1.5.0.3`、字标为我们的 IMG；远程不可达 → 徽章 `0.2.0-rc.2`（dsh 构建号），标题与字标不变。
+**实测（打包版）**：远程可达 → 标题 `探索 AGI 之无限可能`、徽章 `v1.5.0.3`、字标为我们的 IMG；远程不可达 → 徽章 `0.2.1-alpha.2`（dsh 构建号），标题与字标不变。
 
 ## 8d. 产物精简（内置 profile 的体积构成与已做的剪裁）
 
@@ -540,7 +566,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 ## 9. 换机器 / 新环境部署
 
-- **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
+- **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.1-alpha.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
 - **不带源码（体验用）**：本机 `pnpm run package:desktop:mac:arm64` 出 dsh 安装包 + `npm pack` 出插件 tgz → 新机器装应用 → 侧栏「插件」页安装（支持 registry / 本地路径 / tgz / git 四种来源）→ 在 profile user 层 patch 补 `nexusai` 行 → 登录
 - ⚠️ **Windows 包只能在 Windows 构建机/CI 上打**（dsh 打包脚本硬性要求，预检还需 VS C++ 工具链；GitHub release 没有官方安装包）
 - Windows 试用包见 `dist/windows-trial/`（一键 ps1 + 离线插件包 + 说明；**未实测**）
@@ -559,10 +585,10 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 优先级 | 任务 | 状态 |
 |---|---|---|
-| **高** | **推 GitHub 前先处理密钥**：`dist/windows-trial/nexusai.patch.yml` 被 git 跟踪且含 AES key/iv。公开仓库 = 密钥进公网（不可撤回）。建议 `git rm --cached` 该文件 + 改 server 端密钥（历史里仍有旧值）；运行时配置本就改成从 env/`.env` 生成（carrier 已如此） | 🔴 等决策 |
-| 高 | 跑 CI 的 `windows` job 验证 NSIS 产物（本机无法产出）；需先在仓库配 3 个 secret（`NEXUSAI_BASE_URL`/`NEXUSAI_AES_KEY`/`NEXUSAI_AES_IV`） | ⬜ |
-| 中 | carrier 品牌/图标（现为 Electron 默认图标与 `NexusAgent Builder` 名）；首启交互打磨 | ⬜ |
-| 中 | carrier 产物精简：内置 profile 现 ~490MB（含 python 工具链与未用的官方 bundle），可裁剪 | ⬜ |
+| **高** | **服务端轮换 AES key/iv**：`dist/windows-trial/nexusai.patch.yml`（旧 Windows 试用路线的遗留文件，已被载体取代）**仍在 git 跟踪中**，里面写着 key/iv；仓库现在是 public，所以这两个值**此刻在 HEAD 上就是公开的**，历史里也有。轮换后同步本机 `.env` 与 GitHub Secrets。若要顺手降低暴露面：`git rm --cached dist/windows-trial/nexusai.patch.yml` + 加进 `.gitignore`（注意历史仍需轮换才真正安全） | 🔴 等决策（用户此前已选择"推 public、接受风险"） |
+| 中 | carrier 体积：内置 profile ~448MB + primary runtime ~344MB（DMG 323MB / win exe 276MB）。办公那份是"开箱可用"换来的体积，属有意为之；可裁的是未用的官方 bundle 与源码映射 | ⬜ |
+| 中 | Windows 真机验一次办公技能（让 agent 真写一个 docx；需要配好模型的账号） | ⬜ |
+| 低 | 给 workflow 加 `paths-ignore: ['**.md']`：纯文档提交也会触发两平台完整构建（约 126 计费分钟），额度虽已不再受限（public），但没必要 | ⬜ |
 | 暂缓 | SSE 桥接的凭据跟进（智能问数需 token：服务端 `mcp_start` 换取 / 插件配置默认 token） | ⏸ 用户暂缓 |
 | 暂缓 | agent 实调 NexusAI 自定义工具（MCP 侧已验过整条链路） | ⏸ 用户暂缓 |
 | 杂 | 「删除技能」是否改移入废纸篓；`package.json` 的 `types` 指向不存在的 d.ts | ⏸ 用户暂缓 |

@@ -77,6 +77,21 @@ try {
   if (-not (Test-Path $exe)) { throw "installer did not place $exe" }
   Write-Host "OK: installed to $installDir"
 
+  # The shortcut labels are the other brand string that does not follow
+  # productName: app-builder-lib's NSIS templates create them as
+  # `${SHORTCUT_NAME}.lnk` (templates/nsis/common.nsh), and for the assisted
+  # installer they are created on the silent path too — which is how this gate
+  # installs. A rename that misses `nsis.shortcutName` leaves users with a
+  # shortcut labelled after the old app name, so assert both by name.
+  $shortcuts = @(
+    (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NexusAIHarness.lnk'),
+    (Join-Path ([Environment]::GetFolderPath('Desktop')) 'NexusAIHarness.lnk')
+  )
+  foreach ($shortcut in $shortcuts) {
+    if (-not (Test-Path $shortcut)) { throw "installer did not create $shortcut — check nsis.shortcutName in electron-builder.config.cjs" }
+  }
+  Write-Host "OK: shortcuts named after the app ($($shortcuts -join ' | '))"
+
   # ── scenario 1: fresh home ────────────────────────────────────────────────
   $fresh = Join-Path $tempRoot "nexusai-home-$([guid]::NewGuid().ToString('N').Substring(0,8))"
   if (-not (Test-AppBoots $fresh 'fresh home')) { Show-Evidence 'runtime never reported ready' $fresh; throw 'fresh home: bundled runtime did not come up' }

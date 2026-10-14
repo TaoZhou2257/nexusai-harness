@@ -34,6 +34,19 @@ app_path="$(ls -d "$work"/*.app | head -1)"
 app_name="$(basename "$app_path" .app)"
 echo "app: $app_name"
 
+# The mounted volume's name is the first brand string a user meets (Finder
+# sidebar, the install window's title) and it comes from `dmg.title`, whose
+# default does NOT follow `productName`. A rename that misses it ships silently
+# under the old name — the field report that v0.1.8's DMG still mounted as
+# "NexusAgent Builder". Assert that the volume and the app agree.
+real_mnt="$(cd "$mnt" && pwd -P)"
+volume="$(diskutil info "$(mount | grep -F " on $real_mnt (" | awk '{print $1}')" | sed -n 's/^ *Volume Name: *//p')"
+[ "$volume" = "$app_name" ] || {
+  echo "the DMG mounts as '$volume' but ships '$app_name.app' — set dmg.title in electron-builder.config.cjs" >&2
+  exit 1
+}
+echo "dmg volume: $volume"
+
 home="$work/home"
 log="$home/logs/runtime.log"
 echo "== launching with a clean home ($home) =="
