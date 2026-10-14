@@ -496,7 +496,7 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 ## 8i. 升级 dsh 基线的核对表（只核对我们依赖的面）
 
-dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交的代码都**不依赖 dsh 源码**（版本号从 `upstream.json` 读、包从 npm 装、CI 不检出 submodule），所以升级的实际风险面只有下面 5 类。逐条核对即可，**不必全量回归**：
+dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交的代码都**不依赖 dsh 源码**（版本号从 `upstream.json` 读、包从 npm 装、CI 不检出 submodule），所以升级的实际风险面只有下面 6 类。逐条核对即可，**不必全量回归**：
 
 | # | 依赖面 | 我们这边在哪 | 怎么核对 | 断了会怎样 |
 |---|---|---|---|---|
@@ -505,6 +505,7 @@ dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交�
 | 3 | **设置键与 namespace** | `prepare-runtime.mjs` 生成的 patch：`ui-settings-account(disabled)` / `ui-settings-general.welcomeNoticeVersion` / `locale.preference` / `ui-settings-models.credentialOnboarding` | `grep` 这些键在 dsh 里是否仍存在（`WELCOME_NOTICE_VERSION` 常量位置也要在） | 首启重新弹预览说明/API Key 引导，或语言/账号 UI 失效 |
 | 4 | **CLI 输出与参数** | 壳 `main.cjs` 的 `/dsh web:\s+(http:\/\/127\.0\.0\.1:\d+…token=/`、`--profile`、`--no-open`；`prepare-runtime.mjs` 用 `--dump-config` | 起一次 `smoke:runtime`（它就是在等同一行）；`grep "dsh web:" <dsh>/packages/bundle/web-app/src` | 窗口**永不打开**（表现为"启动即死"，且不报错） |
 | 5 | **profile 结构与包内文件** | `profiles/<name>/node_modules/@deepseek-ai/dsh/lib/bin.js`（CLI 入口）、`cordis.patch.yml`（用户层）、`~/.agents`（技能根，靠**不设** `DSH_AGENTS_HOME` 保住） | `--dump-config` 能组合成功 + 技能页"本地"数量正常 | 启动失败，或技能全空 |
+| 6 | **首次工作区目录名** | `prepare-runtime` 改安装包里 `dsh-api-workspace-controller/lib/index.js` 的那一行 `paths.join(directory, "deepseek-harness", DEFAULT_WORKSPACE_DIRECTORY)` | 这行仍只出现一次；`prepare-runtime` 改完会打印 `workspace anchor: renamed`（已改过则 `already`）。字面量挪走或重复时准备步骤直接失败 | 失败被拦住；若有人绕过它，首启会再建出 `deepseek-harness` |
 
 **另外两处我们自己的配套**（升级时一起改）：`check-dsh-version.mjs` 的 baseline（即根 `package.json` 的 `dsh.dshBaseline`）、以及 `dsh.client.inject` 列表（客户端平台包若新增/改名）。
 
@@ -513,7 +514,7 @@ dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交�
 2. 改 `upstream.json`（version/tag/commit）、根 `package.json`（`dshBaseline` + 所有 `@deepseek-ai/*` 的 devDependencies）、`apps/nexusai-desktop/package.json` 应用版本号；
 3. `git -C upstream fetch --tags && git -C upstream checkout <tag>`；`npm install`（重生成 lockfile）；
 4. **`tsc` 会指出类型层面 breaking**（本次撞到一个：`ctx.sessions` 的类型改由 `@deepseek-ai/dsh-api-session-controller` 声明 —— 这个包本来就在我们的 `dsh.client.inject` 里，只是没做类型导入；补一行 `import type {} from '…/client'` + 把它加进 devDependencies 即可）；
-5. 按上表 1–5 逐条 `grep`（**第 1 条最容易漏**，它不会报错）；
+5. 按上表 1–6 逐条 `grep`（**第 1 条最容易漏**，它不会报错；第 6 条由 `prepare-runtime` 自己断言）；
 6. 运行层：`prepare-runtime` → `smoke:runtime` → 打包 → `check-mac-app.sh`，再起打包版看品牌/hero/语言/两个引导/技能数；
 7. 提交后推 GitHub 由 CI 验证 Windows 三关，再打 tag 发版。
 
@@ -527,13 +528,11 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 - **中段 `deepseek-harness`：`packages/api/workspace-controller/src/default-directory.ts:77` 里的字面量**，既不是配置也没有环境变量 —— 在 dsh 里改不了；
 - 叶子 `default-workspace`：`DEFAULT_WORKSPACE_DIRECTORY` 常量，且它的 basename 会被当作**自动标题**（显示为本地化的「默认工作区」）。
 
-**换成 nexusai-harness 的做法（不改 dsh）**：dsh 建完目录会做 `realpathNormalize()`（`packages/workspace/workspace/src/index.ts:268`，实现就是 `realpath`），所以只要 **`<文档>/deepseek-harness` 是指向 `<文档>/nexusai-harness` 的链接**，dsh 照样去建 `…/deepseek-harness/default-workspace`，但**登记与显示的都是 `…/nexusai-harness/default-workspace`**。前段与叶子的规则都不变。
+**换成 nexusai-harness 的做法（不改 dsh 源码）**：`prepare-runtime` 在 `pnpm install` 之后改安装包里的那一行字面量（`src/workspace-anchor.cjs` 的 `renameInstalledWorkspaceAnchor`），把 `"deepseek-harness"` 换成 `"nexusai-harness"`。dsh 因此直接创建真实目录 `<文档>/nexusai-harness/default-workspace`，磁盘上没有链接。前段与叶子的规则都不变。用户侧没有额外步骤：这一行在打进 DMG/exe 之前就改好了。升级 dsh 后若这行挪走或出现多次，准备步骤失败，不会悄悄退回旧目录名。
 
-壳里新增 `alignWorkspaceAnchor()`：**首次启动**（`storages/workspace.json` 尚不存在）时解析系统文档目录、建 `<文档>/nexusai-harness` 并做上述链接（Windows 用 junction，不需要管理员）；**若 `<文档>/deepseek-harness` 已存在（真实目录）就跳过**，绝不覆盖用户的东西。`NEXUSAI_DOCUMENTS_DIR` 可覆盖文档目录（测试与自定义用）。
+早先的做法是在首次启动时把 `<文档>/deepseek-harness` 做成指向 `nexusai-harness` 的链接（Windows 上是 junction），再靠 dsh 的 `realpath()` 登记解析后的路径。链接会留在用户的「文档」里，也和「顺着 junction 删掉目标」那类事故是同一类风险，所以弃用了。
 
-**端到端实测**（临时文档目录 + dsh 的 `documentsDirectory` 覆盖）：dsh 登记 `path = …/nexusai-harness/default-workspace`、`title = default-workspace`，链接保持不动 —— 机制成立。
-
-**已装机器想迁移**（工作区已登记在旧路径上，`initializeDefault` 见已有登记就跳过）：需要一次性处理 —— 把 `<文档>/deepseek-harness` 移走（或删掉其中不再需要的 `default-workspace`）、让链接建起来，并清掉该 home 的 `storages/workspace.json` 让 dsh 重新创建默认工作区（会话数据不受影响）。**这一步动的是用户的目录，所以留给用户/经确认后再做**，壳不会自动迁移。
+壳现在只做收尾（`retireLegacyWorkspaceLink`，每次启动、失败不阻断）：若 `<文档>/deepseek-harness` **是指向 `nexusai-harness` 的链接**，用 unlink / rmdir 摘掉链接，目标目录不动。真实目录（用户自己的官方 dsh）留着不碰。已经登记过的工作区路径是当时的 realpath，摘链接不会改登记、也不会丢文件。`NEXUSAI_DOCUMENTS_DIR` 可覆盖文档目录（测试用）。
 
 ## 8k. 办公技能开箱可用（内置 primary runtime）
 
@@ -607,6 +606,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-15 | **首次工作区目录不再用链接**：`prepare-runtime` 改安装包里 `paths.join(directory, "deepseek-harness", …)` 为 `nexusai-harness`，dsh 直接建真实目录。壳只摘掉旧构建留下的、且目标就是 `nexusai-harness` 的链接；真实的 `deepseek-harness` 目录不动 | `node scripts/verify-workspace-anchor.mjs`（本机跑通）：①恢复 published join → rename → already；②摘掉指向 `nexusai-harness` 的旧链接且目标文件还在、真实目录不动；③起 bundled dsh + headless Chrome 打开 web UI，client 调 `initializeDefault` 后磁盘出现 `Documents/nexusai-harness/default-workspace`（真实目录、非 symlink），`deepseek-harness` 不存在，`storages/workspace.json` 只记 `nexusai-harness` |
 | 10-14 | **v0.1.8 已发布（Latest）**：CI 两个平台 job 全绿，但 release job 被**账户计费**拦下（原因与解法见 §8b）→ 改为本机手动发布。mac 资产用**本机重打**的 DMG（含下面那条命名修复；`prepare-runtime` 重跑后 patch 指纹与上一份逐字节相同），win 资产取自该轮 CI 的 artifact | mac 包过 CI 同一道验收闸（`check-mac-app.sh`：挂 DMG → 干净 home 启动 → 运行时就绪 → profile 含插件行 → 菜单最小集）；包内 python 实测 `import docx,pptx,openpyxl,PIL,lxml` 全过（docx 1.2.0 / openpyxl 3.1.5 / PIL 12.3.0）；win exe 用 `7zz` 拆开确认 `resources/nexusai-runtime/` 里 node+python+office-skills 齐、`runtime.json` 为 win32/x64；Release 资产字节数 338,694,916 / 288,991,752 与本地文件逐一相符 |
 | 10-14 | **品牌命名补两处用户可见残留**（用户挂载 DMG 时发现卷名还是旧名）：`dmg.title`（DMG 挂载卷名，Finder 侧栏与安装窗口标题都用它）与 `nsis.shortcutName`（Windows 桌面/开始菜单快捷方式下的字）——**两者默认值都不跟 `productName` 走**，改名时只同步了 `productName` 所以漏掉。README 里过时的旧名/`<userData>` 路径/"登录框会自己弹"描述一并订正；§8h 增加命名核对表 | 重打 DMG 后挂载实测：卷名 `/Volumes/NexusAIHarness`（改前 `/Volumes/NexusAgent Builder`）、`CFBundleShortVersionString=0.1.8`、ad-hoc 签名与 hardened runtime 在、profile 内 dsh `0.2.1-alpha.2`；**win 侧的新快捷方式名要等下一次 CI 构建才体现**（本轮 exe 是 CI 打的那份，快捷方式仍写旧名） |
 | 10-14 | **办公技能开箱可用（方案 C）**：内置 primary runtime（node 24.21 + pnpm 11.7 + python 3.12 + 13 个办公库）与 office-skills 资源，并在预置 patch 挂上 `workspace-dependencies` / `skill-office` 两行（照 workdsh 的做法，dsh 一行未改）。产出脚本自包含（只需内联的 lock，CI 不检出 submodule） | 载荷：安装后用其 python `import docx,pptx,openpyxl,PIL,lxml` → office libs ok；应用（源码 + 打包版）：技能出现 office-docx/pptx/xlsx、本地 31→34、无报错、`check-mac-app.sh` 通过；DMG 218→**323 MB**。详见 §8k |

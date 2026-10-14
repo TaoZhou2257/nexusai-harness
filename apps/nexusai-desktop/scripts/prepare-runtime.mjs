@@ -25,8 +25,11 @@
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+const { renameInstalledWorkspaceAnchor } = createRequire(import.meta.url)('../src/workspace-anchor.cjs')
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(SCRIPT_DIR, '..')
@@ -415,6 +418,15 @@ if (!args.includes('--skip-primary-runtime')) {
 
 const cli = join(PROFILE, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 if (!existsSync(cli)) throw new Error(`dsh CLI missing after install: ${cli}`)
+
+// dsh hardcodes `<Documents>/deepseek-harness/default-workspace`. Rewrite that
+// one join in the installed bundle so first use creates a real
+// `nexusai-harness` directory. Must run after install (pnpm may restore the
+// published file) and must fail the build if the literal moved.
+const workspaceController = join(
+  PROFILE, 'node_modules', '@deepseek-ai', 'dsh-api-workspace-controller', 'lib', 'index.js',
+)
+say(`workspace anchor: ${renameInstalledWorkspaceAnchor(workspaceController)}`)
 
 // ── 4. prune what this target can never load ────────────────────────────────
 pruneProfile(target)
