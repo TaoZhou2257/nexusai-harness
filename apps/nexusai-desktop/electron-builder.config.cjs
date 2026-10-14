@@ -1,5 +1,5 @@
 /**
- * electron-builder configuration for the NexusAgent Builder carrier.
+ * electron-builder configuration for the NexusAIHarness carrier.
  *
  * Deliberately minimal: no signing, no notarization, no auto-update. The app is
  * a thin Electron shell; everything dsh needs travels in `build/profile`, which
@@ -56,7 +56,11 @@ module.exports = {
     icon: join(__dirname, 'resources', 'icon.icns'),
     target: [{ target: 'dmg', arch: ['arm64'] }],
   },
-  dmg: { title: 'NexusAgent Builder' },
+  // `title` is the mounted volume's name, so it is the first brand string a
+  // macOS user sees (Finder sidebar, desktop, eject menu). Keep it identical to
+  // productName; the Carrier's only remaining use of the old name is
+  // LEGACY_APP_NAME in src/main.cjs, which finds data from older installs.
+  dmg: { title: 'NexusAIHarness' },
   win: {
     icon: join(__dirname, 'resources', 'icon.ico'),
     // `Setup` kept in the Windows file name: it is an installer, and the name is
@@ -69,6 +73,6 @@ module.exports = {
     perMachine: false,
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
-    shortcutName: 'NexusAgent Builder',
+    shortcutName: 'NexusAIHarness',
   },
 }

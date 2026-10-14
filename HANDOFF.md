@@ -254,6 +254,8 @@ ode_modules`）。后果是**把应用自己的运行时删空**，然后重链�
 1. **脚本化改代码必须断言**：曾因为锚点写错又没断言，替换静默失败（渲染仍是旧的 `skills.map`）。改完 `assert '<新片段>' in s` 复核。
 2. **凭据磁盘/进程内状态一致**（已用插桩定案）：干净运行下会话**不会自己消失**。历史上几次"磁盘没 session"都是测试自己造的：把 endpoint 换成另一台服务器（或恢复了不匹配的备份）→ 下次调用 401 → 插件按设计清会话并登出。恢复 = `cp` 回**同服务器**且含 session 的备份 + **重启**；备份前先 `grep -c 'nexusai/session'` 确认，并比对 `baseUrl:` 一致。
 3. **环境：dsh 基线 0.2.1-alpha.2（developer preview）**：升级 dsh 后跑 `npm run check:dsh` + tsc + 两个自研套件 + 打包版真机走查，再更新 `dshBaseline`。**升级 dsh 时的核对表见 §8i**（我们只依赖 5 类面，逐条核对即可，不必全量回归）。
+4. **取 GitHub artifact 用并行分块，别用 `gh run download`**：这条链路单连接会"起步快、随后卡死"（实测 2MB 突发行完就掉到 ~35KB/s，273MB 要两小时）。`gh api .../actions/artifacts/<id>/zip` 返回 302 到 `productionresultssa*.blob.core.windows.net` 的**签名 URL（支持 `Accept-Ranges`，签名约 10 分钟过期）**，用 8 条 `curl -r start-end` 各写一个分片、按已下字节续传、403 时重取签名 URL，拼起来校验 `Content-Length` 再 `unzip -t`。实测 8 并发能到 ~200KB/s 且能跑完（脚本见本文件同目录会话日志，或照此重写十几行）。
+5. **推送前先问用户**：`git push github` 会跑两个平台构建 + 验收闸（每轮约 20 分钟额度），见 `AGENTS.md`。本机提交与 `scripts/ci/*` 本地跑不受限。
 
 ## 8. 改动后的标准流程
 
@@ -303,6 +305,18 @@ node scripts/check-client-mounted.mjs 9224 3000  # 可选：对带 --remote-debu
 ```
 
 **发版**：改 `apps/nexusai-desktop/package.json` 的 version → 提交 → `git tag -a vX.Y.Z` → `git push github v1.0 vX.Y.Z`。CI 两个平台构建，release job 自动把 dmg/exe 挂到 Release（仓库私有 → 下载需登录）。
+
+**release job 会被账户计费拦下（2026-10-14 确认，v0.1.8 首发时踩到）**：报错原文
+`The job was not started because recent account payments have failed or your spending limit needs to be increased`。
+不是工作流 bug —— 私有仓库每个月只有 2000 分钟免费额度，**macOS 按 10 倍、Windows 按 2 倍计费**，
+我们一轮 CI（mac ~9min + win ~18min）≈ **126 计费分钟**，十几轮就打满。打满后**任何新 job 都起不来**：
+表现为 `runner_name: ''`、`steps: 0`、2 秒失败、job 日志 404（`BlobNotFound`），平台 job 若在打满前已排上则照常跑完
+（v0.1.8 的 mac/win 就是这样：win 那 36 分钟恰好把额度用尽，紧接着的 release job 被拒）。
+三种解法（用户侧二选一，都不改代码）：① 仓库改回 **public**（公共仓库标准 runner 免费不限量，用户此前已接受公开）；
+② 在 Settings → Billing 设 spending limit / 绑支付方式；③ 等下个计费周期重置。
+**额度打满时怎么发版**（不依赖 Actions）：本机 `pnpm exec electron-builder` 出 dmg，
+CI 那轮的 artifact 用 `gh api .../actions/artifacts/<id>/zip` 取（见 §7-坑 D 的并行分块下载法），
+再 `gh release create vX.Y.Z --title … --notes … <dmg> <exe>`（notes 文本可直接抄 workflow 里那份）。
 
 **CI 需要的 secret**：`NEXUSAI_BASE_URL` / `NEXUSAI_AES_KEY` / `NEXUSAI_AES_IV`（仓库 Settings → Secrets；值与本机 `.env` 相同）。
 
@@ -446,11 +460,13 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 |---|---|---|
 | 安装包文件名 | `NexusAIHarness-<version>-arm64.dmg` / `NexusAIHarness-Setup-<version>-x64.exe` | electron-builder `artifactName` |
 | **应用名**（菜单栏首项 / Dock / 访达 / 窗口标题 / Windows 安装目录与 exe 名） | **`NexusAIHarness`** | `productName`（构建期）+ 壳里的 `APP_NAME`（窗口标题，可用 `NEXUSAI_APP_NAME` 覆盖） |
+| DMG **挂载卷名**（Finder 侧栏 / 安装窗口标题，用户装的时候第一眼看到的品牌串） | **`NexusAIHarness`** | electron-builder `dmg.title`——**默认值不等于 `productName`，必须显式写**，否则会退回旧名 |
+| Windows **快捷方式名**（桌面 / 开始菜单图标下方的字） | **`NexusAIHarness`** | nsis `shortcutName`——同上，默认值也不跟 `productName` 走 |
 | 应用内品牌（侧栏名称/字标/版本） | 登录服务器的品牌 | 远程 `GET /v1/base/custom`（见 §8e-2） |
 
 ⚠️ **改名会移动 home**：dsh home 在 `app.getPath('userData')` 下，而 userData 由应用名派生。壳里加了 `adoptLegacyHome()`：新 home 不存在而旧名（`NexusAgent Builder`）的那份存在时，把它**移动**过来（同卷 rename），使升级对用户无感；移动失败则保持原地不动（宁可"看起来全新"，也不冒丢数据的风险）。
 
-命名用品牌写法 `NexusAIHarness`（用户选定，与侧栏品牌同一拼写），不是带空格的产品显示名 —— 应用在 Finder / Dock / 开始菜单里仍叫 `NexusAgent Builder`（`productName`），两者独立。同时**不含空格**：GitHub Release 会把资源名里的空格换成点，带空格的旧命名在下载页显示成 `NexusAgent.Builder-…`，与本地不一致、容易让人以为下错了。
+命名统一用品牌写法 `NexusAIHarness`（用户选定，与侧栏品牌同一拼写）。历史上漏改过两处**不在 `productName` 里、但用户直接看得见**的地方：DMG 挂载卷名（`dmg.title`）与 Windows 快捷方式名（`nsis.shortcutName`）——2026-10-14 用户挂载 DMG 时发现卷名还是旧名，才回头补上（v0.1.8 的 mac 包为此在本机重打了一次）。**改名时把这张表从上到下核一遍**：能规整命名的都在这五行里。命名同时**不含空格**：GitHub Release 会把资源名里的空格换成点，带空格的旧命名在下载页显示成 `NexusAgent.Builder-…`，与本地不一致、容易让人以为下错了。
 
 ## 8i. 升级 dsh 基线的核对表（只核对我们依赖的面）
 

@@ -1,4 +1,4 @@
-# NexusAgent Builder — the carrier app
+# NexusAIHarness — the carrier app
 
 A thin Electron shell that ships one self-contained desktop app: **dsh (version
 pinned by `../../upstream.json`) + this repo's NexusAI plugin**, already wired,
@@ -6,11 +6,12 @@ so a user installs one thing and signs in.
 
 ```
 apps/nexusai-desktop/
-  src/main.cjs                 the whole shell (~180 lines, CommonJS, no build step)
-  scripts/prepare-runtime.mjs  builds build/profile (dsh + plugin) for a target
-  scripts/smoke-runtime.mjs    headless check: boots the bundled runtime, waits for the web URL
-  scripts/after-pack.cjs       copies the runtime into the packaged app
-  electron-builder.config.cjs  unsigned dmg / nsis, no auto-update
+  src/main.cjs                     the shell (~660 lines, CommonJS, no build step)
+  scripts/prepare-runtime.mjs      builds build/profile (dsh + plugin) for a target
+  scripts/prepare-primary-runtime.mjs  builds build/runtime/primary-runtime (Node + Python + office libs)
+  scripts/smoke-runtime.mjs        headless check: boots the bundled runtime, waits for the web URL
+  scripts/after-pack.cjs           copies the runtime into the packaged app
+  electron-builder.config.cjs      unsigned dmg / nsis, no auto-update
 ```
 
 ## How it works
@@ -21,9 +22,12 @@ apps/nexusai-desktop/
 ```
 
 1. **Home** — everything lives in `<userData>/dsh-home` (`~/Library/Application
-   Support/NexusAgent Builder/dsh-home` on macOS, `%APPDATA%\NexusAgent
-   Builder\dsh-home` on Windows). `NEXUSAI_DSH_HOME` overrides it, which is how
-   the smoke tests and a second instance stay out of the way.
+   Support/NexusAIHarness/dsh-home` on macOS, `%APPDATA%\NexusAIHarness\dsh-home`
+   on Windows). `NEXUSAI_DSH_HOME` overrides it, which is how
+   the smoke tests and a second instance stay out of the way. The home is derived
+   from the app name, so the shell carries the previous name
+   (`LEGACY_APP_NAME`) and adopts that directory on first launch when the new one
+   does not exist yet — an upgrade is invisible to the user.
 2. **Profile** — the bundle carries `build/profile`, a plain pnpm project:
    `@deepseek-ai/dsh` at `upstream.json`'s version, the two official bundles it
    activates, and this repo's plugin tarball. On first launch (and whenever
@@ -32,8 +36,13 @@ apps/nexusai-desktop/
    hundreds of megabytes. A `node_modules` the app did not create is refused
    rather than clobbered.
 3. **Runtime** — the app's own Electron binary doubles as Node
-   (`ELECTRON_RUN_AS_NODE=1`), so there is no second runtime to ship. dsh is
-   started as `dsh --profile nexusai --no-open`.
+   (`ELECTRON_RUN_AS_NODE=1`), so the host needs no second runtime of its own.
+   dsh is started as `dsh --profile nexusai --no-open`. A *separate* payload
+   (`<resources>/nexusai-runtime/primary-runtime`, built by
+   `scripts/prepare-primary-runtime.mjs`) travels beside it and is handed to dsh
+   as `DSH_BUNDLED_PRIMARY_RUNTIME`: Node + pnpm + Python + the office libraries
+   (python-docx / python-pptx / openpyxl / Pillow / lxml), which is what lets the
+   bundled document skills run offline on a machine that has none of them.
 4. **Ready line** — the shell watches stdout for
    `dsh web: http://127.0.0.1:<port>/?token=…` and opens a centered window on
    exactly that URL. Nothing else is parsed, so a dsh change to that one line is
@@ -156,9 +165,9 @@ intended behaviour and not a bug.
 
 Verified on macOS (arm64): `prepare:runtime` composes the profile with the plugin
 row present, `smoke:runtime` reaches the web URL, the packaged `.app` boots from a
-clean home and opens its window, the DMG mounts with the full runtime inside, the
-sign-in dialog offers itself on a signed-out start, and closing it keeps it
-closed.
+clean home and opens its window, the DMG mounts with the full runtime inside, and
+a signed-out start shows the sign-in launcher without opening any dialog by
+itself.
 
 Verified by CI on every push (see `scripts/ci/`): the DMG's app launches with a
 clean home and materializes its profile; the Windows installer installs silently,
