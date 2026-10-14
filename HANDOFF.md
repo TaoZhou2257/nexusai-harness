@@ -1,49 +1,50 @@
-# HANDOFF — 交接摘要（2026-10-14 · 发行版 0.1.8）
+# HANDOFF — 交接摘要（2026-10-15 · 发行版 0.1.9）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 本次交接（2026-10-14）
+## 本次交接（2026-10-15）
 
-**一句话状态**：载体（carrier）已产品化，「本机出包 + GitHub CI 双平台验收 + GitHub Release」整条链路跑通；当前发行版 **0.1.8**，内置 dsh **0.2.1-alpha.2**，两个平台的安装包已发布。**没有卡住的阻断项**。
+**一句话状态**：源码版本已改为 **0.1.9**（内置 dsh **0.2.1-alpha.2**），tag `v0.1.9` 已按用户要求推到 GitHub，由 CI 打安装包并挂到 Release。上一轮分支 CI（`d2bb13e`，run `38609346599`）已成功。已发布页面上的 Latest 在这轮 release job 完成前仍是 **0.1.8**。
 
-**这一轮（10-13 → 10-14）做完的事**
+**这一轮（10-15）做完的事**
 
-1. **载体成型**（对应用户说的"像 workdsh 那样，方便开发和打包"）：`apps/nexusai-desktop` 是薄 Electron 壳；`upstream.json` 钉死 dsh 的 repo/tag/commit（CI 不检出 submodule，按版本号从 npm 装）；`build/profile` 是本机装好的 pnpm 工程（dsh + 两个官方 bundle + 本插件 tgz），首启只把 `node_modules` 链进 home，不复制几百 MB。详见 §4、§8b。
-2. **CI 双平台 + 验收闸**：`scripts/ci/*` 是唯一真源，workflow 只做「拉代码 → 调脚本 → 传产物」。mac 闸：挂 DMG → 干净 home 启动 → 断言运行时就绪 + profile 含插件行；win 闸：静默安装 → 启动 → 断言运行时就绪 → CDP 断言 client 半挂载 → 静默卸载（另含两个自愈场景）。见 §8c。
-3. **办公技能开箱可用（方案 C）**：包内自带 Node 24.21 + pnpm 11.7 + Python 3.12 + 13 个办公库（python-docx/pptx、openpyxl、Pillow、lxml…）与 office-skills，预置 patch 挂上 `workspace-dependencies` / `skill-office` 两行。**dsh 一行未改。** 见 §8k。
-4. **首启体验**：不弹 dsh 预览说明、不弹 API Key 引导、**不自动弹登录框**（登录完全由用户发起）；侧栏/hero 用远程品牌与版本；首次使用的工作区目录名改为 `nexusai-harness`。见 §8g、§8e-2、§8j。
-5. **dsh 基线 0.2.0-rc.2 → 0.2.1-alpha.2**：唯一代码改动是补一个 client 类型导入（`dsh-api-session-controller/client`）；升级该核什么写在 §8i。
-6. **两处命名残留修复**：`dmg.title`（DMG 挂载卷名）与 `nsis.shortcutName`（Windows 快捷方式名）——**两者的默认值都不跟 `productName` 走**，改名时最易漏。§8h 有"改名要核的五处"表。
-7. **两起事故记录在案**：我误删过打包版的 userData（§12，用户数据丢失，此后先备份再动）；GitHub Actions **私有仓库免费额度打满**导致 release job 起不来（§8b：额度按 mac ×10 / win ×2 计费，我们一轮约 126 计费分钟）。后者已随仓库转 **public**（公共仓库标准 runner 不限量）解决。
+1. **工作区目录不再用链接**（用户认为链接方案不好）。`prepare-runtime` 在 `pnpm install` 之后改安装包里的一行字面量：`paths.join(directory, "deepseek-harness", DEFAULT_WORKSPACE_DIRECTORY)` → `"nexusai-harness"`（`src/workspace-anchor.cjs`）。dsh 源码没改。壳每次启动只做收尾：若 `<文档>/deepseek-harness` 是指向 `nexusai-harness` 的链接就摘掉（unlink，Windows junction 再用 rmdir），真实目录不动。详见 §8j。
+2. **本机看过结果**：`node apps/nexusai-desktop/scripts/verify-workspace-anchor.mjs` 三步全过（改写可重复、旧链接摘掉且目标文件还在、headless Chrome 打开 web UI 后磁盘出现真实 `Documents/nexusai-harness/default-workspace`、没有 `deepseek-harness`）。又用源码壳 `electron .` 起过一次，桌面 `nexusai-latest-demo/Documents` 里同样只有这个真实目录。
+3. **已推 GitHub 并触发 CI**（用户明确要求）：`git push github v1.0`，范围 `4bad92a..d2bb13e`。含两笔：`9f4071d` 两道验收闸补品牌串断言（DMG 挂载卷名、Windows 快捷方式名）；`d2bb13e` 上面第 1 条。**没有推 Codeup `origin`**（仍停在 `4bad92a`）。**没有打 tag。**
+4. 更早一轮（10-13 → 10-14）的载体、办公技能、首启体验、dsh 升级、命名残留，仍有效，见 §8b–§8k。发行版页面上的 0.1.8 安装包是这些改动**之前**打的。
 
 **现在的坐标**
 
 | 项 | 值 |
 |---|---|
-| 发行版 | **0.1.8**（`apps/nexusai-desktop/package.json`） |
+| 已发布安装包 | 页面上的 Latest 在 `v0.1.9` 的 release job 完成前仍是 **0.1.8**。0.1.8 的工作区仍是旧链接做法，Windows 快捷方式名仍是旧名 |
+| 源码版本号 | **0.1.9**（`apps/nexusai-desktop/package.json`） |
 | 内置 dsh | **0.2.1-alpha.2**（`upstream.json` 的 version/tag/commit 三者必须一致） |
-| 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
-| 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（`v1.0` 同步，无流水线） |
-| 分支 / 提交 | `v1.0`；**已推送到 GitHub 的末笔是 `4bad92a`**；其后还有未推送的本地提交（本文档重写 + 两道 CI 闸增强） |
-| Release | `v0.1.8`（Latest）：`NexusAIHarness-0.1.8-arm64.dmg`、`NexusAIHarness-Setup-0.1.8-x64.exe` |
+| 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `src/workspace-anchor.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
+| 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，**落后 GitHub 两笔**） |
+| 分支 / 提交 | `v1.0`；发版提交在 `d2bb13e` 之后，tag **`v0.1.9`** |
+| 上一轮 CI | https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38609346599 已成功（12 分 14 秒，分支推送，无 Release） |
+| 这一轮 CI | tag `v0.1.9`：双平台构建 + 验收闸，通过后 release job 把 dmg/exe 挂到 Release |
 
 **已验证 / 未验证**
 
-- 已验证：静态四件套（tsc / build / `check:dsh`=0.2.1-alpha.2 / 66 例 + 16 例）；本机 `prepare:runtime` 组合 + `smoke:runtime`；**打包版**（源码与 DMG 各一次）首启无预览说明/无 API Key 引导/无登录框、品牌与版本来自远程、技能列表含办公技能、`launcher` 标记在；mac DMG 过 `check-mac-app.sh`；包内 python `import docx,pptx,openpyxl,PIL,lxml` 全过；win exe 拆包确认 node+python+office-skills 齐全；CI 双平台各轮全绿（含 tag 那轮的 mac 8m43s / win 18m20s）。
-- 未验证：**Windows 真机上让 agent 真写一个 docx**（需要一个配好模型的账号，属人工操作）；v0.1.8 的 Windows **快捷方式名仍是旧名**（那个 exe 是修复前 CI 打的，下一次构建才生效）；macOS 的「仍要打开」放行路径自 0.1.2 后未再人工确认。
+- 已验证（本机，10-15）：`scripts/verify-workspace-anchor.mjs`；源码壳首启在临时「文档」目录建出真实 `nexusai-harness/default-workspace`，`storages/workspace.json` 登记同一路径，无 `deepseek-harness`。更早的打包版首启、办公库 import、v0.1.8 双平台 CI 全绿，仍算数，但那些包不含这次目录改动。
+- 未验证：`v0.1.9` 这轮 CI 的双平台闸和 Release（进行中）；新 Windows 安装包的快捷方式名（要等这轮产物）；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。
 
 **下一步（建议顺序）**
 
-1. 想拿到"短名也正确"的 Windows 安装包：下次构建即可（CI 已恢复）；或直接打 `v0.1.9` 发版。
-2. Windows 真机跑一次办公技能（用户侧，需要模型）。
-3. 服务端轮换那个**曾公开过**的 AES key（仓库一度 public，键值进过公开的 git 历史；轮换后别忘了把新值同步到本机 `.env` 与 GitHub Secrets）。
-4. 其余待办见 §11。
+1. 等 `v0.1.9` 的 CI。mac/win 都绿之后，release job 会把安装包挂到 GitHub Release。
+2. 若要公司仓库跟上：`git push origin v1.0` 与 tag（只同步，不构建）。这次只推了 GitHub。
+3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
+4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
 
-**接手须知（最容易忽略的三条）**
+**接手须知（最容易忽略的几条）**
 
-- **推送前先问用户**：`git push github` 会触发两个平台的完整构建 + 验收闸（AGENTS.md、§7-D5）；本机提交与 `scripts/ci/*` 本地跑不受限。
+- **推送前先问用户**：`git push github` 会触发两个平台的完整构建 + 验收闸（AGENTS.md、§7-D5）。本机提交与 `scripts/ci/*` 本地跑不受限。一次授权只对应一次推送。
 - **client 改动必须重启桌面端，禁止 `Page.reload`**；同时只能跑一个实例（§7-A3）。
 - **取 GitHub artifact 用并行分块**（`gh run download` 单连接会卡死，§7-D4）。
+- 桌面上可能还留着演示目录 `nexusai-workspace-demo`、`nexusai-latest-demo`，以及一个从源码启动、home 指向后者的 NexusAIHarness 窗口。看完就关窗口、删这两个文件夹。不要动用户真实的「文档」目录。
+- 升级 dsh 时，§8i 第 6 条（工作区目录那行字面量）必须还在；`prepare-runtime` 找不到或出现多次会直接失败。
 
 ## 0. 这是什么
 
