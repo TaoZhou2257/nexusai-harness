@@ -229,6 +229,73 @@ function removeLink(path) {
   }
 }
 
+/**
+ * Give the first-use workspace our own name instead of dsh's.
+ *
+ * dsh builds it as `<system Documents>/deepseek-harness/default-workspace` — that
+ * middle segment is a literal in dsh's source with no config or env hook, so it
+ * cannot be renamed there. It can be renamed *here* without touching dsh:
+ * dsh creates the directory and then canonicalizes it with `realpath()`, so if
+ * `…/deepseek-harness` is a link to `…/nexusai-harness`, the stored and displayed
+ * workspace path reads `…/nexusai-harness/default-workspace`. The two rules that
+ * must stay are untouched: the parent is still the account's Documents
+ * directory, and the leaf is still `default-workspace` (whose basename dsh turns
+ * into the localized "默认工作区" title).
+ *
+ * Only runs on a first launch (no workspace store yet) and only when the literal
+ * path is absent — an existing real directory is never touched, and a failure is
+ * logged without blocking startup.
+ */
+function alignWorkspaceAnchor(home) {
+  const store = join(home, 'storages', 'workspace.json')
+  if (existsSync(store)) return
+  const documents = documentsDirectory()
+  if (documents === '') return
+  const wanted = join(documents, 'nexusai-harness')
+  const literal = join(documents, 'deepseek-harness')
+  if (lstatSync(literal, { throwIfNoEntry: false }) !== undefined) {
+    logLine(`workspace anchor: ${literal} already exists; leaving the workspace path alone`)
+    return
+  }
+  try {
+    mkdirSync(wanted, { recursive: true })
+    symlinkSync(wanted, literal, process.platform === 'win32' ? 'junction' : 'dir')
+    logLine(`workspace anchor: ${literal} → ${wanted} (dsh stores the resolved path)`)
+  } catch (error) {
+    logLine(`workspace anchor: could not link ${literal}: ${error && error.message ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * The account's Documents directory, asked of the OS the same way dsh asks.
+ * `NEXUSAI_DOCUMENTS_DIR` overrides it (the checks use it, and anyone who wants
+ * the workspace somewhere else can too).
+ */
+function documentsDirectory() {
+  const overridden = (process.env.NEXUSAI_DOCUMENTS_DIR ?? '').trim()
+  if (overridden !== '') return overridden
+  const ask = (command, args) => {
+    try {
+      const result = spawnSync(command, args, { encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] })
+      return (result.stdout ?? '').trim().replace(/[\r\n]+$/u, '')
+    } catch {
+      return ''
+    }
+  }
+  if (process.platform === 'darwin') {
+    return ask('osascript', ['-e', 'POSIX path of (path to documents folder from user domain without folder creation)'])
+  }
+  if (process.platform === 'win32') {
+    return ask('powershell.exe', [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+      '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); '
+      + '[Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments, '
+      + '[Environment+SpecialFolderOption]::DoNotVerify)',
+    ])
+  }
+  return ask('xdg-user-dir', ['DOCUMENTS'])
+}
+
 /** A file's trimmed text, or undefined when it is absent. */
 function readTextIfExists(path) {
   try {
@@ -568,6 +635,8 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     const home = adoptLegacyHome(runtimeHome())
     openLog(home)
+    // Before dsh runs for the first time: point the first-use workspace at our name.
+    alignWorkspaceAnchor(home)
     const chosen = resolvePlacement(home)
     windowPlacement = ['bottom', 'fill'].includes(chosen.value) ? chosen.value : 'center'
     logLine(`window placement: ${windowPlacement} (from ${chosen.from})`)

@@ -477,6 +477,22 @@ dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交�
 
 **这次（→ 0.2.1-alpha.2）的实测结果**：静态层 tsc/build/check:dsh/两个套件全绿；运行层 smoke + 打包 + 挂 DMG 启动通过；打包版逐项确认 —— 侧栏品牌 `NexusAgent Builder ｜ v1.5.0.3`、hero 标题「探索 AGI 之无限可能」+ 徽章 `v1.5.0.3` + 我们的字标、语言 `zh-CN`、无预览说明、无 API Key 引导、无登录框、启动器标记在、技能「本地 31」。唯一需要改我们代码的是第 4 步里那个 `sessions` 类型导入。
 
+## 8j. 首次使用的工作区目录名（deepseek-harness → nexusai-harness）
+
+dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness/default-workspace`**：
+
+- 前段：由 dsh 问系统得到（macOS `osascript`、Windows `GetFolderPath(MyDocuments)`、Linux `xdg-user-dir`）；
+- **中段 `deepseek-harness`：`packages/api/workspace-controller/src/default-directory.ts:77` 里的字面量**，既不是配置也没有环境变量 —— 在 dsh 里改不了；
+- 叶子 `default-workspace`：`DEFAULT_WORKSPACE_DIRECTORY` 常量，且它的 basename 会被当作**自动标题**（显示为本地化的「默认工作区」）。
+
+**换成 nexusai-harness 的做法（不改 dsh）**：dsh 建完目录会做 `realpathNormalize()`（`packages/workspace/workspace/src/index.ts:268`，实现就是 `realpath`），所以只要 **`<文档>/deepseek-harness` 是指向 `<文档>/nexusai-harness` 的链接**，dsh 照样去建 `…/deepseek-harness/default-workspace`，但**登记与显示的都是 `…/nexusai-harness/default-workspace`**。前段与叶子的规则都不变。
+
+壳里新增 `alignWorkspaceAnchor()`：**首次启动**（`storages/workspace.json` 尚不存在）时解析系统文档目录、建 `<文档>/nexusai-harness` 并做上述链接（Windows 用 junction，不需要管理员）；**若 `<文档>/deepseek-harness` 已存在（真实目录）就跳过**，绝不覆盖用户的东西。`NEXUSAI_DOCUMENTS_DIR` 可覆盖文档目录（测试与自定义用）。
+
+**端到端实测**（临时文档目录 + dsh 的 `documentsDirectory` 覆盖）：dsh 登记 `path = …/nexusai-harness/default-workspace`、`title = default-workspace`，链接保持不动 —— 机制成立。
+
+**已装机器想迁移**（工作区已登记在旧路径上，`initializeDefault` 见已有登记就跳过）：需要一次性处理 —— 把 `<文档>/deepseek-harness` 移走（或删掉其中不再需要的 `default-workspace`）、让链接建起来，并清掉该 home 的 `storages/workspace.json` 让 dsh 重新创建默认工作区（会话数据不受影响）。**这一步动的是用户的目录，所以留给用户/经确认后再做**，壳不会自动迁移。
+
 ## 9. 换机器 / 新环境部署
 
 - **带源码（开发用）**：克隆 dsh（`git checkout dsh-v0.2.0-rc.2`）→ `pnpm install` → 跑一次 `start:desktop` 生成 `.desktop-build` → 克隆本插件 → `node scripts/dev/install-into-dsh.mjs` → 启动 → 登录
@@ -520,6 +536,7 @@ dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交�
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-14 | **首次使用的工作区目录名改为 `nexusai-harness`**（用户要求；前段=系统文档目录、叶子=`default-workspace` 两条规则保持不变）：中段在 dsh 里是写死的字面量，故改由壳在首次启动时把 `<文档>/deepseek-harness` 做成指向 `<文档>/nexusai-harness` 的链接 —— dsh 建目录后会 `realpath()`，登记与显示因此都是 `…/nexusai-harness/default-workspace`。**未改 dsh 一行** | 临时文档目录 + dsh 的 `documentsDirectory` 覆盖下端到端实测：登记 `path = …/nexusai-harness/default-workspace`、`title = default-workspace`（仍是自动标题），链接未被破坏；`<文档>/deepseek-harness` 已存在时脚本跳过（不覆盖真实目录）。详见 §8j |
 | 10-14 | **dsh 基线 0.2.0-rc.2 → 0.2.1-alpha.2**：`upstream.json`（version/tag/**解引用后**的 commit）、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/*` devDeps）、submodule、lockfile 同步；唯一代码改动是补 `@deepseek-ai/dsh-api-session-controller/client` 的类型导入（`ctx.sessions` 的类型声明换了持有包）。新增 §8i「升级 dsh 的核对表」（5 类依赖面 + 操作顺序 + 本次实测结果） | 静态：tsc / build / check:dsh(0.2.1-alpha.2) / 66 例 / 16 例全绿。运行：preview notice 仍能读出、`--dump-config` 组合成功、`smoke:runtime` 通过、打包 + `check-mac-app.sh` 通过。打包版逐项：品牌/hero 标题+徽章+字标、`zh-CN`、无预览说明、无 API Key 引导、无登录框、`launcher=1`、技能本地 31 |
 | 10-14 | **修"重建链接反而删掉应用运行时"**（现场 Windows 报 `bundled runtime is incomplete … missing after linking`）：上一版把清理旧链接写成了 `rmSync(recursive:true)`，在 Windows 上可能顺着 junction 递归进入目标，把 `resources\nexusai-runtime\profile\node_modules`（应用自带运行时）删空。改为 `removeLink()`：链接只做**非递归**删除，真实目录（且标记属于本应用）才递归；并把报错改成能区分"链接坏了"与"包内运行时缺文件（需重装）" | 本机（macOS）用"home 链接指向 bundle 自身 + 旧标记"复现该路径：日志 `runtime link needs rebuilding …` → `runtime ready`，且 **bundle 完好（CLI 在、182 个顶层条目）**；CI 新增 scenario 3 在真 Windows 上断言同一点（源运行时不得被删） |
 | 10-14 | **补登录 shell 的 PATH**（承接"还有没有别的丢失"的自查）：GUI 启动的进程只有 `/usr/bin:/bin:/usr/sbin:/sbin`，dsh 的桌面端会读登录 shell 环境，我们没做 → 用户装的 node/python3/git/ripgrep 对 agent 不可见。新增 `enrichedPath()`（多候选 shell + 5s 超时 + 去重合并，Windows 跳过） | 以 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin` 启动：日志出现 `PATH from /bin/zsh: …`，子进程 PATH 里 node/python3/git/rg **全部可解析**（修复前只有系统四个目录） |
