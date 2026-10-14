@@ -44,9 +44,15 @@ const version = readFileSync(join(BUILD, 'runtime-version.txt'), 'utf8').trim()
 console.log(`smoke: bundling ${version}`)
 console.log(`smoke: starting the bundled dsh on ${home}`)
 
+// The profile's Office rows resolve their payload from DSH_BUNDLED_PRIMARY_RUNTIME
+// (`!!js` at load time), so the smoke must hand dsh the same environment the
+// shell does — otherwise those rows fail to validate and the smoke reports a
+// runtime that would never start in the app either.
+const primaryRuntime = join(PROFILE, '..', 'runtime', 'primary-runtime')
 const child = spawn(process.execPath, [cli, '--profile', PROFILE_NAME, '--no-open'], {
   env: {
     ...process.env,
+    ...(existsSync(primaryRuntime) ? { DSH_BUNDLED_PRIMARY_RUNTIME: resolve(primaryRuntime) } : {}),
     ELECTRON_RUN_AS_NODE: process.env.NEXUSAI_SMOKE_ELECTRON_RUN_AS_NODE ?? process.env.ELECTRON_RUN_AS_NODE,
     DSH_HOME: home,
     DSH_AGENTS_HOME: join(home, 'agents'),
