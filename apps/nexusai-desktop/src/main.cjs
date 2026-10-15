@@ -420,6 +420,15 @@ function resolvePlacement(home) {
   return { value: 'center', from: 'default' }
 }
 
+/**
+ * Title shown in the main window's title bar.
+ * macOS already shows the app name in the menu bar, and a single-window app
+ * leaves this strip empty. Windows has no menu-bar name, so the title stays.
+ */
+function mainWindowTitle() {
+  return process.platform === 'darwin' ? '' : APP_NAME
+}
+
 function openWindow(url) {
   const { x, y, width, height, placement, workArea } = windowBounds()
   logLine(`window: ${placement} ${width}x${height} at ${x},${y} (work area ${workArea.x},${workArea.y} ${workArea.width}x${workArea.height})`)
@@ -430,12 +439,12 @@ function openWindow(url) {
     height,
     minWidth: 960,
     minHeight: 640,
-    title: APP_NAME,
+    title: mainWindowTitle(),
     backgroundColor: '#111113',
     show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   })
-  window.on('page-title-updated', event => { event.preventDefault(); window.setTitle(APP_NAME) })
+  window.on('page-title-updated', event => { event.preventDefault(); window.setTitle(mainWindowTitle()) })
   // A keyboard reload would drop the page dsh's host is attached to, so those
   // keys are swallowed before Chromium can act on them.
   window.webContents.on('before-input-event', (event, input) => {

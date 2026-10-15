@@ -3,10 +3,11 @@
  * slot (shadowing the built-in account menu at a lower priority). The trigger
  * mirrors the built-in account button — avatar disc plus label, collapsing to
  * a rail disc when the sidebar hides labels — and opens a `Menu side="top"`
- * with the NexusAI actions. Signed out, the menu offers sign-in, which opens
- * the captcha dialog. Sign-out asks first, reporting whether tasks are running
- * (the built-in account menu's own confirmation, kept because signing out
- * drops the tools and MCP rows those tasks may be using).
+ * with the NexusAI actions. The settings gear sits on the same row, at the
+ * right edge, so settings open without going through sign-in. Signed out, the
+ * account control opens the captcha dialog. Sign-out asks first, reporting
+ * whether tasks are running (the built-in account menu's own confirmation,
+ * kept because signing out drops the tools and MCP rows those tasks may be using).
  */
 import { useState, type ReactNode } from 'react'
 import { Button, IconChevronDownOutlineRegular, IconLoadingOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -161,10 +162,28 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
     </button>
   )
 
+  const settingsGear = (
+    <button
+      type="button"
+      className="nexusai-settings-gear"
+      data-nexusai="settings"
+      aria-label={resolve('openSettings')}
+      title={resolve('openSettings')}
+      aria-keyshortcuts={settingsShortcut?.aria}
+      onClick={() => { openSettings?.() }}
+    >
+      <IconSettingsOutlineMedium size={16} />
+    </button>
+  )
+
   if (!signedIn) {
     return (
       <>
-        {trigger}
+        <style>{ROW_CSS}</style>
+        <div className="nexusai-account-row" data-collapsed={wide === true ? undefined : ''}>
+          {trigger}
+          {settingsGear}
+        </div>
         {error !== '' && wide === true && <div style={errorStyle} role="alert">{error}</div>}
         {error === '' && notice !== '' && wide === true && <div style={errorStyle} role="alert">{notice}</div>}
         {dialogOpen && auth !== undefined && (
@@ -173,7 +192,6 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
             getView={() => snapshot?.view}
             t={resolve}
             close={() => { setDialogOpen(false) }}
-            openSettings={openSettings}
           />
         )}
       </>
@@ -182,13 +200,16 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
 
   return (
     <>
-      <Menu
-        open={menuOpen}
-        side="top"
-        portal
-        autoFocus
-        anchor={trigger}
-        items={[
+      <style>{ROW_CSS}</style>
+      <div className="nexusai-account-row" data-collapsed={wide === true ? undefined : ''}>
+        <Menu
+          className="nexusai-launcher-menu"
+          open={menuOpen}
+          side="top"
+          portal
+          autoFocus
+          anchor={trigger}
+          items={[
           {
             id: 'openSettings',
             label: resolve('openSettings'),
@@ -202,8 +223,10 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
           if (id === 'openSettings') openSettings?.()
           if (id === 'logout') requestSignOut()
         }}
-        onClose={() => { setMenuOpen(false) }}
-      />
+          onClose={() => { setMenuOpen(false) }}
+        />
+        {settingsGear}
+      </div>
       {signOutImpact !== undefined && (
         <Modal
           open
@@ -254,11 +277,38 @@ const CONFIRM_CSS = `
 @media (prefers-reduced-motion: reduce) { .nexusai-spinner { animation: none; } }
 `
 
+const ROW_CSS = `
+.nexusai-account-row { display: flex; align-items: center; width: 100%; min-width: 0; }
+.nexusai-account-row > button[data-nexusai="launcher"],
+.nexusai-launcher-menu { flex: none; width: auto; max-width: calc(100% - 32px); }
+.nexusai-launcher-menu { display: flex; min-width: 0; }
+.nexusai-launcher-menu > button[data-nexusai="launcher"] { width: auto; max-width: 100%; }
+.nexusai-settings-gear {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.nexusai-settings-gear:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.nexusai-account-row[data-collapsed] { flex-direction: column; width: auto; }
+.nexusai-account-row[data-collapsed] .nexusai-settings-gear { margin-left: 0; }
+`
+
 const triggerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
-  width: '100%',
+  width: 'auto',
+  maxWidth: '100%',
   padding: 6,
   border: 'none',
   borderRadius: 12,

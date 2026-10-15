@@ -22,12 +22,6 @@ export interface NexusaiSignInDialogProps {
   readonly getView: () => AuthViewFace | undefined
   readonly t: (key: NexusaiLocaleKey) => string
   readonly close: () => void
-  /**
-   * Open the settings panel. While signed out the launcher has no menu, so
-   * this dialog is the only settings entry a fresh user has — it must offer
-   * the way out (e.g. configuring a model API key before signing in).
-   */
-  readonly openSettings?: () => void
 }
 
 /**
@@ -44,7 +38,6 @@ const DIALOG_CSS = `
 .nexusai-version { margin: 14px 0 0; font-size: 12px; line-height: 17px; text-align: center;
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); }
 .nexusai-note { margin: 0 0 14px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
-.nexusai-link { border: 0; padding: 0 0 0 6px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
 .nexusai-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .nexusai-field > span { font-size: 13px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
 .nexusai-field input { width: 100%; box-sizing: border-box; }
@@ -52,10 +45,11 @@ const DIALOG_CSS = `
 .nexusai-server-row > :first-child { flex: 1; min-width: 0; }
 .nexusai-server-row input { width: 100%; box-sizing: border-box; padding-right: 60px; }
 .nexusai-server-row > button { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
-.nexusai-captcha-row { display: flex; align-items: stretch; gap: 8px; margin-bottom: 12px; }
+.nexusai-captcha-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .nexusai-captcha-row .nexusai-captcha-input { flex: 1; min-width: 0; }
 .nexusai-captcha-row .nexusai-captcha-input input { height: 48px; }
-.nexusai-captcha-img { flex: none; width: 100px; height: 48px; border-radius: 8px; border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.3)); background: #fff; cursor: pointer; object-fit: fill; }
+/* Server image is 80×40. Match that ratio so the glyphs are not stretched. */
+.nexusai-captcha-img { flex: none; width: 80px; height: 40px; border-radius: 6px; border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.3)); background: #fff; cursor: pointer; object-fit: contain; }
 .nexusai-captcha-loading { display: flex; align-items: center; justify-content: center; color: var(--dsw-alias-label-secondary); }
 .nexusai-alert { display: flex; flex-shrink: 0; align-items: flex-start; gap: 6px; margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
 .nexusai-alert.is-error { color: var(--dsw-alias-state-error-primary, #d33); background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #d33) 10%, transparent); }
@@ -72,7 +66,7 @@ const DIALOG_CSS = `
 `
 
 /** The NexusAI captcha sign-in dialog. */
-export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: NexusaiSignInDialogProps): ReactNode {
+export function NexusaiSignInDialog({ auth, getView, t, close }: NexusaiSignInDialogProps): ReactNode {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [captchaCode, setCaptchaCode] = useState('')
@@ -325,14 +319,7 @@ export function NexusaiSignInDialog({ auth, getView, t, close, openSettings }: N
           {welcome !== '' && <p className="nexusai-welcome">{welcome}</p>}
         </div>
       )}
-      <p className="nexusai-note">
-        {dialogHint}
-        {openSettings !== undefined && (
-          <button type="button" className="nexusai-link" onClick={() => { close(); openSettings() }}>
-            {t('openSettings')}
-          </button>
-        )}
-      </p>
+      <p className="nexusai-note">{dialogHint}</p>
       <div className="nexusai-field">
         <span>{t('server')}</span>
         <div className="nexusai-server-row">
