@@ -1,10 +1,10 @@
-# HANDOFF — 交接摘要（2026-10-15 · 发行版 0.1.10）
+# HANDOFF — 交接摘要（2026-10-16 · 发行版 0.1.11）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 本次交接（2026-10-15）
+## 本次交接（2026-10-16）
 
-**一句话状态**：源码版本 **0.1.10**（内置 dsh **0.2.1-alpha.2**）。tag `v0.1.10` 按用户要求推到 GitHub，由 CI 打安装包并挂到 Release。页面上的 Latest 在这轮 release job 完成前仍是 **0.1.9**。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。
+**一句话状态**：源码版本 **0.1.11**（内置 dsh **0.2.1-alpha.2**）。tag `v0.1.11` 按用户要求推到 GitHub，由 CI 打安装包并挂到 Release。页面上的 Latest 在这轮 release job 完成前仍是 **0.1.10**。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。
 
 **这一轮（10-15）做完的事**
 
@@ -12,19 +12,22 @@
 2. **本机看过**：`node apps/nexusai-desktop/scripts/verify-workspace-anchor.mjs` 三步全过。随后用开发模式 `electron .`（源码 **0.1.9**，日志 `NexusAIHarness 0.1.9 start`）对一份新 home 起过一次：登记路径是 `/Users/toby/Documents/nexusai-harness/default-workspace`，该目录是真实目录。今早 0.1.8 留下的 `文稿/deepseek-harness` 是真实目录，日志写了 `leaving it`，没有删。
 3. **v0.1.9 已发**（用户明确要求）：提交 `d9c88de`，tag `v0.1.9`。tag 那轮 CI 成功，Release 已挂上两个安装包。同一次推送还跑了分支 `v1.0` 的构建（不发 Release），也成功。**没有推 Codeup `origin`**，它仍停在 `4bad92a`，落后三笔（`9f4071d`、`d2bb13e`、`d9c88de`）。
 4. 更早的载体、办公技能、首启体验、dsh 升级、命名残留仍有效，见 §8b–§8k。
-5. **设置里两处官方入口已从产品面拿掉**，打进 **0.1.10**。通用设置标题栏的「打开配置文件」每个分页都看得到，打包时把宿主 `hasDocument` 改成 `false`，按钮不再挂上。`session-log-deepseek` 与 `ui-settings-session-log` 在 profile patch 里 `disabled: true`，开关和向官方 API 附带会话日志的行为一起停。详见 §8g。**0.1.9** 安装包不含这次改动。含这次改动的分支 CI（`e02a9a2`，run `38678562921`）已成功。
+5. **设置里两处官方入口已从产品面拿掉**，打进 **0.1.10**。通用设置标题栏的「打开配置文件」每个分页都看得到，打包时把宿主 `hasDocument` 改成 `false`，按钮不再挂上。`session-log-deepseek` 与 `ui-settings-session-log` 在 profile patch 里 `disabled: true`，开关和向官方 API 附带会话日志的行为一起停。详见 §8g。**0.1.9** 安装包不含这次改动。`v0.1.10` 的 tag CI 已成功，Release 已挂上 dmg/exe：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.10
+6. **macOS 主窗口标题栏不再写应用名**（`main.cjs` 的 `mainWindowTitle()`，仅 darwin 留空），打进 **0.1.11**。菜单栏仍是 NexusAIHarness。Windows 标题栏保持应用名。
+7. **侧栏底部设置齿轮与登录/账号同一行、靠右**（`client/NexusaiLauncher.tsx`），打进 **0.1.11**。未登录也能直接打开设置。登录弹窗里的「打开设置」已去掉。登录按钮只包住头像和文字，中间空白点了不会登录；齿轮靠右。
+8. **登录验证码按原图比例显示**（`client/NexusaiSignInDialog.tsx`），打进 **0.1.11**。服务端图是 80×40，之前被拉成 100×48（`object-fit: fill`）。现为 80×40、`object-fit: contain`，与输入框垂直居中。
 
 **现在的坐标**
 
 | 项 | 值 |
 |---|---|
-| 已发布安装包 | 页面上的 Latest 在 `v0.1.10` 的 release job 完成前仍是 **0.1.9**：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.9 |
-| 源码版本号 | **0.1.10**（`apps/nexusai-desktop/package.json`） |
+| 已发布安装包 | 页面上的 Latest 在 `v0.1.11` 的 release job 完成前仍是 **0.1.10**：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.10 |
+| 源码版本号 | **0.1.11**（`apps/nexusai-desktop/package.json`） |
 | 内置 dsh | **0.2.1-alpha.2**（`upstream.json` 的 version/tag/commit 三者必须一致）。上游已有 **0.2.1-alpha.3**（10-14），官方安装包能力是原有的，alpha.3 加的是 CI 发布到 COS；`download.deepseek.com` 上现挂的 dmg/exe 仍是 9 月 29 日那份。**我们没有升级。** |
 | 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `src/workspace-anchor.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
 | 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，仍停在 `4bad92a`） |
-| 分支 / 提交 | `v1.0`，tag **`v0.1.10`**。设置改动在 `e02a9a2`，版本号在其后的发版提交 |
-| 发版 CI | `v0.1.10` 这一轮：双平台构建 + 验收闸，通过后 release job 把 dmg/exe 挂到 Release。上一轮分支（设置改动，不发 Release）：https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38678562921 已成功 |
+| 分支 / 提交 | `v1.0`，tag **`v0.1.11`**。界面改动在其前一笔，版本号在发版提交 |
+| 发版 CI | `v0.1.11` 这一轮：双平台构建 + 验收闸，通过后 release job 把 dmg/exe 挂到 Release。上一轮 tag（0.1.10，已发 Release）：https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38685011419 已成功 |
 
 **已验证 / 未验证**
 
@@ -33,8 +36,8 @@
 
 **下一步（建议顺序）**
 
-1. 等 `v0.1.10` 的 CI。mac/win 都绿之后，release job 会把安装包挂到 GitHub Release。
-2. 若要公司仓库跟上：`git push origin v1.0 v0.1.10`（只同步，不构建）。先问用户。`origin` 仍停在 `4bad92a`。
+1. 等 `v0.1.11` 的 CI。mac/win 都绿之后，release job 会把安装包挂到 GitHub Release。Latest 在那之前仍是 0.1.10。
+2. 若要公司仓库跟上：`git push origin v1.0 v0.1.11`（只同步，不构建）。先问用户。`origin` 仍停在 `4bad92a`。
 3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
 4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
 
