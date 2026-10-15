@@ -4,9 +4,9 @@
 
 ## 本次交接（2026-10-16）
 
-**一句话状态**：源码版本 **0.1.11**（内置 dsh **0.2.1-alpha.2**）。tag `v0.1.11` 按用户要求推到 GitHub，由 CI 打安装包并挂到 Release。页面上的 Latest 在这轮 release job 完成前仍是 **0.1.10**。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。
+**一句话状态**：源码版本 **0.1.11**（内置 dsh **0.2.1-alpha.2**）已发布。tag `v0.1.11` 的 CI 成功，Release 已挂上 dmg/exe，页面上的 Latest 是 **0.1.11**。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。
 
-**这一轮（10-15）做完的事**
+**这一轮（10-15 至 10-16）做完的事**
 
 1. **工作区目录不再用链接**（用户认为链接方案不好）。`prepare-runtime` 在 `pnpm install` 之后改安装包里的一行字面量：`paths.join(directory, "deepseek-harness", DEFAULT_WORKSPACE_DIRECTORY)` → `"nexusai-harness"`（`src/workspace-anchor.cjs`）。dsh 源码没改。壳每次启动只做收尾：若 `<文档>/deepseek-harness` 是指向 `nexusai-harness` 的链接就摘掉；真实目录不动。详见 §8j。
 2. **本机看过**：`node apps/nexusai-desktop/scripts/verify-workspace-anchor.mjs` 三步全过。随后用开发模式 `electron .`（源码 **0.1.9**，日志 `NexusAIHarness 0.1.9 start`）对一份新 home 起过一次：登记路径是 `/Users/toby/Documents/nexusai-harness/default-workspace`，该目录是真实目录。今早 0.1.8 留下的 `文稿/deepseek-harness` 是真实目录，日志写了 `leaving it`，没有删。
@@ -21,23 +21,23 @@
 
 | 项 | 值 |
 |---|---|
-| 已发布安装包 | 页面上的 Latest 在 `v0.1.11` 的 release job 完成前仍是 **0.1.10**：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.10 |
+| 已发布安装包 | **0.1.11**（Latest）：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.11 （`NexusAIHarness-0.1.11-arm64.dmg`、`NexusAIHarness-Setup-0.1.11-x64.exe`） |
 | 源码版本号 | **0.1.11**（`apps/nexusai-desktop/package.json`） |
 | 内置 dsh | **0.2.1-alpha.2**（`upstream.json` 的 version/tag/commit 三者必须一致）。上游已有 **0.2.1-alpha.3**（10-14），官方安装包能力是原有的，alpha.3 加的是 CI 发布到 COS；`download.deepseek.com` 上现挂的 dmg/exe 仍是 9 月 29 日那份。**我们没有升级。** |
 | 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `src/workspace-anchor.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
 | 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，仍停在 `4bad92a`） |
-| 分支 / 提交 | `v1.0`，tag **`v0.1.11`**。界面改动在其前一笔，版本号在发版提交 |
-| 发版 CI | `v0.1.11` 这一轮：双平台构建 + 验收闸，通过后 release job 把 dmg/exe 挂到 Release。上一轮 tag（0.1.10，已发 Release）：https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38685011419 已成功 |
+| 分支 / 提交 | `v1.0`，tag **`v0.1.11`**。界面改动 `f2b26ac`，版本号 `755b84e` |
+| 发版 CI | tag（发 Release）https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38771935688 成功（16m33s）。同一次推送的分支构建（不发 Release）https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38771936313 成功（13m35s） |
 
 **已验证 / 未验证**
 
-- 已验证：`verify-workspace-anchor.mjs`；开发模式 0.1.9 在真实「文稿」目录旁建出 `nexusai-harness/default-workspace`，旧的真实目录 `deepseek-harness` 还在。`v0.1.9` 双平台 CI 全绿（含 DMG 卷名与 Windows 快捷方式名断言），Release 资产已挂上。
+- 已验证：`verify-workspace-anchor.mjs`；开发模式看过 macOS 空标题栏、侧栏设置齿轮、登录按钮不再铺满整行、验证码按 80×40 显示。`v0.1.11` 双平台 CI 全绿，Release 已挂上 dmg/exe。本机已安装 home 的 `workspace.json` 登记的是 `/Users/toby/Documents/nexusai-harness/default-workspace`。
 - 未验证：没有人在 Windows 桌面上点开过 0.1.9 的快捷方式；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。本机 `apps/nexusai-desktop/dist/` 里的 `NexusAIHarness-0.1.8-arm64.dmg` 和 `dist/mac-arm64/NexusAIHarness.app` 仍是 **0.1.8**（今早 8:14 打开的就是这份，所以当时还显示旧版本）。
 
 **下一步（建议顺序）**
 
-1. 等 `v0.1.11` 的 CI。mac/win 都绿之后，release job 会把安装包挂到 GitHub Release。Latest 在那之前仍是 0.1.10。
-2. 若要公司仓库跟上：`git push origin v1.0 v0.1.11`（只同步，不构建）。先问用户。`origin` 仍停在 `4bad92a`。
+1. 0.1.11 已发布，不用再等这轮 CI。
+2. 若要公司仓库跟上：`git push origin v1.0 v0.1.11`（只同步，不构建）。先问用户。`origin` 仍停在 `4bad92a`。这次交接只推 GitHub `v1.0`，不推 tag、不推 Codeup。
 3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
 4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
 
@@ -46,7 +46,7 @@
 - **推送前先问用户**：`git push github` 会触发两个平台的完整构建 + 验收闸（AGENTS.md、§7-D5）。本机提交与 `scripts/ci/*` 本地跑不受限。一次授权只对应一次推送。
 - **client 改动必须重启桌面端，禁止 `Page.reload`**；同时只能跑一个实例（§7-A3）。
 - **取 GitHub artifact 用并行分块**（`gh run download` 单连接会卡死，§7-D4）。
-- 本机还留着：`桌面/nexusai-dev-0.1.9`（开发模式那次的 home，窗口已关）、`文稿/nexusai-harness`（这次新建的真实工作区）、`文稿/deepseek-harness`（0.1.8 留下的真实目录，不要删）。看完演示可以删桌面上的 home；两个文稿目录里如果已有用户文件，先确认再动。
+- 本机还留着：`桌面/nexusai-dev-0.1.9`（开发模式那次的 home，窗口已关）、`文稿/nexusai-harness`（真实工作区，已安装 home 登记的就是它）。用户要求去掉的空目录 `文稿/deepseek-harness` 已经不在。看完演示可以删桌面上的 home；`文稿/nexusai-harness` 里如果已有用户文件，先确认再动。
 - 已登记过的工作区不会被改名。要再看「首次建成 nexusai-harness」，必须用一份还没有 `storages/workspace.json` 的 home。
 - 升级 dsh 时，§8i 第 6 条（工作区目录那行字面量）必须还在；`prepare-runtime` 找不到或出现多次会直接失败。
 
