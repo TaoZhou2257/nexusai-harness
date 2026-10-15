@@ -4,37 +4,37 @@
 
 ## 本次交接（2026-10-15）
 
-**一句话状态**：源码版本已改为 **0.1.9**（内置 dsh **0.2.1-alpha.2**），tag `v0.1.9` 已按用户要求推到 GitHub，由 CI 打安装包并挂到 Release。上一轮分支 CI（`d2bb13e`，run `38609346599`）已成功。已发布页面上的 Latest 在这轮 release job 完成前仍是 **0.1.8**。
+**一句话状态**：发行版 **0.1.9** 已发布（内置 dsh **0.2.1-alpha.2**）。GitHub Release 上有 mac dmg 和 Windows exe。首次工作区是真实目录 `文稿/nexusai-harness/default-workspace`，不再放链接。**没有卡住的代码阻断项。** 本机仓库里的 `dist/` 仍是昨晚的 0.1.8 包，不要把它当成已发布版本。
 
 **这一轮（10-15）做完的事**
 
-1. **工作区目录不再用链接**（用户认为链接方案不好）。`prepare-runtime` 在 `pnpm install` 之后改安装包里的一行字面量：`paths.join(directory, "deepseek-harness", DEFAULT_WORKSPACE_DIRECTORY)` → `"nexusai-harness"`（`src/workspace-anchor.cjs`）。dsh 源码没改。壳每次启动只做收尾：若 `<文档>/deepseek-harness` 是指向 `nexusai-harness` 的链接就摘掉（unlink，Windows junction 再用 rmdir），真实目录不动。详见 §8j。
-2. **本机看过结果**：`node apps/nexusai-desktop/scripts/verify-workspace-anchor.mjs` 三步全过（改写可重复、旧链接摘掉且目标文件还在、headless Chrome 打开 web UI 后磁盘出现真实 `Documents/nexusai-harness/default-workspace`、没有 `deepseek-harness`）。又用源码壳 `electron .` 起过一次，桌面 `nexusai-latest-demo/Documents` 里同样只有这个真实目录。
-3. **已推 GitHub 并触发 CI**（用户明确要求）：`git push github v1.0`，范围 `4bad92a..d2bb13e`。含两笔：`9f4071d` 两道验收闸补品牌串断言（DMG 挂载卷名、Windows 快捷方式名）；`d2bb13e` 上面第 1 条。**没有推 Codeup `origin`**（仍停在 `4bad92a`）。**没有打 tag。**
-4. 更早一轮（10-13 → 10-14）的载体、办公技能、首启体验、dsh 升级、命名残留，仍有效，见 §8b–§8k。发行版页面上的 0.1.8 安装包是这些改动**之前**打的。
+1. **工作区目录不再用链接**（用户认为链接方案不好）。`prepare-runtime` 在 `pnpm install` 之后改安装包里的一行字面量：`paths.join(directory, "deepseek-harness", DEFAULT_WORKSPACE_DIRECTORY)` → `"nexusai-harness"`（`src/workspace-anchor.cjs`）。dsh 源码没改。壳每次启动只做收尾：若 `<文档>/deepseek-harness` 是指向 `nexusai-harness` 的链接就摘掉；真实目录不动。详见 §8j。
+2. **本机看过**：`node apps/nexusai-desktop/scripts/verify-workspace-anchor.mjs` 三步全过。随后用开发模式 `electron .`（源码 **0.1.9**，日志 `NexusAIHarness 0.1.9 start`）对一份新 home 起过一次：登记路径是 `/Users/toby/Documents/nexusai-harness/default-workspace`，该目录是真实目录。今早 0.1.8 留下的 `文稿/deepseek-harness` 是真实目录，日志写了 `leaving it`，没有删。
+3. **v0.1.9 已发**（用户明确要求）：提交 `d9c88de`，tag `v0.1.9`。tag 那轮 CI 成功，Release 已挂上两个安装包。同一次推送还跑了分支 `v1.0` 的构建（不发 Release），也成功。**没有推 Codeup `origin`**，它仍停在 `4bad92a`，落后三笔（`9f4071d`、`d2bb13e`、`d9c88de`）。
+4. 更早的载体、办公技能、首启体验、dsh 升级、命名残留仍有效，见 §8b–§8k。
+5. **设置里两处官方入口已从产品面拿掉**。通用设置标题栏的「打开配置文件」每个分页都看得到，打包时把宿主 `hasDocument` 改成 `false`，按钮不再挂上。`session-log-deepseek` 与 `ui-settings-session-log` 在 profile patch 里 `disabled: true`，开关和向官方 API 附带会话日志的行为一起停。详见 §8g。已发布的 **0.1.9** 安装包不含这次改动。这次只推分支 `v1.0`，CI 会构建，但不会发新的 Release。
 
 **现在的坐标**
 
 | 项 | 值 |
 |---|---|
-| 已发布安装包 | 页面上的 Latest 在 `v0.1.9` 的 release job 完成前仍是 **0.1.8**。0.1.8 的工作区仍是旧链接做法，Windows 快捷方式名仍是旧名 |
+| 已发布安装包 | **0.1.9**（Latest）：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.9 — `NexusAIHarness-0.1.9-arm64.dmg`、`NexusAIHarness-Setup-0.1.9-x64.exe`（2026-10-15 08:04 +0800） |
 | 源码版本号 | **0.1.9**（`apps/nexusai-desktop/package.json`） |
-| 内置 dsh | **0.2.1-alpha.2**（`upstream.json` 的 version/tag/commit 三者必须一致） |
+| 内置 dsh | **0.2.1-alpha.2**（`upstream.json` 的 version/tag/commit 三者必须一致）。上游已有 **0.2.1-alpha.3**（10-14），官方安装包能力是原有的，alpha.3 加的是 CI 发布到 COS；`download.deepseek.com` 上现挂的 dmg/exe 仍是 9 月 29 日那份。**我们没有升级。** |
 | 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `src/workspace-anchor.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
-| 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，**落后 GitHub 两笔**） |
-| 分支 / 提交 | `v1.0`；发版提交在 `d2bb13e` 之后，tag **`v0.1.9`** |
-| 上一轮 CI | https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38609346599 已成功（12 分 14 秒，分支推送，无 Release） |
-| 这一轮 CI | tag `v0.1.9`：双平台构建 + 验收闸，通过后 release job 把 dmg/exe 挂到 Release |
+| 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，**落后 GitHub 三笔**，停在 `4bad92a`） |
+| 分支 / 提交 | `v1.0`，tag 仍是 **`v0.1.9`**（`d9c88de`）。这次提交在它之后，只含设置里两处官方入口的隐藏，没有新 tag |
+| 发版 CI | tag：https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38656276061 成功。分支：https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38656275986 成功 |
 
 **已验证 / 未验证**
 
-- 已验证（本机，10-15）：`scripts/verify-workspace-anchor.mjs`；源码壳首启在临时「文档」目录建出真实 `nexusai-harness/default-workspace`，`storages/workspace.json` 登记同一路径，无 `deepseek-harness`。更早的打包版首启、办公库 import、v0.1.8 双平台 CI 全绿，仍算数，但那些包不含这次目录改动。
-- 未验证：`v0.1.9` 这轮 CI 的双平台闸和 Release（进行中）；新 Windows 安装包的快捷方式名（要等这轮产物）；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。
+- 已验证：`verify-workspace-anchor.mjs`；开发模式 0.1.9 在真实「文稿」目录旁建出 `nexusai-harness/default-workspace`，旧的真实目录 `deepseek-harness` 还在。`v0.1.9` 双平台 CI 全绿（含 DMG 卷名与 Windows 快捷方式名断言），Release 资产已挂上。
+- 未验证：没有人在 Windows 桌面上点开过 0.1.9 的快捷方式；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。本机 `apps/nexusai-desktop/dist/` 里的 `NexusAIHarness-0.1.8-arm64.dmg` 和 `dist/mac-arm64/NexusAIHarness.app` 仍是 **0.1.8**（今早 8:14 打开的就是这份，所以当时还显示旧版本）。
 
 **下一步（建议顺序）**
 
-1. 等 `v0.1.9` 的 CI。mac/win 都绿之后，release job 会把安装包挂到 GitHub Release。
-2. 若要公司仓库跟上：`git push origin v1.0` 与 tag（只同步，不构建）。这次只推了 GitHub。
+1. 若要用户装到去掉这两个按钮的包，需要新版本号和 tag，再推 GitHub。先问用户。这次分支 CI 不发 Release。
+2. 若要公司仓库跟上：`git push origin v1.0`（以及已有的 `v0.1.9`；只同步，不构建）。先问用户。
 3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
 4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
 
@@ -43,7 +43,8 @@
 - **推送前先问用户**：`git push github` 会触发两个平台的完整构建 + 验收闸（AGENTS.md、§7-D5）。本机提交与 `scripts/ci/*` 本地跑不受限。一次授权只对应一次推送。
 - **client 改动必须重启桌面端，禁止 `Page.reload`**；同时只能跑一个实例（§7-A3）。
 - **取 GitHub artifact 用并行分块**（`gh run download` 单连接会卡死，§7-D4）。
-- 桌面上可能还留着演示目录 `nexusai-workspace-demo`、`nexusai-latest-demo`，以及一个从源码启动、home 指向后者的 NexusAIHarness 窗口。看完就关窗口、删这两个文件夹。不要动用户真实的「文档」目录。
+- 本机还留着：`桌面/nexusai-dev-0.1.9`（开发模式那次的 home，窗口已关）、`文稿/nexusai-harness`（这次新建的真实工作区）、`文稿/deepseek-harness`（0.1.8 留下的真实目录，不要删）。看完演示可以删桌面上的 home；两个文稿目录里如果已有用户文件，先确认再动。
+- 已登记过的工作区不会被改名。要再看「首次建成 nexusai-harness」，必须用一份还没有 `storages/workspace.json` 的 home。
 - 升级 dsh 时，§8i 第 6 条（工作区目录那行字面量）必须还在；`prepare-runtime` 找不到或出现多次会直接失败。
 
 ## 0. 这是什么
@@ -467,11 +468,14 @@ resources/icon.png ──scripts/make-icons.mjs──▶ icon.icns / icon.ico
 
 ## 8g. 首启体验：预置 patch 里到底设了什么
 
-生成的 `cordis.patch.yml` 共 5 段，每段对应一件产品决定（改这些都在 `prepare-runtime.mjs` 的 `profilePatch()`）：
+生成的 `cordis.patch.yml` 里每一行对应一件产品决定（改这些都在 `prepare-runtime.mjs` 的 `profilePatch()`；「打开配置文件」是装完后再改宿主包，不在这份 yml 里）：
 
 | 行 | 设置 | 为什么 |
 |---|---|---|
 | `ui-settings-account` | `disabled: true` | 隐藏 dsh 内置的 DeepSeek 账号 UI（NexusAI 登录替代它）；**宿主 `deepseek-account` 行不能禁**（见 §7 坑 B2） |
+| `session-log-deepseek` | `disabled: true` | 停掉「向官方模型 API 附带 Session Log」。NexusAI 不走那条接口；只藏开关会让上传保持默认开启且用户无法再关 |
+| `ui-settings-session-log` | `disabled: true` | 通用设置里那条「在使用官方模型 API 时上传 Session Log」开关，以及保存后的提示 |
+| 宿主 `settings describe` | `hasDocument: false` | 「打开配置文件」是设置窗口标题栏上的一颗按钮，每个分页都在。dsh 没有开关，安装后改 `dsh-api-settings-controller/lib/index.js` 里那一处 `hasDocument: true`（`scripts/settings-chrome.cjs`）。设置表单看的是 `writable`，不受影响 |
 | `ui-settings-general` | `welcomeNoticeVersion: <当前>` | 代用户确认 dsh 的「预览版说明」，首启不弹（版本从装好的 client bundle 读出，不硬编码） |
 | `locale` | `preference: 'zh'` | 界面默认中文。dsh 只有 `en`/`zh` 两个 id 且取不到就回退 `en`；打包版因只声明英文 localization 会被判成 `en`（详见 §8e） |
 | `ui-settings-models` | `credentialOnboarding: false` | **关掉 dsh 首启的「添加一个 API Key 开始使用」引导**（该行的配置项，宿主会发布成页面全局 `__DSH_MODELS_ONBOARDING__`）。用户自己在「设置 → 模型」配模型 —— 与"模型由用户自配"的产品口径一致 |
@@ -503,7 +507,7 @@ dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交�
 |---|---|---|---|---|
 | 1 | **hero 文案靠 CSS module 局部名** | `client/NexusaiHero.tsx:29-31` 的 `[class*="_titleGroup"]` / `_previewBadge` | `grep -oE "[A-Za-z0-9]+_(titleGroup\|previewBadge)" <dsh>/packages/client/ui-conversation/{src,lib}` | 补丁静默失效，标题退回 dsh 原文案（**不会报错**，最容易漏） |
 | 2 | **4 个槽位名** | `client/index.ts`：`sidebar.brand.mark` / `sidebar.brand.name` / `settings.launcher` / `conversation.hero.brand.mark` | 在 dsh 源码 `grep -r "<槽位名>" packages/client/*/src` | 对应 UI 整块消失（品牌/启动器/hero 字标） |
-| 3 | **设置键与 namespace** | `prepare-runtime.mjs` 生成的 patch：`ui-settings-account(disabled)` / `ui-settings-general.welcomeNoticeVersion` / `locale.preference` / `ui-settings-models.credentialOnboarding` | `grep` 这些键在 dsh 里是否仍存在（`WELCOME_NOTICE_VERSION` 常量位置也要在） | 首启重新弹预览说明/API Key 引导，或语言/账号 UI 失效 |
+| 3 | **设置键与 namespace** | `prepare-runtime.mjs` 生成的 patch：`ui-settings-account` / `session-log-deepseek` / `ui-settings-session-log`（三者 `disabled`）/ `ui-settings-general.welcomeNoticeVersion` / `locale.preference` / `ui-settings-models.credentialOnboarding`；另改安装包里 `dsh-api-settings-controller` 的 `hasDocument: true` | `grep` 这些键在 dsh 里是否仍存在（`WELCOME_NOTICE_VERSION` 常量位置也要在）。`hasDocument` 那一行必须仍只出现一次，否则 `prepare-runtime` 失败。`--dump-config` 会断言那三行是 `disabled: true` | 首启重新弹预览说明/API Key 引导，或语言/账号 UI 失效；设置标题栏重新出现「打开配置文件」，或通用设置重新出现 Session Log 开关 |
 | 4 | **CLI 输出与参数** | 壳 `main.cjs` 的 `/dsh web:\s+(http:\/\/127\.0\.0\.1:\d+…token=/`、`--profile`、`--no-open`；`prepare-runtime.mjs` 用 `--dump-config` | 起一次 `smoke:runtime`（它就是在等同一行）；`grep "dsh web:" <dsh>/packages/bundle/web-app/src` | 窗口**永不打开**（表现为"启动即死"，且不报错） |
 | 5 | **profile 结构与包内文件** | `profiles/<name>/node_modules/@deepseek-ai/dsh/lib/bin.js`（CLI 入口）、`cordis.patch.yml`（用户层）、`~/.agents`（技能根，靠**不设** `DSH_AGENTS_HOME` 保住） | `--dump-config` 能组合成功 + 技能页"本地"数量正常 | 启动失败，或技能全空 |
 | 6 | **首次工作区目录名** | `prepare-runtime` 改安装包里 `dsh-api-workspace-controller/lib/index.js` 的那一行 `paths.join(directory, "deepseek-harness", DEFAULT_WORKSPACE_DIRECTORY)` | 这行仍只出现一次；`prepare-runtime` 改完会打印 `workspace anchor: renamed`（已改过则 `already`）。字面量挪走或重复时准备步骤直接失败 | 失败被拦住；若有人绕过它，首启会再建出 `deepseek-harness` |
