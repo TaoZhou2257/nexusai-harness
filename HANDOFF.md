@@ -1,10 +1,10 @@
-# HANDOFF — 交接摘要（2026-10-16 · 发行版 0.1.11）
+# HANDOFF — 交接摘要（2026-10-17 · 内核钉到 dsh 0.2.1-alpha.5，安装包仍是 0.1.11）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 本次交接（2026-10-16）
+## 本次交接（2026-10-17）
 
-**一句话状态**：源码版本 **0.1.11**（内置 dsh **0.2.1-alpha.2**）已发布。tag `v0.1.11` 的 CI 成功，Release 已挂上 dmg/exe，页面上的 Latest 是 **0.1.11**。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。
+**一句话状态**：已发布安装包仍是 **0.1.11**（内置 dsh **0.2.1-alpha.2**）。工作区已把内核钉到 **dsh-v0.2.1-alpha.5**（`1517a4db`），还没发新版本。本机开发窗口已用这份 profile 起过（marker `0.1.11+0.1.0+dsh-0.2.1-alpha.5+mac-arm64`）。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。
 
 **这一轮（10-15 至 10-16）做完的事**
 
@@ -16,6 +16,7 @@
 6. **macOS 主窗口标题栏不再写应用名**（`main.cjs` 的 `mainWindowTitle()`，仅 darwin 留空），打进 **0.1.11**。菜单栏仍是 NexusAIHarness。Windows 标题栏保持应用名。
 7. **侧栏底部设置齿轮与登录/账号同一行、靠右**（`client/NexusaiLauncher.tsx`），打进 **0.1.11**。未登录也能直接打开设置。登录弹窗里的「打开设置」已去掉。登录按钮只包住头像和文字，中间空白点了不会登录；齿轮靠右。
 8. **登录验证码按原图比例显示**（`client/NexusaiSignInDialog.tsx`），打进 **0.1.11**。服务端图是 80×40，之前被拉成 100×48（`object-fit: fill`）。现为 80×40、`object-fit: contain`，与输入框垂直居中。
+9. **内核钉到 dsh-v0.2.1-alpha.5**（用户要求，**没有**加应用版本号、没有打 tag）。`upstream.json` 的 version/tag/commit 一起改成 `1517a4db`（这个 tag 是轻量标签，提交就是 tag 指向）。根 `package.json` 的 `dshBaseline` 和 16 个 `@deepseek-ai/dsh-*` 同步到 `0.2.1-alpha.5`；cordis `4.0.5-alpha.2`、schemastery `3.18.5-alpha.2`。submodule `upstream` 检出同一提交。`primary-runtime-lock.json` 与 alpha.5 的 lock 逐字节相同，没改。应用版本仍是 **0.1.11**。已发布安装包仍是 alpha.2。
 
 **现在的坐标**
 
@@ -23,7 +24,7 @@
 |---|---|
 | 已发布安装包 | **0.1.11**（Latest）：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.11 （`NexusAIHarness-0.1.11-arm64.dmg`、`NexusAIHarness-Setup-0.1.11-x64.exe`） |
 | 源码版本号 | **0.1.11**（`apps/nexusai-desktop/package.json`） |
-| 内置 dsh | **0.2.1-alpha.2**（`upstream.json` 的 version/tag/commit 三者必须一致）。上游已有 **0.2.1-alpha.3**（10-14），官方安装包能力是原有的，alpha.3 加的是 CI 发布到 COS；`download.deepseek.com` 上现挂的 dmg/exe 仍是 9 月 29 日那份。**我们没有升级。** |
+| 内置 dsh | 源码钉 **0.2.1-alpha.5**（`upstream.json` 的 version/tag/commit 三者必须一致，commit `1517a4db`）。已发布的 0.1.11 安装包仍是 **0.2.1-alpha.2**。 |
 | 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `src/workspace-anchor.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
 | 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，仍停在 `4bad92a`） |
 | 分支 / 提交 | `v1.0`，tag **`v0.1.11`**。界面改动 `f2b26ac`，版本号 `755b84e` |
@@ -31,15 +32,16 @@
 
 **已验证 / 未验证**
 
-- 已验证：`verify-workspace-anchor.mjs`；开发模式看过 macOS 空标题栏、侧栏设置齿轮、登录按钮不再铺满整行、验证码按 80×40 显示。`v0.1.11` 双平台 CI 全绿，Release 已挂上 dmg/exe。本机已安装 home 的 `workspace.json` 登记的是 `/Users/toby/Documents/nexusai-harness/default-workspace`。
-- 未验证：没有人在 Windows 桌面上点开过 0.1.9 的快捷方式；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。本机 `apps/nexusai-desktop/dist/` 里的 `NexusAIHarness-0.1.8-arm64.dmg` 和 `dist/mac-arm64/NexusAIHarness.app` 仍是 **0.1.8**（今早 8:14 打开的就是这份，所以当时还显示旧版本）。
+- 已验证：`verify-workspace-anchor.mjs`；开发模式看过 macOS 空标题栏、侧栏设置齿轮、登录按钮不再铺满整行、验证码按 80×40 显示。`v0.1.11` 双平台 CI 全绿，Release 已挂上 dmg/exe。本机已安装 home 的 `workspace.json` 登记的是 `/Users/toby/Documents/nexusai-harness/default-workspace`。alpha.5 核对表 1–6 仍成立；`check:dsh` / tsc / build / 66 例 / 16 例全绿。本机 `prepare-runtime.mjs --skip-primary-runtime` 打出 `0.1.0+dsh-0.2.1-alpha.5+mac-arm64`，`--dump-config` 组合成功。开发窗口已打开（日志 `NexusAIHarness 0.1.11 start`、`window shown`；用户目录 marker 已写成 `0.1.11+0.1.0+dsh-0.2.1-alpha.5+mac-arm64`，`node_modules` 链到 `apps/nexusai-desktop/build/profile/node_modules`）。
+- 未验证：没有打过带 alpha.5 的安装包，也没跑 `smoke:runtime` / `check-mac-app.sh`。本机这次**跳过了** primary runtime，所以 `build/runtime/office-skills` 仍是旧的三件套（docx/pptx/xlsx）；alpha.5 的 `skill-office` 还要 `office`、`office-render`、`office-recalculate`、`office-export-pdf`，启动日志里它因缺少 `office/SKILL.md` 没激活。没有人在 Windows 桌面上点开过 0.1.9 的快捷方式；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。本机 `apps/nexusai-desktop/dist/` 里的 dmg 和 `.app` 仍是 **0.1.8**。
 
 **下一步（建议顺序）**
 
-1. 0.1.11 已发布，不用再等这轮 CI。
-2. 若要公司仓库跟上：`git push origin v1.0 v0.1.11`（只同步，不构建）。先问用户。`origin` 仍停在 `4bad92a`。这次交接只推 GitHub `v1.0`，不推 tag、不推 Codeup。
-3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
-4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
+1. 这次交接推的是 GitHub `v1.0`（内核钉版 + 本文）。**没有**打 tag，**没有**推 Codeup。分支推送会跑两个平台的构建，不发 Release。已发布的 0.1.11 安装包仍是 dsh 0.2.1-alpha.2。
+2. 要让安装包带上 alpha.5：先把应用版本号加一，再打 annotated tag，推之前问用户。发版前必须完整跑 `prepare-runtime.mjs`（**不要** `--skip-primary-runtime`），让 `office-skills` 从 alpha.5 的 `@deepseek-ai/dsh-skill-office/assets` 重新拷出来。alpha.5 认 7 个目录：`office`、`office-docx`、`office-pptx`、`office-xlsx`、`office-render`、`office-recalculate`、`office-export-pdf`。
+3. 若要公司仓库跟上：`git push origin v1.0`（以及已有的 `v0.1.11`）。只同步，不构建。先问用户。`origin` 仍停在 `4bad92a`。
+4. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
+5. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
 
 **接手须知（最容易忽略的几条）**
 
@@ -58,7 +60,7 @@
 | 位置 | 路径 |
 |---|---|
 | 插件仓库（本项目，可自由改） | `~/GoLandProjects/nexusai-harness` |
-| dsh 源码（**不要改**） | `~/IdeaProjects/deepseek-harness`（检出 tag `dsh-v0.2.1-alpha.2`，git 干净） |
+| dsh 源码（**不要改**） | 本仓 `upstream/`（钉 `dsh-v0.2.1-alpha.5`）。`~/IdeaProjects/deepseek-harness` 是另一份本地克隆，仍停在 alpha.2，打安装包不用它 |
 | dsh 运行目录（dev home，配置文件在这） | `~/IdeaProjects/deepseek-harness/apps/desktop/.desktop-build/development/home` |
 | NexusAI 服务器（当前用） | `http://agent.nexusai.net.cn:8081`（另有 `http://221.226.155.134:8081`；SkillHub 用公网 `api.skillhub.cn`） |
 
@@ -73,7 +75,7 @@
 cd ~/GoLandProjects/nexusai-harness
 npx tsc --noEmit        # 期望：无输出（0 错误）
 node scripts/build.mjs  # 期望：lib/index.js（宿主）+ lib/client.js（客户端）两个产物
-npm run check:dsh       # 期望：check-dsh-version: ok (dsh 0.2.1-alpha.2)
+npm run check:dsh       # 期望：check-dsh-version: ok (dsh 0.2.1-alpha.5)
 DSH_CDP_PORT=9223 node scripts/verify/cdp-eval.mjs "'ok'"   # 期望："ok"（能连上运行中的桌面端）
 ```
 
@@ -207,7 +209,7 @@ scripts/
   dev/install-into-dsh.mjs  新机器接线（构建 + 软链 + patch 行，幂等）
   dev/brand-dev-app.mjs     dev 包改名 + 换访达/Dock 图标（取服务端品牌，幂等）
   dev/{center-window.mjs,start-desktop.sh,watch-window.sh}  窗口摆放（macOS 专属，需辅助功能权限）
-upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit d743267 = 0.2.1-alpha.2）
+upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit 1517a4db = 0.2.1-alpha.5）
 apps/nexusai-desktop/       **v1.0 carrier**：薄 Electron 壳 + 运行时准备 + electron-builder（未签名）
   src/main.cjs              壳：home → 预置 profile → spawn 内置 dsh（Electron-as-Node）→ 读 token URL → 开居中窗
   scripts/prepare-runtime.mjs  npm pack 插件 + pnpm 装 profile（含 supportedArchitectures 与 allowBuilds）
@@ -238,6 +240,7 @@ dist/windows-trial/         （旧）Windows 试用包：源码路线，已被 c
 9. 从后台任务启动的 GUI 应用会被一起收走 → 用 `nohup … & disown` 启动。
 10. **CDP 造的 File 没有磁盘路径**：`__DSH_HOST_PATHS__.pathFor()` 对 CDP 注入/程序化构造的 File 返回空串，所以「按路径」的功能（技能导入、DXT/MCPB 选包）在自动化里点不到真实面板 —— 它们的**宿主逻辑**要用独立套件验（见验证手册），UI 侧只能验到"弹窗/入口/按钮状态"。
 11. **空 patch 文件会被写成 flow 风格**：patch 不存在时读到的是 `'[]'`，`yaml` 库把整份文档按 flow 打印（`insert: [{…}]`），与真实 patch 的块风格不一致，也让按行匹配的断言失效 → 两个写入方加完行都设 `document.contents.flow = false`。
+12. **`prepare-runtime` 里的 pnpm 在管道 stdin 下会打完 `Done` 却不退出**（2026-10-17，pnpm 11.7.0）：`execFileSync` 一直等，后面的 preview notice / 工作区改写 / `--dump-config` 都不会跑。安装其实已经完成。重跑时把 stdin 接到 `/dev/null`（`node scripts/prepare-runtime.mjs </dev/null`）就会在几百毫秒内结束。
 
 ### B. dsh 平台行为
 1. **`border-radius: 50%` 画不出圆形**：dsh 在根节点设 `corner-shape: superellipse(1.5)`，该属性**可继承**，所以 50% 圆角也被描成圆角方块（表现为左下角头像不是圆的）。要真圆就在元素上写 `corner-shape: round`（计算值归一为 `superellipse(1)`）；`cornerShape` 还不在 csstype 里，样式对象要放宽成 `React.CSSProperties & { cornerShape?: string }`。排查用 `getComputedStyle(el).cornerShape`。
@@ -284,7 +287,7 @@ ode_modules`）。后果是**把应用自己的运行时删空**，然后重链�
 ### D. 流程纪律
 1. **脚本化改代码必须断言**：曾因为锚点写错又没断言，替换静默失败（渲染仍是旧的 `skills.map`）。改完 `assert '<新片段>' in s` 复核。
 2. **凭据磁盘/进程内状态一致**（已用插桩定案）：干净运行下会话**不会自己消失**。历史上几次"磁盘没 session"都是测试自己造的：把 endpoint 换成另一台服务器（或恢复了不匹配的备份）→ 下次调用 401 → 插件按设计清会话并登出。恢复 = `cp` 回**同服务器**且含 session 的备份 + **重启**；备份前先 `grep -c 'nexusai/session'` 确认，并比对 `baseUrl:` 一致。
-3. **环境：dsh 基线 0.2.1-alpha.2（developer preview）**：升级 dsh 后跑 `npm run check:dsh` + tsc + 两个自研套件 + 打包版真机走查，再更新 `dshBaseline`。**升级 dsh 时的核对表见 §8i**（我们只依赖 5 类面，逐条核对即可，不必全量回归）。
+3. **环境：dsh 基线 0.2.1-alpha.5（developer preview）**：升级 dsh 后跑 `npm run check:dsh` + tsc + 两个自研套件 + 打包版真机走查，再更新 `dshBaseline`。**升级 dsh 时的核对表见 §8i**（我们只依赖 6 类面，逐条核对即可，不必全量回归）。
 4. **取 GitHub artifact 用并行分块，别用 `gh run download`**：这条链路单连接会"起步快、随后卡死"（实测 2MB 突发行完就掉到 ~35KB/s，273MB 要两小时）。`gh api .../actions/artifacts/<id>/zip` 返回 302 到 `productionresultssa*.blob.core.windows.net` 的**签名 URL（支持 `Accept-Ranges`，签名约 10 分钟过期）**，用 8 条 `curl -r start-end` 各写一个分片、按已下字节续传、403 时重取签名 URL，拼起来校验 `Content-Length` 再 `unzip -t`。实测 8 并发能到 ~200KB/s 且能跑完（脚本见本文件同目录会话日志，或照此重写十几行）。
 5. **推送前先问用户**：`git push github` 会跑两个平台构建 + 验收闸（每轮约 20 分钟额度），见 `AGENTS.md`。本机提交与 `scripts/ci/*` 本地跑不受限。
 
@@ -614,6 +617,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-17 | **dsh 基线 0.2.1-alpha.2 → 0.2.1-alpha.5**（本交接提交）：`upstream.json`（version/tag/commit `1517a4db`，轻量 tag，提交即 tag 指向）、submodule 检出同一提交、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`，以及 cordis `4.0.5-alpha.2`、schemastery `3.18.5-alpha.2`）、lockfile。`primary-runtime-lock.json` 与 alpha.5 的 lock 逐字节相同，没改。应用版本仍是 0.1.11，未发版。只推 GitHub `v1.0`，不打 tag、不推 Codeup | 核对表 1–6 仍成立。静态：check:dsh(0.2.1-alpha.5) / tsc / build / 66 例 / 16 例全绿。本机 profile 已装上 alpha.5，开发窗口 `window shown`。`--skip-primary-runtime` 留下旧的 office-skills，`skill-office` 缺 `office/SKILL.md` 没激活。还没跑打包版真机走查 |
 | 10-15 | **首次工作区目录不再用链接**：`prepare-runtime` 改安装包里 `paths.join(directory, "deepseek-harness", …)` 为 `nexusai-harness`，dsh 直接建真实目录。壳只摘掉旧构建留下的、且目标就是 `nexusai-harness` 的链接；真实的 `deepseek-harness` 目录不动 | `node scripts/verify-workspace-anchor.mjs`（本机跑通）：①恢复 published join → rename → already；②摘掉指向 `nexusai-harness` 的旧链接且目标文件还在、真实目录不动；③起 bundled dsh + headless Chrome 打开 web UI，client 调 `initializeDefault` 后磁盘出现 `Documents/nexusai-harness/default-workspace`（真实目录、非 symlink），`deepseek-harness` 不存在，`storages/workspace.json` 只记 `nexusai-harness` |
 | 10-14 | **v0.1.8 已发布（Latest）**：CI 两个平台 job 全绿，但 release job 被**账户计费**拦下（原因与解法见 §8b）→ 改为本机手动发布。mac 资产用**本机重打**的 DMG（含下面那条命名修复；`prepare-runtime` 重跑后 patch 指纹与上一份逐字节相同），win 资产取自该轮 CI 的 artifact | mac 包过 CI 同一道验收闸（`check-mac-app.sh`：挂 DMG → 干净 home 启动 → 运行时就绪 → profile 含插件行 → 菜单最小集）；包内 python 实测 `import docx,pptx,openpyxl,PIL,lxml` 全过（docx 1.2.0 / openpyxl 3.1.5 / PIL 12.3.0）；win exe 用 `7zz` 拆开确认 `resources/nexusai-runtime/` 里 node+python+office-skills 齐、`runtime.json` 为 win32/x64；Release 资产字节数 338,694,916 / 288,991,752 与本地文件逐一相符 |
 | 10-14 | **品牌命名补两处用户可见残留**（用户挂载 DMG 时发现卷名还是旧名）：`dmg.title`（DMG 挂载卷名，Finder 侧栏与安装窗口标题都用它）与 `nsis.shortcutName`（Windows 桌面/开始菜单快捷方式下的字）——**两者默认值都不跟 `productName` 走**，改名时只同步了 `productName` 所以漏掉。README 里过时的旧名/`<userData>` 路径/"登录框会自己弹"描述一并订正；§8h 增加命名核对表 | 重打 DMG 后挂载实测：卷名 `/Volumes/NexusAIHarness`（改前 `/Volumes/NexusAgent Builder`）、`CFBundleShortVersionString=0.1.8`、ad-hoc 签名与 hardened runtime 在、profile 内 dsh `0.2.1-alpha.2`；**win 侧的新快捷方式名要等下一次 CI 构建才体现**（本轮 exe 是 CI 打的那份，快捷方式仍写旧名） |
