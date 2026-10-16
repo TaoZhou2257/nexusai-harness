@@ -1,6 +1,6 @@
 {
   "name": "@toby/nexusai-desktop",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "description": "NexusAgent Builder — thin Electron carrier around a bundled dsh profile",
   "license": "MIT",
