@@ -1,10 +1,10 @@
-# HANDOFF — 交接摘要（2026-10-17 · 0.1.13 内置 dsh 0.2.1-rc.2）
+# HANDOFF — 交接摘要（2026-10-18 · 0.1.14）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
 ## 本次交接（2026-10-17）
 
-**一句话状态**：源码版本 **0.1.13**，内置 dsh **0.2.1-rc.2**（`687f282e`）。tag `v0.1.13` 打在这次提交上，推 GitHub 后由 CI 出安装包。上一份已发布安装包是 **0.1.12**（dsh 0.2.1-alpha.5）。本机开发窗口已经换成这份 profile。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。
+**一句话状态**：源码版本 **0.1.14**，内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。这一版带上 macOS 顶栏（hiddenInset，收起侧栏整列让开）、右侧边栏 Electron `<webview>` 浏览器，并去掉侧栏设置齿轮。tag `v0.1.14` 推 GitHub 后由 CI 出安装包。上一份已发布安装包是 **0.1.13**。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。dsh 源码未改。
 
 **这一轮（10-15 至 10-16）做完的事**
 
@@ -23,12 +23,12 @@
 
 | 项 | 值 |
 |---|---|
-| 上一份已发布安装包 | **0.1.12**：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.12 （内置 dsh 0.2.1-alpha.5） |
-| 正在发的版本 | **0.1.13**（`apps/nexusai-desktop/package.json`），tag `v0.1.13`。安装包等这次 tag 的 CI |
+| 上一份已发布安装包 | **0.1.13**：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.13 （内置 dsh 0.2.1-rc.2） |
+| 正在发的版本 | **0.1.14**（`apps/nexusai-desktop/package.json`），tag `v0.1.14`。安装包等这次 tag 的 CI |
 | 内置 dsh | **0.2.1-rc.2**（`upstream.json` 的 version/tag/commit 三者一致，commit `687f282e`） |
 | 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `src/workspace-anchor.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
 | 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，仍停在 `4bad92a`） |
-| 分支 / 提交 | `v1.0`。上一版 tag **`v0.1.12`**。这一版 tag **`v0.1.13`** |
+| 分支 / 提交 | `v1.0`。上一版 tag **`v0.1.13`**。这一版 tag **`v0.1.14`** |
 | 发版 CI | `v0.1.12` tag（发 Release）https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38933879701 成功。macOS 与 Windows 验收都过，Release 已挂上两个安装包 |
 
 **已验证 / 未验证**
@@ -38,7 +38,7 @@
 
 **下一步（建议顺序）**
 
-1. 等 `v0.1.13` 的 tag CI 把 dmg/exe 挂到 Release。没有推 Codeup。CI 绿了之后，把本文「已发布安装包」改成 0.1.13 的链接。在那之前 Latest 仍是 0.1.12。
+1. 等 `v0.1.14` 的 tag CI 把 dmg/exe 挂到 Release。没有推 Codeup。CI 绿了之后，把本文「已发布安装包」改成 0.1.14 的链接。在那之前 Latest 仍是 0.1.13。
 2. 若要公司仓库跟上：`git push origin v1.0 v0.1.13`。只同步，不构建。先问用户。`origin` 仍停在 `4bad92a`。
 3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
 4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
@@ -617,6 +617,9 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-18 | **v0.1.14**：macOS 顶栏按 dsh（hiddenInset + 侧栏顶条，收起时侧栏宽度为 0）、右侧边栏浏览器走 Electron `<webview>` 租约、去掉侧栏设置齿轮（设置留在头像菜单，下拉框右侧空白不响应点击）。内核仍是 dsh 0.2.1-rc.2。tag `v0.1.14`。不推 Codeup | 本机窗口：顶条与收起让位、`<webview>` 打开 example.com / github.com、下拉框右侧点不到账号按钮。安装包等 tag CI |
+| 10-18 | **右侧边栏浏览器按官方 webview**（本机未发版）：`nexusai` profile 把 `ui-sidebar-browser` 设为 `disabled: false`。壳在主窗口打开 `webviewTag`，`browser-guests.cjs` 按 dsh desktop 的租约/分区/导航规则管 guest，preload 暴露 `dshDesktop.browser`（`protocolVersion: 1`）。未改 dsh 源码 | 组合配置该行是 `disabled: false`。本机侧栏出现 `<webview partition=dsh-sidebar-browser-…>`，`example.com` 标题进了侧栏 |
+| 10-18 | **macOS 顶栏按 dsh 原布局**（本机未发版）：darwin 主窗口 `hiddenInset` + 红绿灯 `(16, 18)` + `vibrancy: sidebar`。`preload.cjs` 给页面打 `data-platform=darwin`，并补上 shortcuts 启动所需的 `window.dshDesktop.keyboard`（否则网页启动失败）。展开时侧栏自带 52px 顶条，收起时侧栏宽度为 0、控件挪到红绿灯右侧。Windows 标题栏不变。已发布的 0.1.13 安装包仍是旧标题栏 | 本机启动无插件失败；顶条 280×52，品牌 top≈58；收起后侧栏宽 0、`shell.leading` 在 x=88、`--dsh-frame-leading-clearance: 160px` |
 | 10-17 | **v0.1.13**：应用版本 0.1.12 → 0.1.13，安装包改带 dsh 0.2.1-rc.2。`upstream.json`（commit `687f282e`）、submodule、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`）、cordis `4.0.5`、schemastery `3.18.5`、lockfile。`primary-runtime-lock.json` 未改。tag `v0.1.13`。不推 Codeup | 核对表 1–6 仍成立。静态：check:dsh(0.2.1-rc.2) / tsc / build / 66 例 / 16 例全绿。本机 `prepare-runtime` 打出 `0.1.0+dsh-0.2.1-rc.2+mac-arm64`，开发窗口 `NexusAIHarness 0.1.13 start`、`window shown`，没有 `skill-office` 错误，marker `0.1.13+0.1.0+dsh-0.2.1-rc.2+mac-arm64`。打包版验收等 tag CI |
 | 10-17 | **v0.1.12**：应用版本 0.1.11 → 0.1.12，安装包改带 dsh 0.2.1-alpha.5。完整重跑 `prepare-runtime`（含 primary runtime），`office-skills` 换成 alpha.5 的 7 个目录。tag `v0.1.12`。不推 Codeup | 本机开发窗口 `NexusAIHarness 0.1.12 start`、`window shown`，日志里没有 `skill-office` 错误；marker `0.1.12+0.1.0+dsh-0.2.1-alpha.5+mac-arm64`。tag CI https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38933879701 成功，Release 已挂 dmg/exe |
 | 10-17 | **dsh 基线 0.2.1-alpha.2 → 0.2.1-alpha.5**（先钉内核、后发版）：`upstream.json`（commit `1517a4db`）、submodule、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`，cordis `4.0.5-alpha.2`、schemastery `3.18.5-alpha.2`）、lockfile。`primary-runtime-lock.json` 未改 | 核对表 1–6 仍成立。静态：check:dsh / tsc / build / 66 例 / 16 例全绿。第一次本机窗口用了 `--skip-primary-runtime`，`skill-office` 缺 `office/SKILL.md`；0.1.12 那一行已补上 |

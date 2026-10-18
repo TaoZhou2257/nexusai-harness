@@ -3,11 +3,11 @@
  * slot (shadowing the built-in account menu at a lower priority). The trigger
  * mirrors the built-in account button — avatar disc plus label, collapsing to
  * a rail disc when the sidebar hides labels — and opens a `Menu side="top"`
- * with the NexusAI actions. The settings gear sits on the same row, at the
- * right edge, so settings open without going through sign-in. Signed out, the
- * account control opens the captcha dialog. Sign-out asks first, reporting
- * whether tasks are running (the built-in account menu's own confirmation,
- * kept because signing out drops the tools and MCP rows those tasks may be using).
+ * with the NexusAI actions. Settings lives in that menu, the same place as
+ * dsh's account menu, so the sidebar has no separate gear. Signed out, the
+ * menu offers settings and sign-in. Sign-out asks first, reporting whether
+ * tasks are running (the built-in account menu's own confirmation, kept
+ * because signing out drops the tools and MCP rows those tasks may be using).
  */
 import { useState, type ReactNode } from 'react'
 import { Button, IconChevronDownOutlineRegular, IconLoadingOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -100,14 +100,9 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
       data-nexusai="launcher"
       aria-label={signedIn ? `${resolve('signedInAs')}${name}` : resolve('login')}
       title={signedIn ? `${resolve('signedInAs')}${name}` : resolve('login')}
-      aria-haspopup={signedIn ? 'menu' : 'dialog'}
-      aria-expanded={signedIn ? menuOpen : undefined}
-      onClick={() => {
-        // Signed out, the launcher IS the sign-in entry: skip the menu and
-        // open the captcha dialog straight away.
-        if (signedIn) setMenuOpen(value => !value)
-        else setDialogOpen(true)
-      }}
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
+      onClick={() => { setMenuOpen(value => !value) }}
       style={triggerStyle}
       data-collapsed={wide !== true ? '' : undefined}
     >
@@ -162,46 +157,10 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
     </button>
   )
 
-  const settingsGear = (
-    <button
-      type="button"
-      className="nexusai-settings-gear"
-      data-nexusai="settings"
-      aria-label={resolve('openSettings')}
-      title={resolve('openSettings')}
-      aria-keyshortcuts={settingsShortcut?.aria}
-      onClick={() => { openSettings?.() }}
-    >
-      <IconSettingsOutlineMedium size={16} />
-    </button>
-  )
-
-  if (!signedIn) {
-    return (
-      <>
-        <style>{ROW_CSS}</style>
-        <div className="nexusai-account-row" data-collapsed={wide === true ? undefined : ''}>
-          {trigger}
-          {settingsGear}
-        </div>
-        {error !== '' && wide === true && <div style={errorStyle} role="alert">{error}</div>}
-        {error === '' && notice !== '' && wide === true && <div style={errorStyle} role="alert">{notice}</div>}
-        {dialogOpen && auth !== undefined && (
-          <NexusaiSignInDialog
-            auth={auth}
-            getView={() => snapshot?.view}
-            t={resolve}
-            close={() => { setDialogOpen(false) }}
-          />
-        )}
-      </>
-    )
-  }
-
   return (
     <>
       <style>{ROW_CSS}</style>
-      <div className="nexusai-account-row" data-collapsed={wide === true ? undefined : ''}>
+      <div className="nexusai-account-row">
         <Menu
           className="nexusai-launcher-menu"
           open={menuOpen}
@@ -210,23 +169,33 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
           autoFocus
           anchor={trigger}
           items={[
-          {
-            id: 'openSettings',
-            label: resolve('openSettings'),
-            icon: <IconSettingsOutlineMedium size={16} />,
-            ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }),
-          },
-          { id: 'logout', label: resolve('logout'), disabled: busy },
-        ]}
-        onSelect={id => {
-          setMenuOpen(false)
-          if (id === 'openSettings') openSettings?.()
-          if (id === 'logout') requestSignOut()
-        }}
+            {
+              id: 'openSettings',
+              label: resolve('openSettings'),
+              icon: <IconSettingsOutlineMedium size={16} />,
+              ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }),
+            },
+            signedIn
+              ? { id: 'logout', label: resolve('logout'), disabled: busy }
+              : { id: 'login', label: resolve('login'), icon: <IconUserOutlineMedium size={16} /> },
+          ]}
+          onSelect={id => {
+            setMenuOpen(false)
+            if (id === 'openSettings') openSettings?.()
+            if (id === 'logout') requestSignOut()
+            if (id === 'login') setDialogOpen(true)
+          }}
           onClose={() => { setMenuOpen(false) }}
         />
-        {settingsGear}
       </div>
+      {dialogOpen && auth !== undefined && (
+        <NexusaiSignInDialog
+          auth={auth}
+          getView={() => snapshot?.view}
+          t={resolve}
+          close={() => { setDialogOpen(false) }}
+        />
+      )}
       {signOutImpact !== undefined && (
         <Modal
           open
@@ -256,6 +225,7 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
         </Modal>
       )}
       {error !== '' && wide === true && <div style={errorStyle} role="alert">{error}</div>}
+      {error === '' && notice !== '' && wide === true && <div style={errorStyle} role="alert">{notice}</div>}
     </>
   )
 }
@@ -279,28 +249,9 @@ const CONFIRM_CSS = `
 
 const ROW_CSS = `
 .nexusai-account-row { display: flex; align-items: center; width: 100%; min-width: 0; }
-.nexusai-account-row > button[data-nexusai="launcher"],
-.nexusai-launcher-menu { flex: none; width: auto; max-width: calc(100% - 32px); }
-.nexusai-launcher-menu { display: flex; min-width: 0; }
+.nexusai-launcher-menu { display: inline-flex; flex: none; width: auto; max-width: 100%; min-width: 0; }
 .nexusai-launcher-menu > button[data-nexusai="launcher"] { width: auto; max-width: 100%; }
-.nexusai-settings-gear {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin-left: auto;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-.nexusai-settings-gear:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.nexusai-account-row[data-collapsed] { flex-direction: column; width: auto; }
-.nexusai-account-row[data-collapsed] .nexusai-settings-gear { margin-left: 0; }
+.nexusai-launcher-menu > button[data-nexusai="launcher"]:hover { background: var(--dsw-alias-interactive-bg-hover); }
 `
 
 const triggerStyle: React.CSSProperties = {

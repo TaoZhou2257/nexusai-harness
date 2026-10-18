@@ -12,13 +12,14 @@
  *
  * CommonJS on purpose: no build step, no module-format surprises under Electron.
  */
-const { app, BrowserWindow, Menu, dialog, shell, screen } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const {
   cpSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync,
   renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync,
 } = require('node:fs')
 const { retireLegacyWorkspaceLink } = require('./workspace-anchor.cjs')
+const { createBrowserGuests } = require('./browser-guests.cjs')
 const { dirname, join, resolve } = require('node:path')
 
 const PROFILE_NAME = 'nexusai'
@@ -422,11 +423,26 @@ function resolvePlacement(home) {
 
 /**
  * Title shown in the main window's title bar.
- * macOS already shows the app name in the menu bar, and a single-window app
- * leaves this strip empty. Windows has no menu-bar name, so the title stays.
+ * macOS already shows the app name in the menu bar. An empty title used to
+ * leave the strip blank; current macOS draws the app name there anyway, so
+ * the window uses hiddenInset (traffic lights in the sidebar's top strip,
+ * the same placement dsh's own desktop uses) and never sets a title.
+ * Windows has no menu-bar name, so the title stays.
  */
 function mainWindowTitle() {
   return process.platform === 'darwin' ? '' : APP_NAME
+}
+
+/** macOS window chrome: same hiddenInset strip and sidebar vibrancy as dsh desktop. */
+function darwinWindowChrome() {
+  if (process.platform !== 'darwin') return {}
+  return {
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 18 },
+    vibrancy: 'sidebar',
+    visualEffectState: 'active',
+    backgroundColor: '#00000000',
+  }
 }
 
 function openWindow(url) {
@@ -440,10 +456,20 @@ function openWindow(url) {
     minWidth: 960,
     minHeight: 640,
     title: mainWindowTitle(),
-    backgroundColor: '#111113',
+    ...darwinWindowChrome(),
+    ...(process.platform === 'darwin' ? {} : { backgroundColor: '#111113' }),
     show: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: {
+      preload: join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: true,
+    },
   })
+  appPageUrl = url
+  installBrowserIpc()
+  browserGuests.bind(window, () => () => {})
   window.on('page-title-updated', event => { event.preventDefault(); window.setTitle(mainWindowTitle()) })
   // A keyboard reload would drop the page dsh's host is attached to, so those
   // keys are swallowed before Chromium can act on them.
@@ -461,7 +487,13 @@ function openWindow(url) {
   // Show on the load event, not on the promise: a load that never settles (or
   // settles after something went wrong) otherwise leaves a window that exists
   // but is never visible — the app looks dead while its log says it started.
+  const publishFullscreen = () => {
+    window.webContents.send('nexusai:fullscreen', window.isFullScreen())
+  }
+  window.on('enter-full-screen', publishFullscreen)
+  window.on('leave-full-screen', publishFullscreen)
   window.webContents.once('did-finish-load', () => {
+    publishFullscreen()
     window.show()
     logLine('window shown')
   })
@@ -510,6 +542,37 @@ pre{white-space:pre-wrap;word-break:break-word;background:#1a1a1d;border-radius:
 let runtime
 let mainWindow
 let quitting = false
+/** Page the main window loaded. Browser IPC and guest navigation are limited to it. */
+let appPageUrl
+const browserGuests = createBrowserGuests(() => appPageUrl)
+let browserIpcInstalled = false
+
+function assertAppSender(event) {
+  if (mainWindow === undefined || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    throw new Error('nexusai: rejected browser IPC from an unowned window')
+  }
+  const frame = event.senderFrame
+  if (frame === null || frame !== mainWindow.webContents.mainFrame) {
+    throw new Error('nexusai: rejected browser IPC from a guest frame')
+  }
+  if (appPageUrl === undefined) throw new Error('nexusai: browser IPC before the page is known')
+  if (new URL(frame.url).origin !== new URL(appPageUrl).origin) {
+    throw new Error('nexusai: rejected browser IPC from an unowned origin')
+  }
+}
+
+function installBrowserIpc() {
+  if (browserIpcInstalled) return
+  browserIpcInstalled = true
+  ipcMain.handle('nexusai:browser-acquire', (event, workspace) => {
+    assertAppSender(event)
+    return browserGuests.acquire(event.sender, workspace)
+  })
+  ipcMain.handle('nexusai:browser-release', (event, lease) => {
+    assertAppSender(event)
+    return browserGuests.release(event.sender, lease)
+  })
+}
 
 /**
  * The PATH a GUI-launched app should hand to dsh.

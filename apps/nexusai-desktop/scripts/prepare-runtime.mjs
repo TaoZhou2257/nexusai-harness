@@ -232,6 +232,12 @@ function profilePatch() {
     '  disabled: true',
     '- id: ui-settings-session-log',
     '  disabled: true',
+    // Right-sidebar browser. dsh ships this row disabled unless the profile is
+    // named `desktop` (official app). This profile is `nexusai`, so the row is
+    // turned on here. The carrier has no Electron <webview> host; the plugin
+    // then uses its iframe page.
+    '- id: ui-sidebar-browser',
+    '  disabled: false',
     ...(acknowledged === undefined ? [] : [
       '- id: ui-settings-general',
       "  name: '@deepseek-ai/dsh-client-ui-settings-general'",
@@ -494,6 +500,12 @@ if (target.platform === process.platform) {
     if (!composedRowDisabled(output, id)) {
       throw new Error(`composed profile did not disable ${id}`)
     }
+  }
+  const browserAt = output.indexOf('- id: ui-sidebar-browser\n')
+  const browserNext = browserAt === -1 ? -1 : output.indexOf('\n- id:', browserAt + 1)
+  const browserBlock = browserAt === -1 ? '' : output.slice(browserAt, browserNext === -1 ? undefined : browserNext)
+  if (!browserBlock.includes('disabled: false') || browserBlock.includes('desktop')) {
+    throw new Error('composed profile did not enable ui-sidebar-browser')
   }
   writeFileSync(join(BUILD, 'dump-config.yml'), output)
   say(`profile composes; ${plugin.name} present (dump written to build/dump-config.yml)`)
