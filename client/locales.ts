@@ -15,6 +15,9 @@ export type NexusaiLocaleKey =
   | 'emptyTitle'
   | 'emptyHintSync'
   | 'toolsUnit'
+  | 'sourceCustom'
+  | 'sourceBuiltin'
+  | 'emptyBuiltin'
   | 'sourceLocal'
   | 'sourceSkillHub'
   | 'sourceRemote'
@@ -189,7 +192,10 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   tabExperts: '专家',
   tabSkills: '技能',
   tabConnectors: '连接器',
-  tabExpertsDesc: '来自 {name} 的自定义工具，可被助手直接调用。',
+  tabExpertsDesc: '来自 {name} 的自定义工具与内置工具。',
+  sourceCustom: '自定义',
+  sourceBuiltin: '内置',
+  emptyBuiltin: '服务器没有返回内置工具。',
   tabSkillsDesc: '浏览 {name} 技能包并下载到本地。',
   tabConnectorsDesc: '来自 {name} 的 MCP 服务及其可用工具。',
   emptyTitle: '这里还没有内容',
@@ -370,7 +376,10 @@ export const en: Record<NexusaiLocaleKey, string> = {
   tabExperts: 'Experts',
   tabSkills: 'Skills',
   tabConnectors: 'Connectors',
-  tabExpertsDesc: 'Custom tools from {name}, callable by your assistants.',
+  tabExpertsDesc: 'Custom and built-in tools from {name}.',
+  sourceCustom: 'Custom',
+  sourceBuiltin: 'Built-in',
+  emptyBuiltin: 'The server returned no built-in tools.',
   tabSkillsDesc: 'Browse {name} skill packages and download them locally.',
   tabConnectorsDesc: 'MCP services from {name} and their available tools.',
   emptyTitle: 'Nothing here yet',

@@ -144,6 +144,7 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
     },
     capabilities: {
       listCustomTools: () => unwrap(remote.nexusaiCapabilities.listCustomTools()),
+      listBuiltinTools: () => unwrap(remote.nexusaiCapabilities.listBuiltinTools()),
       listMcpServers: () => unwrap(remote.nexusaiCapabilities.listMcpServers()),
       listLocalMcpServers: () => unwrap(remote.nexusaiCapabilities.listLocalMcpServers()),
       listSkills: () => unwrap(remote.nexusaiCapabilities.listSkills()),

@@ -170,6 +170,15 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       result: strictJson(`${PACKAGE}#nexusaiCapabilities/listCustomTools:result`),
     },
     {
+      id: `${PACKAGE}#nexusaiCapabilities/listBuiltinTools`,
+      service: 'nexusaiCapabilities',
+      namespace: 'nexusaiCapabilities',
+      method: 'listBuiltinTools',
+      invocation: { kind: 'direct' },
+      parameters: [],
+      result: strictJson(`${PACKAGE}#nexusaiCapabilities/listBuiltinTools:result`),
+    },
+    {
       id: `${PACKAGE}#nexusaiCapabilities/listMcpServers`,
       service: 'nexusaiCapabilities',
       namespace: 'nexusaiCapabilities',

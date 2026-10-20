@@ -1,4 +1,4 @@
-# HANDOFF — 交接摘要（2026-10-20 · 0.1.14 工作区未提交）
+# HANDOFF — 交接摘要（2026-10-20 · 0.1.15）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
@@ -103,7 +103,11 @@ cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup
 
 **同时只能跑一个实例**（详见坑 A3）。
 
-## 2. 当前运行状态（2026-10-09 收尾）
+## 2. 当前运行状态（2026-10-20 · 0.1.15）
+
+应用版本 **0.1.15**。专家页增加来源「内置」，列表来自 `GET /v1/tool/square/list`，只展示、不注册成 dsh 工具。本机开发窗口开过一次后已关掉，当时未登录，所以「内置」卡片还没在界面上点开过。tag `v0.1.15` 推 GitHub，不推 Codeup。
+
+## 2b. 历史运行状态（2026-10-09 收尾）
 
 | 项 | 值 |
 |---|---|
@@ -125,7 +129,7 @@ cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup
 **工作台（侧栏「专家 · 技能 · 连接器」，键控面板 `nexusai`）**
 - 布局对齐 WorkBuddy：能力标签行右端常驻 搜索框 / `已安装(N)` / `＋添加技能`；计数挂在能力标签与来源标签上
 - **搜索按来源分开**：本地 / SkillHub / 远程各一个搜索词互不串味；占位符随来源变化（`搜索本地技能` / `搜索技能` / `搜索远程技能 · <品牌>`）；**只有 SkillHub 走服务端搜索**（回车 + 分类芯片），本地与远程是本地过滤
-- **专家** = NexusAI 自定义工具卡片
+- **专家** = 两个来源：**自定义**（NexusAI 自定义工具卡片）/ **内置**（`GET /v1/tool/square/list` 工具广场，只展示，不注册成 dsh 工具）
 - **技能** 三来源：**本地**（与对话「/」目录同源；卡片带启用/关闭开关「开 = 产品绿 `#00C29A` + 白旋钮，尺寸沿用 dsh 36×20」，「…」菜单 = 查看内容 / 复制路径 / 删除技能(二次确认)；详情页不放开关；顺序稳定、切换不闪）/ **SkillHub**（腾讯市场：13 个分类芯片 + 全部，左右箭头翻页 + 向下无限翻页，钥匙图标标「需 APIKey」，★收藏，点卡片进详情含 SKILL.md 预览）/ **远程获取 · <品牌>**（NexusAI 目录，可下载）
 - **连接器** 两来源：**本地**（本机 profile 的 mcp-client 行）/ **远程获取 · <品牌>**（创建 + 导入两套 MCP；legacy SSE 的由插件桥接成 dsh 工具，卡片显「SSE 已桥接」）
 - **连接器工具栏**（2026-10-09，布局与技能一致）：搜索框（按来源各自过滤，含「没有匹配的连接器」）+ **自定义连接器** 四项菜单
@@ -177,7 +181,7 @@ cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup
 | 工具清单读取 | `src/sync/connector-tools.ts` 读 `ctx.tools.schemas()`（dsh 注册表，模型同源）：行式连接器按 `mcp__<serverName>__` 前缀匹配，桥接式按桥记录的 `{rawName, dshName}` 精确匹配；远程卡片用目录 id，宿主折算成我们写的那行 |
 | 连接器行 | `<profile>/cordis.patch.yml` 里的 mcp-client 行：**NexusAI 的 `nexusai-mcp-*`**（登出清）与**用户自定义 `custom-mcp-*`**（永不清）分属两个 insert 项；共用 `src/sync/patch-file.ts` 的保注释 + 原子写 |
 | 桌面 preload 桥（可用接缝） | `window.__DSH_HOST_PATHS__.pathFor(file)` → 选中项的绝对路径；`window.__DSH_DIRECTORY_PICKER__.pick()` → 原生**目录**选择器。都出自 `apps/desktop/src/preload-app.ts`，contextBridge 冻结、只读不可改写 |
-| Typert Remote | 手写描述符 **32 条**（`client/remote.ts`）；宿主 `capabilities` **20 公开方法 ↔ 20 描述符**（曾有一条孤儿描述符 `listLocalSkills`：无方法、无调用者，已删） |
+| Typert Remote | 手写描述符 **36 条**（`client/remote.ts`）；宿主 `capabilities` **24 公开方法 ↔ 24 描述符**（含 `listBuiltinTools`；曾有一条孤儿描述符 `listLocalSkills`：无方法、无调用者，已删） |
 | 槽位（5 个） | `sidebar.panellist` + `main`（键控面板 `nexusai`）+ `settings.launcher`（priority -1 遮蔽内置账号菜单）+ `sidebar.brand.mark` / `sidebar.brand.name`；`settings.section` 已按要求删除（组织切换挪到左下角） |
 | 构建 | `scripts/build.mjs`：esbuild 双产物（宿主 ESM / 客户端 CJS + `__ModuleLoader__` 包裹） |
 

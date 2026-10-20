@@ -60,6 +60,17 @@ export interface LoginResponse {
   readonly orgs: readonly { readonly id: string; readonly name: string }[]
 }
 
+/** `GET /v1/tool/square/list` → `{list: ToolSquareInfo[], total}`. */
+export interface BuiltinToolListResponse {
+  readonly list: readonly {
+    readonly toolSquareId: string
+    readonly name: string
+    readonly desc: string
+    readonly tags?: readonly string[]
+  }[]
+  readonly total: number
+}
+
 /** `GET /v1/tool/custom/list` → `{list: CustomToolInfo[], total}`. */
 export interface CustomToolListResponse {
   readonly list: readonly {

@@ -1,6 +1,6 @@
 /**
  * The NexusAI workbench panel: one sidebar entry (专家 · 技能 · 连接器) with
- * three capability tabs — 专家 (custom tools), 技能 (skills), 连接器 (MCP
+ * three capability tabs — 专家 (custom and built-in tools), 技能 (skills), 连接器 (MCP
  * servers) — laid out like the reference product's capability panels
  * (cap-header with cap-tabs, section head with h1 + border-bottom, card grid on
  * the host's --dsw-alias-* tokens, centered empty states).
@@ -38,6 +38,7 @@ export interface NexusaiWorkbenchProps {
 }
 
 interface ToolCard { name: string; description: string }
+interface BuiltinToolCard { toolSquareId: string; name: string; description: string; tags: string[] }
 interface SkillCard { skillId: string; name: string; description: string; author: string }
 /** One 本地 connector card: a patch row (with the raw config the editor needs)
  * or a custom SSE connector's bridge state. */
@@ -86,6 +87,8 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   const signedIn = view?.loggedIn === true
   const [activeTab, setActiveTab] = useState<TabKey>('experts')
   const [tools, setTools] = useState<ToolCard[]>([])
+  const [builtinTools, setBuiltinTools] = useState<BuiltinToolCard[]>([])
+  const [expertSource, setExpertSource] = useState<'custom' | 'builtin'>('custom')
   const [skills, setSkills] = useState<SkillCard[]>([])
   const [connectors, setConnectors] = useState<ConnectorCard[]>([])
   // 连接器 has the same two sources as 技能: 本地 (this machine's own
@@ -946,12 +949,14 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
     setLoading(true)
     setError('')
     try {
-      const [toolList, skillList, connectorList] = await Promise.all([
+      const [toolList, builtinList, skillList, connectorList] = await Promise.all([
         capabilities.listCustomTools().catch(() => []),
+        capabilities.listBuiltinTools().catch(() => []),
         capabilities.listSkills().catch(() => []),
         capabilities.listMcpServers().catch(() => []),
       ])
       setTools(toolList ?? [])
+      setBuiltinTools(builtinList ?? [])
       setSkills(skillList ?? [])
       setConnectors(connectorList ?? [])
     } finally {
@@ -975,6 +980,7 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
       // NexusAI-backed lists are meaningless without a session; the local
       // catalog and the marketplace still load.
       setTools([])
+      setBuiltinTools([])
       setSkills([])
       setConnectors([])
       setDownloaded({})
@@ -1040,7 +1046,7 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
     ? (['local', 'remote'] as const)
     : (['local'] as const)
   const tabLabel: Record<TabKey, string> = {
-    experts: `${resolve('tabExperts')} (${tools.length})`,
+    experts: `${resolve('tabExperts')} (${expertSource === 'builtin' ? builtinTools.length : tools.length})`,
     skills: `${resolve('tabSkills')} (${sourceCount[skillSource]})`,
     connectors: `${resolve('tabConnectors')} (${connectorSource === 'local' ? localConnectors.length : connectors.length})`,
   }
@@ -1910,19 +1916,49 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
             </div>
           </div>
         ) : activeTab === 'experts' ? (
-          <div className="tab-scroll">
-            {tools.length === 0
-              ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyHintSync')}</p></div>
-              : grid(tools.map(tool => (
-                <article key={tool.name} className="card">
-                  <div className="card-top">
-                    <span className="mark" aria-hidden>{tool.name.charAt(0).toUpperCase()}</span>
-                    <span className="card-title"><strong title={tool.name}>{tool.name}</strong></span>
-                  </div>
-                  <p className="muted clamp">{tool.description || '—'}</p>
-                </article>
-              )))}
-          </div>
+          <>
+            <div className="nexusai-source-tabs" role="tablist">
+              {([
+                ['custom', resolve('sourceCustom'), tools.length],
+                ['builtin', resolve('sourceBuiltin'), builtinTools.length],
+              ] as const).map(([key, label, count]) => (
+                <button
+                  key={key}
+                  className={`source-tab ${expertSource === key ? 'active' : ''}`}
+                  aria-selected={expertSource === key}
+                  onClick={() => { setExpertSource(key) }}
+                >
+                  {label} ({count})
+                </button>
+              ))}
+            </div>
+            <div className="tab-scroll">
+              {expertSource === 'builtin'
+                ? (builtinTools.length === 0
+                  ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyBuiltin')}</p></div>
+                  : grid(builtinTools.map(tool => (
+                    <article key={tool.toolSquareId} className="card">
+                      <div className="card-top">
+                        <span className="mark" aria-hidden>{tool.name.charAt(0).toUpperCase()}</span>
+                        <span className="card-title"><strong title={tool.name}>{tool.name}</strong></span>
+                      </div>
+                      <p className="muted clamp">{tool.description || '—'}</p>
+                      {tool.tags.length > 0 && <p className="muted clamp">{tool.tags.join(' · ')}</p>}
+                    </article>
+                  ))))
+                : (tools.length === 0
+                  ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyHintSync')}</p></div>
+                  : grid(tools.map(tool => (
+                    <article key={tool.name} className="card">
+                      <div className="card-top">
+                        <span className="mark" aria-hidden>{tool.name.charAt(0).toUpperCase()}</span>
+                        <span className="card-title"><strong title={tool.name}>{tool.name}</strong></span>
+                      </div>
+                      <p className="muted clamp">{tool.description || '—'}</p>
+                    </article>
+                  ))))}
+            </div>
+          </>
         ) : activeTab === 'skills' ? (
         <>
           <div className="nexusai-source-tabs" role="tablist">

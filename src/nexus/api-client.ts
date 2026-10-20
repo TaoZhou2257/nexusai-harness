@@ -9,6 +9,7 @@ import type {
   ApiResponse,
   CaptchaResponse,
   CustomInfoResponse,
+  BuiltinToolListResponse,
   CustomToolDetailResponse,
   CustomToolListResponse,
   LoginResponse,
@@ -324,6 +325,11 @@ export class NexusApiClient {
   /** `GET /v1/tool/custom/list`. */
   listCustomTools(signal?: AbortSignal): Promise<CustomToolListResponse> {
     return this.request<CustomToolListResponse>('/v1/tool/custom/list', 'GET', { signal })
+  }
+
+  /** `GET /v1/tool/square/list` — the platform's built-in tool square. */
+  listBuiltinTools(signal?: AbortSignal): Promise<BuiltinToolListResponse> {
+    return this.request<BuiltinToolListResponse>('/v1/tool/square/list', 'GET', { signal })
   }
 
   /** `GET /v1/tool/custom?customToolId=`. */

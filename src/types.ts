@@ -63,6 +63,14 @@ export interface CustomToolSummary {
   readonly description: string
 }
 
+/** One built-in tool listed by `GET /v1/tool/square/list`. */
+export interface BuiltinToolSummary {
+  readonly toolSquareId: string
+  readonly name: string
+  readonly description: string
+  readonly tags: readonly string[]
+}
+
 /** One MCP Server entity listed by `GET /v1/mcp/server/list`. */
 export interface McpServerSummary {
   readonly mcpServerId: string

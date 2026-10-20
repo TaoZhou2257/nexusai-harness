@@ -56,6 +56,7 @@ export interface AuthRemoteFace {
 /** The wire face of `nexusaiCapabilities` as this half consumes it. */
 export interface CapabilitiesRemoteFace {
   listCustomTools(): Promise<RemoteAnswer<{ customToolId: string; name: string; description: string }[]>>
+  listBuiltinTools(): Promise<RemoteAnswer<{ toolSquareId: string; name: string; description: string; tags: string[] }[]>>
   listLocalMcpServers(): Promise<RemoteAnswer<{ id: string; name: string; transport: string; url: string; serverName?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string>; enabled: boolean; connected: boolean; toolCount: number; timeoutSeconds?: number; bridgeError?: string }[]>>
   listMcpServers(): Promise<RemoteAnswer<{ id?: string; connected?: boolean; toolCount?: number; mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>>
   listSkills(): Promise<RemoteAnswer<{ skillId: string; name: string; description: string; author: string }[]>>
@@ -143,6 +144,7 @@ export interface NexusaiAuthOps {
 
 export interface NexusaiCapabilitiesOps {
   listCustomTools(): Promise<{ customToolId: string; name: string; description: string }[]>
+  listBuiltinTools(): Promise<{ toolSquareId: string; name: string; description: string; tags: string[] }[]>
   listLocalMcpServers(): Promise<{ id: string; name: string; transport: string; url: string; serverName?: string; command?: string; args?: string[]; env?: Record<string, string>; headers?: Record<string, string>; enabled: boolean; connected: boolean; toolCount: number; timeoutSeconds?: number; bridgeError?: string }[]>
   listMcpServers(): Promise<{ id?: string; connected?: boolean; toolCount?: number; mcpServerId: string; name: string; desc: string; toolNum: number; source: 'created' | 'imported'; transport: string; url: string; connectable: boolean; bridged: boolean; bridgeError?: string }[]>
   listSkills(): Promise<{ skillId: string; name: string; description: string; author: string }[]>

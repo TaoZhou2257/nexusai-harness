@@ -81,6 +81,18 @@ export class NexusaiCapabilitiesService extends TypertRemoteService {
     return this.deps.tools.list()
   }
 
+  /** Built-in tools from the platform tool square (`GET /v1/tool/square/list`). */
+  @Remote
+  async listBuiltinTools(): Promise<import('../types.ts').BuiltinToolSummary[]> {
+    const listed = await this.deps.api.listBuiltinTools()
+    return (listed.list ?? []).map(item => ({
+      toolSquareId: item.toolSquareId,
+      name: item.name,
+      description: item.desc,
+      tags: item.tags ?? [],
+    }))
+  }
+
   /** MCP servers of the active org: 创建 MCP plus 导入 MCP. */
   @Remote
   async listMcpServers(): Promise<McpServerSummary[]> {
