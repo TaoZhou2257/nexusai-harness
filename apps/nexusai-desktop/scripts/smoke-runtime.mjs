@@ -11,9 +11,12 @@
  * Usage: node scripts/smoke-runtime.mjs [--target=mac-arm64|win-x64] [--timeout=120]
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+const { materializeProfile } = createRequire(import.meta.url)('../src/profile-link.cjs')
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(SCRIPT_DIR, '..')
@@ -30,17 +33,17 @@ const argValue = (name, fallback) => {
 const timeoutSeconds = Number(argValue('timeout', '120'))
 if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) throw new Error('--timeout must be a positive number')
 
-const cli = join(PROFILE, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-if (!existsSync(cli)) throw new Error(`bundled dsh CLI is missing: ${cli} — run prepare:runtime first`)
-
-// A throwaway home, laid out the way the shell lays it out on first launch.
+const version = readFileSync(join(BUILD, 'runtime-version.txt'), 'utf8').trim()
 const home = join(BUILD, 'smoke-home')
 rmSync(home, { recursive: true, force: true })
-const profileLink = join(home, 'profiles', PROFILE_NAME)
-mkdirSync(join(home, 'profiles'), { recursive: true })
-symlinkSync(PROFILE, profileLink, process.platform === 'win32' ? 'junction' : 'dir')
-
-const version = readFileSync(join(BUILD, 'runtime-version.txt'), 'utf8').trim()
+const { cli } = materializeProfile({
+  home,
+  profileName: PROFILE_NAME,
+  sourceProfile: PROFILE,
+  appVersion: 'smoke',
+  runtimeVersion: version,
+  log: message => console.log(`smoke: ${message}`),
+})
 console.log(`smoke: bundling ${version}`)
 console.log(`smoke: starting the bundled dsh on ${home}`)
 

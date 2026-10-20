@@ -8,8 +8,10 @@
  *   1. the plugin resolved as `@toby/dsh-plugin-nexusai` inside the dsh dev
  *      project — a symlink into the generated
  *      `apps/desktop/.desktop-build/development/project/node_modules/@toby/`
- *   2. the dev home's profile patch carrying the `nexusai` insert (baseUrl +
- *      AES keys) and the `ui-settings-account` disable
+ *   2. the dev home's profile patch carrying the `nexusai` insert (baseUrl)
+ *      and the `ui-settings-account` disable. The login cipher, when
+ *      NEXUSAI_AES_KEY / NEXUSAI_AES_IV (or AES_KEY / AES_IV) are set, is
+ *      written to the home credentials file, not the patch.
  *   3. a built plugin (`lib/index.js`, `lib/client.js`)
  *   4. a login (the account's credentials are stored per machine, so the new
  *      machine signs in through the UI — nothing to copy)
@@ -27,10 +29,13 @@
  * once so `.desktop-build/development/` exists.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+const { seedCipher } = createRequire(import.meta.url)('../../apps/nexusai-desktop/src/cipher-seed.cjs')
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const dshRepo = resolve(process.env.DSH_REPO ?? join(homedir(), 'IdeaProjects', 'deepseek-harness'))
@@ -40,9 +45,9 @@ const patchFile = join(home, 'profiles', 'desktop', 'cordis.patch.yml')
 const linkDir = join(devRoot, 'project', 'node_modules', '@toby')
 const linkPath = join(linkDir, 'dsh-plugin-nexusai')
 
-const baseUrl = process.env.DSH_BASE_URL ?? 'http://agent.nexusai.net.cn:8081'
-const aesKey = process.env.AES_KEY ?? 'f5Su3GhNMM1rndyp'
-const aesIv = process.env.AES_IV ?? 'sdf4ddfsFD86Vdf2'
+const baseUrl = process.env.DSH_BASE_URL ?? process.env.NEXUSAI_BASE_URL ?? 'http://agent.nexusai.net.cn:8081'
+const aesKey = process.env.AES_KEY ?? process.env.NEXUSAI_AES_KEY ?? ''
+const aesIv = process.env.AES_IV ?? process.env.NEXUSAI_AES_IV ?? ''
 
 const say = message => console.log(`• ${message}`)
 const fail = message => { console.error(`✗ ${message}`); process.exit(1) }
@@ -84,9 +89,7 @@ if (!hasPluginRow) {
     - id: nexusai
       name: '@toby/dsh-plugin-nexusai'
       config:
-        baseUrl: '${baseUrl}'
-        aesKey: '${aesKey}'
-        aesIv: '${aesIv}'`)
+        baseUrl: '${baseUrl}'`)
 }
 if (additions.length === 0) {
   say('profile patch already carries the ui-settings-account disable and the nexusai row')
@@ -99,6 +102,21 @@ if (additions.length === 0) {
   }
   writeFileSync(patchFile, next, { encoding: 'utf8', mode: 0o600 })
   for (const line of additions) say(`added to ${patchFile}: ${line.split('\n')[0]}`)
+}
+
+const stripped = readFileSync(patchFile, 'utf8').replace(/^[ \t]+aes(?:Key|Iv):.*\n/gm, '')
+if (stripped !== readFileSync(patchFile, 'utf8')) {
+  writeFileSync(patchFile, stripped, { encoding: 'utf8', mode: 0o600 })
+  say('removed aesKey/aesIv from the profile patch')
+}
+if (aesKey !== '' && aesIv !== '') {
+  const seedFile = join(home, '.nexusai-cipher-seed.json')
+  writeFileSync(seedFile, `${JSON.stringify({ seedVersion: 1, aesKey, aesIv })}\n`, { mode: 0o600 })
+  const seeded = seedCipher({ home, seedFile, log: say })
+  rmSync(seedFile, { force: true })
+  say(`login cipher ${seeded}`)
+} else {
+  say('AES_KEY / AES_IV unset — login cipher was not seeded')
 }
 
 // ── 4. what the operator still has to do ────────────────────────────────────

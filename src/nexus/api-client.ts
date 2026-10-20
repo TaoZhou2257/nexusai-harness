@@ -103,9 +103,20 @@ export function normalizeBaseUrl(value: string): string {
 export class NexusApiClient {
   /** Current base URL: the config default, possibly swapped by the user at runtime. */
   private base: string
+  /** Login cipher: config at construction, replaced when the credential record loads. */
+  private aesKey: string
+  private aesIv: string
 
   constructor(private readonly options: NexusApiClientOptions) {
     this.base = normalizeBaseUrl(options.baseUrl)
+    this.aesKey = options.aesKey
+    this.aesIv = options.aesIv
+  }
+
+  /** Replace the login cipher after the credential record has been read. */
+  setCipher(aesKey: string, aesIv: string): void {
+    this.aesKey = aesKey
+    this.aesIv = aesIv
   }
 
   /** The base URL currently in effect. */
@@ -303,7 +314,7 @@ export class NexusApiClient {
 
   /** `POST /v1/base/login` with the AES-encrypted password; returns the JWT session. */
   async login(username: string, password: string, key: string, code: string): Promise<LoginResponse> {
-    const encrypted = encryptPassword(password, this.options.aesKey, this.options.aesIv)
+    const encrypted = encryptPassword(password, this.aesKey, this.aesIv)
     return this.request<LoginResponse>('/v1/base/login', 'POST', {
       anonymous: true,
       body: { username, password: encrypted, key, code },

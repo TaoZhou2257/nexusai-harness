@@ -9,9 +9,13 @@ import type Schema from '@deepseek-ai/schemastery'
 export interface Config {
   /** NexusAI bff base URL, e.g. `http://127.0.0.1:8080`. */
   baseUrl: string
-  /** bff config `decrypt-passwd.key`, as the literal string the server bytewise-uses. */
+  /**
+   * Fallback for `decrypt-passwd.key` when the `nexusai/cipher` credential
+   * record is absent. The shipped profile leaves this empty; the shell seeds
+   * the record from the build-time cipher file.
+   */
   aesKey: string
-  /** bff config `decrypt-passwd.iv`, same encoding as {@link Config.aesKey}. */
+  /** Fallback for `decrypt-passwd.iv`, same encoding as {@link Config.aesKey}. */
   aesIv: string
   /** Org used after login when the account has several; empty picks the first. */
   defaultOrgId: string

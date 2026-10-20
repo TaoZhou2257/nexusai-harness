@@ -15,6 +15,7 @@ nexusai-harness
 # Environment / secrets
 .env
 .env.*
+apps/nexusai-desktop/build/
 
 # Logs and OS junk
 *.log

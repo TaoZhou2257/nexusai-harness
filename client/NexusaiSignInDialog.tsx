@@ -159,11 +159,13 @@ export function NexusaiSignInDialog({ auth, getView, t, close }: NexusaiSignInDi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt?.phase, attempt?.id, attempt?.message])
 
-  // Success clears the retained failure message.
+  // Success closes the dialog. The attempt phase only drops the form; the
+  // parent keeps the modal mounted until this calls `close`.
   useEffect(() => {
-    if (view?.loggedIn === true) setLastError('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view?.loggedIn])
+    if (view?.loggedIn !== true) return
+    setLastError('')
+    close()
+  }, [view?.loggedIn, close])
 
   /** Apply the edited server URL: connectivity test first, then save. */
   /** Pull the login-page branding of the address currently in effect. Called on

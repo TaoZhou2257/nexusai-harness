@@ -130,8 +130,14 @@ try {
   Write-Host '== checking a stale home self-heals (junction pointing elsewhere) =='
 
   if (-not (Test-AppBoots $stale 'stale home')) { Show-Evidence 'stale home never reported ready' $stale; throw 'stale home: the app did not rebuild the runtime link' }
-  $resolved = (Get-Item (Join-Path $staleProfile 'node_modules')).Target
-  Write-Host "OK: stale home — runtime came up; node_modules now points at $resolved"
+  $modulesItem = Get-Item (Join-Path $staleProfile 'node_modules')
+  if ($modulesItem.LinkType -eq 'Junction' -or $modulesItem.LinkType -eq 'SymbolicLink') {
+    throw 'stale home: node_modules is still one link; expected a directory with only the plugin linked'
+  }
+  if (-not (Test-Path (Join-Path $staleProfile 'node_modules\@toby\dsh-plugin-nexusai'))) {
+    throw 'stale home: plugin link was not created'
+  }
+  Write-Host 'OK: stale home — runtime came up; node_modules is a directory and the plugin is linked'
   Stop-App
 
   # ── scenario 3: the junction points at the app's own runtime ──────────────

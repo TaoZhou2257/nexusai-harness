@@ -9,9 +9,10 @@
  * `supportedArchitectures` makes pnpm resolve the *target* platform's optional
  * dependencies, which is the only platform-sensitive part of the tree.
  *
- * Secrets never enter git: the profile patch is generated here from
- * NEXUSAI_BASE_URL / NEXUSAI_AES_KEY / NEXUSAI_AES_IV (env, or a local,
- * git-ignored `.env` beside this app).
+ * Secrets never enter git. NEXUSAI_BASE_URL is written into the profile patch.
+ * NEXUSAI_AES_KEY / NEXUSAI_AES_IV, when set, are written to cipher-seed.json
+ * beside the profile; the shell copies that into the home credentials file.
+ * Both come from the environment or a local, git-ignored `.env`.
  *
  * Usage:
  *   node scripts/prepare-runtime.mjs                 # host target
@@ -21,10 +22,11 @@
  * Output:
  *   build/package-cache/toby-dsh-plugin-nexusai-<version>.tgz
  *   build/profile/{package.json,pnpm-workspace.yaml,cordis.patch.yml,node_modules}
+ *   build/cipher-seed.json    (only when AES key and IV are both set)
  *   build/runtime-version.txt
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -286,8 +288,6 @@ function profilePatch() {
     `      name: '${plugin.name}'`,
     '      config:',
     `        baseUrl: '${baseUrl}'`,
-    ...(aesKey === '' ? [] : [`        aesKey: '${aesKey}'`]),
-    ...(aesIv === '' ? [] : [`        aesIv: '${aesIv}'`]),
     '',
   ].join('\n')
 }
@@ -459,6 +459,14 @@ pruneProfile(target)
 // ── 5. marker + a compose check that proves the bundle actually boots ───────
 const runtimeVersion = `${plugin.version}+dsh-${dshVersion}+${targetName}`
 writeFileSync(join(BUILD, 'runtime-version.txt'), `${runtimeVersion}\n`)
+const cipherSeed = join(BUILD, 'cipher-seed.json')
+if (aesKey !== '' && aesIv !== '') {
+  writeFileSync(cipherSeed, `${JSON.stringify({ seedVersion: 1, aesKey, aesIv })}\n`, { mode: 0o600 })
+  say('cipher seed written (not part of the profile patch)')
+} else {
+  rmSync(cipherSeed, { force: true })
+  say('cipher seed omitted: NEXUSAI_AES_KEY and NEXUSAI_AES_IV are not both set')
+}
 
 /**
  * Whether one composed row carries `disabled: true` before the next row.
@@ -480,13 +488,18 @@ if (target.platform === process.platform) {
   // `<DSH_HOME>/profiles/<name>`, so the probe home needs the link, not just
   // the built directory.
   const probeHome = join(BUILD, 'probe-home')
-  const probeProfile = join(probeHome, 'profiles', PROFILE_NAME)
-  rmSync(probeProfile, { recursive: true, force: true })
-  mkdirSync(join(probeHome, 'profiles'), { recursive: true })
-  // `junction` on Windows: a directory symlink needs elevation or developer
-  // mode there, while a junction does not — and the Windows job runs this
-  // probe, so a symlink would fail the build on a stock CI image.
-  symlinkSync(PROFILE, probeProfile, process.platform === 'win32' ? 'junction' : 'dir')
+  rmSync(probeHome, { recursive: true, force: true })
+  // The same thin profile the shell builds: manifests in the home, the plugin
+  // linked out of this installation, core packages resolved from the CLI.
+  const { materializeProfile } = createRequire(import.meta.url)('../src/profile-link.cjs')
+  materializeProfile({
+    home: probeHome,
+    profileName: PROFILE_NAME,
+    sourceProfile: PROFILE,
+    appVersion: app.version,
+    runtimeVersion,
+    log: message => console.log(`    ${message}`),
+  })
   const output = execFileSync(process.execPath, [cli, '--profile', PROFILE_NAME, '--dump-config'], {
     encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, DSH_HOME: probeHome },
   })

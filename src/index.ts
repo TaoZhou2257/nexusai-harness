@@ -32,6 +32,7 @@ import { NexusaiAuthService } from './service/auth'
 import { NexusaiCapabilitiesService } from './service/capabilities'
 import { CustomToolRegistry } from './sync/custom-tools'
 import { EndpointStore } from './sync/endpoint-store'
+import { CipherStore } from './sync/cipher-store'
 import { McpRowSync } from './sync/mcp-rows'
 import { SessionStore } from './sync/session-store'
 import { SkillSync } from './sync/skills'
@@ -55,6 +56,7 @@ export function apply(ctx: Context, config: ConfigType): void {
   if (config.baseUrl === '') throw new Error('nexusai: config.baseUrl is required')
   const store = new SessionStore(ctx)
   const endpoint = new EndpointStore(ctx)
+  const cipher = new CipherStore(ctx)
   const api = new NexusApiClient({
     baseUrl: config.baseUrl,
     timeoutMs: config.requestTimeoutMs,
@@ -68,6 +70,13 @@ export function apply(ctx: Context, config: ConfigType): void {
     if (stored !== undefined) api.setBaseUrl(stored)
   }, error => {
     ctx.logger.warn('nexusai: endpoint override could not be read: %s', (error as Error).message)
+  })
+  const cipherReady = cipher.load().then(stored => {
+    if (stored === undefined) return
+    api.setCipher(stored.aesKey, stored.aesIv)
+    ctx.logger.info('nexusai: login cipher loaded from credentials')
+  }, error => {
+    ctx.logger.warn('nexusai: login cipher could not be read: %s', (error as Error).message)
   })
   const tools = new CustomToolRegistry(ctx, {
     api,
@@ -109,6 +118,7 @@ export function apply(ctx: Context, config: ConfigType): void {
     mcpSse,
     authorization: ctx.authorization,
     defaultOrgId: config.defaultOrgId,
+    cipherReady,
   })
   // Local skill files: the first root is where uploads and downloads land, the
   // panel adds the directories of the skills the registry reports (user and

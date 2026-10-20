@@ -3,9 +3,10 @@
  *
  * What it does, in order:
  *   1. resolve its own dsh home (`<userData>/dsh-home`);
- *   2. materialize the bundled `nexusai` profile into that home (first run, and
- *      again whenever the bundled runtime version changes);
- *   3. spawn the bundled dsh CLI on the app's own Electron binary in Node mode;
+ *   2. materialize the `nexusai` profile: manifests in the home, the plugin
+ *      linked out of the bundled installation, core packages left in the app;
+ *   3. seed the login cipher into the home credentials, then spawn the bundled
+ *      dsh CLI on the app's own Electron binary in Node mode;
  *   4. read the `dsh web: http://127.0.0.1:<port>/?token=…` line off its stdout
  *      and open a centered window on it;
  *   5. kill the runtime when the app quits.
@@ -15,10 +16,12 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const {
-  cpSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync,
-  renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync,
+  createWriteStream, existsSync, mkdirSync, readFileSync,
+  renameSync, rmSync, statSync, writeFileSync,
 } = require('node:fs')
 const { retireLegacyWorkspaceLink } = require('./workspace-anchor.cjs')
+const { materializeProfile } = require('./profile-link.cjs')
+const { seedCipher } = require('./cipher-seed.cjs')
 const { createBrowserGuests } = require('./browser-guests.cjs')
 const { dirname, join, resolve } = require('node:path')
 
@@ -129,115 +132,6 @@ function bundledPrimaryRuntime() {
   return join(bundledRoot(), 'runtime', 'primary-runtime')
 }
 
-/** dsh CLI entry inside the bundled profile. */
-function dshCli(profileDir) {
-  return join(profileDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-}
-
-/**
- * Point the home's profile at the bundled one.
- *
- * Manifest files are copied (they are small and the user may edit them), while
- * `node_modules` is linked to the bundle so a first launch does not copy
- * hundreds of megabytes.
- *
- * The link is treated as disposable and **verified**, because a home outlives an
- * install: it can be left pointing at an app directory that was moved,
- * uninstalled or replaced, and a Windows junction to a gone target still
- * occupies the name (so `existsSync` — which resolves through the link — reports
- * "nothing there" while creating a new one fails). The marker therefore carries
- * the app version as well as the runtime version, occupancy is decided with
- * `lstat` (which sees a dangling link), and the CLI is checked before and after:
- * a stale link is simply rebuilt, and only a directory this app did not create
- * is refused.
- */
-function materializeProfile(home) {
-  const source = bundledProfileDir()
-  const sourceModules = join(source, 'node_modules')
-  if (!existsSync(sourceModules)) {
-    throw new Error(`bundled runtime is incomplete (missing ${sourceModules})`)
-  }
-  const runtimeVersion = readFileSync(join(bundledRoot(), 'runtime-version.txt'), 'utf8').trim()
-  const target = join(home, 'profiles', PROFILE_NAME)
-  const targetModules = join(target, 'node_modules')
-  const marker = join(target, '.nexusai-desktop-runtime')
-  // The app version belongs in the marker: reinstalling or moving the app has to
-  // re-point a home that was materialized by the previous one.
-  const expected = `${app.getVersion()}+${runtimeVersion}`
-  mkdirSync(target, { recursive: true })
-  // Inputs only: `cordis.yml` is dsh's composed output and is regenerated in
-  // the user's home, so a stale copy from build time is never shipped.
-  for (const name of ['package.json', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'pnpm-lock.yaml']) {
-    const from = join(source, name)
-    if (existsSync(from)) cpSync(from, join(target, name), { force: true })
-  }
-
-  const installed = readTextIfExists(marker)
-  const entry = lstatSync(targetModules, { throwIfNoEntry: false })
-  const ours = entry?.isSymbolicLink() === true
-  const cliPresent = () => existsSync(dshCli(target))
-  if (entry !== undefined && !ours && installed !== expected) {
-    throw new Error(
-      `${APP_NAME} cannot replace the runtime at ${targetModules}: it was not created by this app. `
-      + 'Move that directory, then reopen.',
-    )
-  }
-  if (ours && (installed !== expected || !cliPresent())) {
-    logLine(`runtime link needs rebuilding (marker ${installed ?? 'none'}, cli ${cliPresent() ? 'ok' : 'missing'})`)
-    removeLink(targetModules)
-  }
-  if (lstatSync(targetModules, { throwIfNoEntry: false }) === undefined) {
-    symlinkSync(sourceModules, targetModules, process.platform === 'win32' ? 'junction' : 'dir')
-  }
-  writeFileSync(marker, `${expected}\n`, 'utf8')
-  if (!cliPresent()) {
-    // Say which side is broken: an ambiguous message here costs a reinstall.
-    const sourceCli = existsSync(join(sourceModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
-    const entryAfter = lstatSync(targetModules, { throwIfNoEntry: false })
-    const state = entryAfter === undefined
-      ? 'the link is absent'
-      : entryAfter.isSymbolicLink() ? 'the link is in place but does not resolve' : 'the path is a real directory, not our link'
-    logLine(`runtime unusable: source CLI ${sourceCli ? 'present' : 'MISSING'} at ${sourceModules}; ${state}; marker ${expected}`)
-    throw new Error(sourceCli
-      ? `bundled runtime link is broken: ${targetModules} → ${sourceModules} (${state}). Delete that path and reopen.`
-      : `the app's bundled runtime is missing files (${join(sourceModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js')}); reinstall the app.`)
-  }
-  return target
-}
-
-/**
- * Remove a link without ever touching what it points at.
- *
- * Three tools, in the order the platform needs them, and never a recursive one:
- * `unlink` works for POSIX directory symlinks and for Windows file symlinks;
- * `rmdir` is what removes a Windows junction or directory symlink (it detaches
- * the reparse point and leaves the target alone) — and it is the reason this
- * function is not just `rm -r`, because a recursive remove is both the thing
- * that failed here on Windows (it refuses junctions) and the thing that can walk
- * into the target, which is the app's own bundled runtime.
- */
-function removeLink(path) {
-  const entry = lstatSync(path, { throwIfNoEntry: false })
-  if (entry === undefined) return
-  if (!entry.isSymbolicLink()) {
-    // A real directory this app created (the caller checked the marker).
-    rmSync(path, { recursive: true, force: true })
-    return
-  }
-  try {
-    rmSync(path, { force: true })
-    return
-  } catch (error) {
-    logLine(`link remove: unlink failed (${error && error.message ? error.message : String(error)}); trying rmdir`)
-  }
-  try {
-    rmdirSync(path)
-  } catch (error) {
-    logLine(`link remove: rmdir failed: ${error && error.message ? error.message : String(error)}`)
-    throw error
-  }
-}
-
 /**
  * Drop the `<Documents>/deepseek-harness` link an earlier build created.
  *
@@ -280,15 +174,6 @@ function documentsDirectory() {
     ])
   }
   return ask('xdg-user-dir', ['DOCUMENTS'])
-}
-
-/** A file's trimmed text, or undefined when it is absent. */
-function readTextIfExists(path) {
-  try {
-    return readFileSync(path, 'utf8').trim()
-  } catch {
-    return undefined
-  }
 }
 
 /** What this app is, in the words a user can act on. */
@@ -621,8 +506,7 @@ function enrichedPath() {
   return parts.join(':')
 }
 
-function startRuntime(home, profileDir) {
-  const cli = dshCli(profileDir)
+function startRuntime(home, cli) {
   if (!existsSync(cli)) throw new Error(`bundled dsh CLI is missing: ${cli}`)
   // The app's own Electron binary doubles as Node (`ELECTRON_RUN_AS_NODE`), so
   // the bundle ships one runtime instead of two.
@@ -702,8 +586,17 @@ if (!app.requestSingleInstanceLock()) {
     windowPlacement = ['bottom', 'fill'].includes(chosen.value) ? chosen.value : 'center'
     logLine(`window placement: ${windowPlacement} (from ${chosen.from})`)
     installMenu()
-    const profile = materializeProfile(home)
-    startRuntime(home, profile)
+    const runtimeVersion = readFileSync(join(bundledRoot(), 'runtime-version.txt'), 'utf8').trim()
+    const profile = materializeProfile({
+      home,
+      profileName: PROFILE_NAME,
+      sourceProfile: bundledProfileDir(),
+      appVersion: app.getVersion(),
+      runtimeVersion,
+      log: logLine,
+    })
+    seedCipher({ home, seedFile: join(bundledRoot(), 'cipher-seed.json'), log: logLine })
+    startRuntime(home, profile.cli)
   }).catch(cause => {
     showFailure(cause && cause.stack ? cause.stack : String(cause))
   })

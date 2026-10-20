@@ -17,6 +17,9 @@
     "dist:win": "node scripts/prepare-runtime.mjs --target=win-x64 && electron-builder --config electron-builder.config.cjs --win --x64",
     "dist:win:dir": "node scripts/prepare-runtime.mjs --target=win-x64 && electron-builder --config electron-builder.config.cjs --win --x64 --dir"
   },
+  "dependencies": {
+    "yaml": "^2.6.0"
+  },
   "devDependencies": {
     "@electron/get": "^5.1.0",
     "electron": "^44.0.0",

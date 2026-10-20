@@ -34,6 +34,8 @@ exports.default = async function afterPack(context) {
     filter: path => path !== join(source, 'cordis.yml'),
   })
   cpSync(marker, join(destination, 'runtime-version.txt'))
+  const cipherSeed = join(projectDir, 'build', 'cipher-seed.json')
+  if (existsSync(cipherSeed)) cpSync(cipherSeed, join(destination, 'cipher-seed.json'))
   // The primary runtime (Node + Python + Office libraries) and the Office skill
   // assets ride beside the profile; the shell points dsh at them with
   // DSH_BUNDLED_PRIMARY_RUNTIME and `--dump-config` resolves them at startup.

@@ -68,8 +68,11 @@ if [ -z "$ready" ]; then
 fi
 
 profile="$home/profiles/nexusai"
-[ -d "$profile/node_modules" ] || { echo "profile node_modules missing after launch" >&2; exit 1; }
+if [ -L "$profile/node_modules" ]; then echo "profile node_modules is still a single link; expected a directory" >&2; exit 1; fi
+[ -d "$profile/node_modules/@toby/dsh-plugin-nexusai" ] || { echo "plugin link missing after launch" >&2; exit 1; }
+[ -e "$profile/node_modules/@deepseek-ai/dsh" ] && { echo "core dsh package was copied into the home profile" >&2; exit 1; }
 grep -q 'dsh-plugin-nexusai' "$profile/cordis.patch.yml" || { echo "bundled patch does not mount the plugin" >&2; exit 1; }
+grep -q 'aesKey:' "$profile/cordis.patch.yml" && { echo "profile patch still carries aesKey" >&2; exit 1; }
 
 echo 'OK: installed app started, bundled runtime came up, profile materialized with the plugin row'
 grep -E 'menu: minimal installed|window placement|runtime ready' "$log" | head -3

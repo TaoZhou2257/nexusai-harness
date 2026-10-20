@@ -1,10 +1,21 @@
-# HANDOFF — 交接摘要（2026-10-18 · 0.1.14）
+# HANDOFF — 交接摘要（2026-10-20 · 0.1.14 工作区未提交）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 本次交接（2026-10-17）
+## 进行中（2026-10-20，未提交、未打包）
 
-**一句话状态**：源码版本 **0.1.14**，内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。这一版带上 macOS 顶栏（hiddenInset，收起侧栏整列让开）、右侧边栏 Electron `<webview>` 浏览器，并去掉侧栏设置齿轮。tag `v0.1.14` 推 GitHub 后由 CI 出安装包。上一份已发布安装包是 **0.1.13**。本机 `dist/` 仍是 0.1.8 包，不要把它当成已发布版本。dsh 源码未改。
+两处对齐 rc.2，dsh 源码没改：
+
+1. **home 里的 profile 不再链整棵 `node_modules`。** 安装目录里的 `build/profile` 仍是完整 dsh 安装。壳（`src/profile-link.cjs`）只把清单拷进 `profiles/nexusai`，并把 `@toby/dsh-plugin-nexusai` 链出去。CLI 从安装目录启动，核心包由 runtime resolution 解析。旧的整树链接在标记不含 `plugin-link` 时摘掉，不顺着链接删安装目录。已有一份真实 `build/profile` 上跑过 `--dump-config`，薄 profile 能组合出插件行。
+2. **登录 AES 不再写入 `cordis.patch.yml`。** `prepare-runtime` 在 key 和 iv 都有时写 `build/cipher-seed.json`（`after-pack` 带进安装包）。壳启动时写入 `$DSH_HOME/.credentials.yaml` 的 `nexusai/cipher`。同版本不覆盖；`seedVersion` 更大才替换。插件登录前读这条记录，补丁里的 `aesKey`/`aesIv` 只做没有记录时的后备。`dist/windows-trial/nexusai.patch.yml` 里的明文 key 已去掉。开发安装脚本不再内置那把曾公开的默认 key。
+
+**登录框：** 登录成功后侧栏已是账号，弹窗却不关。`NexusaiSignInDialog` 在 `loggedIn` 变真时只清错误，没有调用 `close`。已补上。要在已打开的窗口里看到，必须重启桌面端（client 包不热更新）。
+
+**本机开发窗口已开过（2026-10-20 08:11，源码 0.1.14，未打包）。** `prepare-runtime --skip-primary-runtime` 之后，补丁只剩 `baseUrl`，`build/cipher-seed.json` 已写出（`seedVersion` 1）。`electron .` 日志：整树 `node_modules` 链接被摘掉，只留下插件链接；`cipher credential written (nexusai/cipher, seed 1)`；`window shown`。现用 home 是 `~/Library/Application Support/NexusAIHarness/dsh-home`：`profiles/nexusai/node_modules` 是真实目录，里面只有 `@toby`，标记以 `+plugin-link` 结尾，补丁无 `aesKey`。没有点登录。服务端那把已公开的 key 仍要轮换。验收闸脚本已改成断言「`node_modules` 是目录、插件是链接、补丁无 aesKey」，要等下一次打包 CI 才在真安装包上跑。
+
+## 本次交接（2026-10-18）
+
+**一句话状态**：源码版本 **0.1.14**，提交 `22e0165`，tag `v0.1.14` 已推 GitHub。内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。这一版是壳上的界面：macOS 顶栏按 dsh 原布局、右侧边栏浏览器改用 Electron `<webview>`、去掉侧栏设置齿轮。dsh 源码没改。tag CI 还在跑，Release 还没挂上安装包。上一份已发布安装包是 **0.1.13**。本机 `apps/nexusai-desktop/dist/` 里的 0.1.8 dmg 和 `.app` 已删掉。没有推 Codeup。
 
 **这一轮（10-15 至 10-16）做完的事**
 
@@ -17,7 +28,11 @@
 7. **侧栏底部设置齿轮与登录/账号同一行、靠右**（`client/NexusaiLauncher.tsx`），打进 **0.1.11**。未登录也能直接打开设置。登录弹窗里的「打开设置」已去掉。登录按钮只包住头像和文字，中间空白点了不会登录；齿轮靠右。
 8. **登录验证码按原图比例显示**（`client/NexusaiSignInDialog.tsx`），打进 **0.1.11**。服务端图是 80×40，之前被拉成 100×48（`object-fit: fill`）。现为 80×40、`object-fit: contain`，与输入框垂直居中。
 9. **内核钉到 dsh-v0.2.1-alpha.5**，应用版本升到 **0.1.12**。已发布。
-10. **内核钉到 dsh-v0.2.1-rc.2**，应用版本升到 **0.1.13**。`upstream.json` 的 version/tag/commit 是 `687f282e`（轻量 tag）。根 `package.json` 的 `dshBaseline` 和 16 个 `@deepseek-ai/dsh-*` 是 `0.2.1-rc.2`；cordis `4.0.5`、schemastery `3.18.5`。`primary-runtime-lock.json` 与 rc.2 的 lock 逐字节相同。完整跑过 `prepare-runtime.mjs`，`office-skills` 仍是 7 个目录。
+10. **内核钉到 dsh-v0.2.1-rc.2**，应用版本升到 **0.1.13**。`upstream.json` 的 version/tag/commit 是 `687f282e`（轻量 tag）。根 `package.json` 的 `dshBaseline` 和 16 个 `@deepseek-ai/dsh-*` 是 `0.2.1-rc.2`；cordis `4.0.5`、schemastery `3.18.5`。`primary-runtime-lock.json` 与 rc.2 的 lock 逐字节相同。完整跑过 `prepare-runtime.mjs`，`office-skills` 仍是 7 个目录。已发布。
+11. **0.1.14（本轮，壳上的界面，未改 dsh）**，提交 `22e0165`，tag `v0.1.14`。三件事：
+    - **macOS 顶栏按 dsh 原布局**。空标题在现在的 macOS 上仍会被画成应用名，所以 darwin 主窗口用 `titleBarStyle: 'hiddenInset'`、红绿灯 `(16, 18)`、`vibrancy: 'sidebar'`。`src/preload.cjs` 给页面打 `data-platform=darwin`，侧栏才挂上 52px 顶条，收起时侧栏列宽为 0、重开按钮挪到红绿灯右侧。这个标记会让 shortcuts 插件走桌面路径，所以 preload 同时暴露 `window.dshDesktop.keyboard`（以及一份默认快捷键快照）。Windows 标题栏不变。
+    - **右侧边栏浏览器按官方 `<webview>`**。dsh 0.2.1-rc.2 里 `ui-sidebar-browser` 默认只在 profile 名叫 `desktop` 时启用；本产品 profile 是 `nexusai`，所以 `prepare-runtime.mjs` 的补丁写 `disabled: false`。官方浏览器还要主进程签发租约和分区：`src/browser-guests.cjs` 照 `upstream/apps/desktop/src/browser-guests.ts` 做了这件事，主窗口打开 `webviewTag`，preload 暴露 `dshDesktop.browser` 且 `protocolVersion: 1`。允许的 IPC 来源是本壳加载的 `http://127.0.0.1:<port>`，不是官方的 `dsh-app://`。本机侧栏里 `<webview>` 打开过 `example.com` 和 `github.com`（后者会拒绝被 iframe 嵌进来）。
+    - **去掉侧栏设置齿轮**。设置只留在头像菜单（未登录是「打开设置 / 登录」）。账号按钮只包住头像、名字和组织下拉；下拉框右侧的空白不响应点击。`⌘ ,` 仍能打开设置。
 
 **现在的坐标**
 
@@ -28,18 +43,18 @@
 | 内置 dsh | **0.2.1-rc.2**（`upstream.json` 的 version/tag/commit 三者一致，commit `687f282e`） |
 | 载体源码 | `apps/nexusai-desktop/`（壳 `src/main.cjs` + `src/workspace-anchor.cjs` + `scripts/prepare-runtime.mjs` → `prepare-primary-runtime.mjs` → `after-pack.cjs` + `electron-builder.config.cjs`） |
 | 仓库 | GitHub `TaoZhou2257/nexusai-harness`（**public**，CI 在这跑）；Codeup `origin`（无流水线，仍停在 `4bad92a`） |
-| 分支 / 提交 | `v1.0`。上一版 tag **`v0.1.13`**。这一版 tag **`v0.1.14`** |
-| 发版 CI | `v0.1.12` tag（发 Release）https://github.com/TaoZhou2257/nexusai-harness/actions/runs/38933879701 成功。macOS 与 Windows 验收都过，Release 已挂上两个安装包 |
+| 分支 / 提交 | `v1.0` @ `22e0165`。上一版 tag **`v0.1.13`**。这一版 tag **`v0.1.14`** |
+| 发版 CI | tag `v0.1.14` https://github.com/TaoZhou2257/nexusai-harness/actions/runs/39113186905 **进行中**（macOS 与 Windows 都在跑）。Release 还没创建。同一次提交的分支构建 https://github.com/TaoZhou2257/nexusai-harness/actions/runs/39113181729 不发 Release |
 
 **已验证 / 未验证**
 
-- 已验证：rc.2 核对表 1–6 仍成立；`check:dsh` / tsc / build / 66 例 / 16 例全绿。完整 `prepare-runtime.mjs` 打出 `0.1.0+dsh-0.2.1-rc.2+mac-arm64`，`--dump-config` 组合成功，`office-skills` 七个 `SKILL.md` 都在。开发窗口日志 `NexusAIHarness 0.1.13 start`、`window shown`，没有 `skill-office` 报错；用户目录 marker 是 `0.1.13+0.1.0+dsh-0.2.1-rc.2+mac-arm64`。
-- 未验证：0.1.13 的安装包要等 tag CI。没有人在 Windows 桌面上点开过快捷方式；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。本机 `apps/nexusai-desktop/dist/` 里的 dmg 和 `.app` 仍是 **0.1.8**。
+- 已验证（本机开发窗口，源码 0.1.14，内核 rc.2）：页面启动没有插件失败。顶条 280×52，品牌在红绿灯下面；收起侧栏后列宽为 0，`shell.leading` 在 x=88。侧栏浏览器是 `<webview partition=dsh-sidebar-browser-…>`，`example.com` 与 `github.com` 都进了侧栏。没有设置齿轮；头像菜单有「打开设置」；组织下拉右侧约 70px 空白的点击目标不是账号按钮。`--dump-config` 里 `ui-sidebar-browser` 是 `disabled: false`。
+- 未验证：0.1.14 的安装包要等 tag CI。没有人在 Windows 桌面上点开过快捷方式；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。本机 `apps/nexusai-desktop/dist/` 的 0.1.8 包已删除。
 
 **下一步（建议顺序）**
 
 1. 等 `v0.1.14` 的 tag CI 把 dmg/exe 挂到 Release。没有推 Codeup。CI 绿了之后，把本文「已发布安装包」改成 0.1.14 的链接。在那之前 Latest 仍是 0.1.13。
-2. 若要公司仓库跟上：`git push origin v1.0 v0.1.13`。只同步，不构建。先问用户。`origin` 仍停在 `4bad92a`。
+2. 若要公司仓库跟上：`git push origin v1.0 v0.1.14`。只同步，不构建。先问用户。`origin` 仍停在 `4bad92a`。
 3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
 4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
 
@@ -595,7 +610,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 优先级 | 任务 | 状态 |
 |---|---|---|
-| **高** | **服务端轮换 AES key/iv**：`dist/windows-trial/nexusai.patch.yml`（旧 Windows 试用路线的遗留文件，已被载体取代）**仍在 git 跟踪中**，里面写着 key/iv；仓库现在是 public，所以这两个值**此刻在 HEAD 上就是公开的**，历史里也有。轮换后同步本机 `.env` 与 GitHub Secrets。若要顺手降低暴露面：`git rm --cached dist/windows-trial/nexusai.patch.yml` + 加进 `.gitignore`（注意历史仍需轮换才真正安全） | 🔴 等决策（用户此前已选择"推 public、接受风险"） |
+| **高** | **服务端轮换 AES key/iv**。工作区里试用补丁和开发脚本的明文默认值已经去掉，新包装进 credentials 而不是 profile patch。**git 历史和已发出的安装包里旧 key 还在**，不轮换服务端就不算收口。轮换后把 `seedVersion` 从 1 抬上去，并同步本机 `.env` 与 GitHub Secrets | 🔴 等服务端轮换 |
 | 中 | carrier 体积：内置 profile ~448MB + primary runtime ~344MB（DMG 323MB / win exe 276MB）。办公那份是"开箱可用"换来的体积，属有意为之；可裁的是未用的官方 bundle 与源码映射 | ⬜ |
 | 中 | Windows 真机验一次办公技能（让 agent 真写一个 docx；需要配好模型的账号） | ⬜ |
 | 低 | 给 workflow 加 `paths-ignore: ['**.md']`：纯文档提交也会触发两平台完整构建（约 126 计费分钟），额度虽已不再受限（public），但没必要 | ⬜ |

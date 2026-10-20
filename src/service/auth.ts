@@ -64,6 +64,8 @@ export interface NexusaiAuthServiceOptions {
   readonly authorization: AuthorizationService
   /** Org chosen when the account has none configured. */
   readonly defaultOrgId: string
+  /** Settles after the login cipher has been read from credentials. */
+  readonly cipherReady: Promise<void>
 }
 
 /** Login-state Remote face for the sidebar panel. */
@@ -347,6 +349,7 @@ export class NexusaiAuthService extends TypertRemoteService {
     const attempt = this.attempt
     if (attempt === undefined) throw new Error('nexusai: no sign-in attempt is active')
     try {
+      await this.deps.cipherReady
       let captchaKey = ''
       for (;;) {
         this.update(attempt, { phase: 'waiting-input', captchaB64: undefined, message: undefined })
