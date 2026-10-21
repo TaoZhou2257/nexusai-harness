@@ -7,7 +7,9 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 
 import type { NexusApiClient } from '../nexus/api-client'
 import type { SkillHubClient } from '../nexus/skillhub'
+import type { BuiltinToolRegistry } from '../sync/builtin-tools'
 import type { CustomToolRegistry } from '../sync/custom-tools'
+import { intranetSchema } from '../sync/tool-host'
 import type { McpRowSync } from '../sync/mcp-rows'
 import { listMcpCatalog, listSseInputs } from '../sync/mcp-list'
 import type { McpSseServerInput, McpSseToolRegistry } from '../sync/mcp-tools'
@@ -41,6 +43,7 @@ export interface LocalMcpSummary {
 export interface NexusaiCapabilitiesServiceOptions {
   readonly api: NexusApiClient
   readonly tools: CustomToolRegistry
+  readonly builtinTools: BuiltinToolRegistry
   readonly mcp: McpRowSync
   readonly skills: SkillSync
   /** SkillHub marketplace client (api.skillhub.cn). */
@@ -70,27 +73,54 @@ export class NexusaiCapabilitiesService extends TypertRemoteService {
   /** Custom tools as the last sync saw them. */
   @Remote
   async listCustomTools(): Promise<import('../types.ts').CustomToolSummary[]> {
-    if (this.deps.tools.list().length === 0) {
-      const listed = await this.deps.api.listCustomTools()
-      return (listed.list ?? []).map(item => ({
+    const cached = this.deps.tools.list()
+    if (cached.length > 0) return cached
+    const listed = await this.deps.api.listCustomTools()
+    const cards = []
+    for (const item of listed.list ?? []) {
+      let intranet = false
+      try {
+        const detail = await this.deps.api.customToolDetail(item.customToolId)
+        intranet = intranetSchema(detail.schema, this.deps.api.baseUrl)
+      } catch {
+        intranet = false
+      }
+      cards.push({
         customToolId: item.customToolId,
         name: item.name,
         description: item.description,
-      }))
+        intranet,
+      })
     }
-    return this.deps.tools.list()
+    return cards
   }
 
   /** Built-in tools from the platform tool square (`GET /v1/tool/square/list`). */
   @Remote
   async listBuiltinTools(): Promise<import('../types.ts').BuiltinToolSummary[]> {
+    const cached = this.deps.builtinTools.list()
+    if (cached.length > 0) return cached
     const listed = await this.deps.api.listBuiltinTools()
-    return (listed.list ?? []).map(item => ({
-      toolSquareId: item.toolSquareId,
-      name: item.name,
-      description: item.desc,
-      tags: item.tags ?? [],
-    }))
+    const cards = []
+    for (const item of listed.list ?? []) {
+      const id = item.toolSquareId.trim()
+      if (id === '') continue
+      let intranet = false
+      try {
+        const detail = await this.deps.api.builtinToolDetail(id)
+        intranet = intranetSchema(detail.schema ?? '', this.deps.api.baseUrl)
+      } catch {
+        intranet = false
+      }
+      cards.push({
+        toolSquareId: id,
+        name: item.name,
+        description: item.desc,
+        tags: item.tags ?? [],
+        intranet,
+      })
+    }
+    return cards
   }
 
   /** MCP servers of the active org: 创建 MCP plus 导入 MCP. */
@@ -336,6 +366,13 @@ export class NexusaiCapabilitiesService extends TypertRemoteService {
       errors.push(...report.errors)
     } catch (error) {
       errors.push(`tools: ${(error as Error).message}`)
+    }
+    try {
+      const builtin = await this.deps.builtinTools.sync()
+      tools += builtin.tools
+      errors.push(...builtin.errors.map(issue => `builtin: ${issue}`))
+    } catch (error) {
+      errors.push(`builtin: ${(error as Error).message}`)
     }
     let servers = 0
     let sseServers = 0

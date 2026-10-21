@@ -27,6 +27,7 @@ import type { Branding } from '../types'
 import { normalizeBaseUrl } from '../nexus/api-client'
 import type { NexusApiClient } from '../nexus/api-client'
 import type { EndpointStore } from '../sync/endpoint-store'
+import type { BuiltinToolRegistry } from '../sync/builtin-tools'
 import type { CustomToolRegistry } from '../sync/custom-tools'
 import type { McpRowSync } from '../sync/mcp-rows'
 import { listMcpCatalog } from '../sync/mcp-list'
@@ -58,6 +59,7 @@ export interface NexusaiAuthServiceOptions {
   /** Durable storage for the user-configured base URL override. */
   readonly endpoint: EndpointStore
   readonly tools: CustomToolRegistry
+  readonly builtinTools: BuiltinToolRegistry
   readonly mcp: McpRowSync
   readonly mcpSse: McpSseToolRegistry
   /** The dsh authorization seam this service registers its login flow with. */
@@ -289,6 +291,7 @@ export class NexusaiAuthService extends TypertRemoteService {
   async logout(): Promise<void> {
     this.deliberateSignOut = true
     await this.deps.tools.clear()
+    await this.deps.builtinTools.clear()
     await this.deps.mcp.clear()
     await this.deps.mcpSse.clear()
     await this.deps.store.persist(undefined)
@@ -306,6 +309,7 @@ export class NexusaiAuthService extends TypertRemoteService {
     this.notice = 'nexusai: session-lost'
     try {
       await this.deps.tools.clear()
+      await this.deps.builtinTools.clear()
       await this.deps.mcp.clear()
       await this.deps.mcpSse.clear()
     } catch {
@@ -375,6 +379,12 @@ export class NexusaiAuthService extends TypertRemoteService {
       await this.deps.tools.sync()
     } catch (error) {
       errors.push(`tools: ${(error as Error).message}`)
+    }
+    try {
+      const builtin = await this.deps.builtinTools.sync()
+      errors.push(...builtin.errors.map(issue => `builtin: ${issue}`))
+    } catch (error) {
+      errors.push(`builtin: ${(error as Error).message}`)
     }
     try {
       const catalog = await listMcpCatalog(this.deps.api)

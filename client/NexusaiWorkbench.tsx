@@ -8,7 +8,8 @@
  * Signed out, the tabs hide and the page shows the sign-in CTA; signed in,
  * all three lists load once and the 同步能力 action refreshes them.
  */
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Button, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconDownloadOutlineRegular, IconLinkOutlineMedium, IconLoadingOutlineRegular, IconNewChatOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, IconSparkleMedium, IconUserOutlineMedium, IconQuestionOutlineRegular, IconWarningOutlineRegular, Input, Checkbox, Menu, Modal, Switch, Tooltip, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useBranding } from './NexusaiBrand'
 import { NexusaiSignInDialog } from './NexusaiSignInDialog'
@@ -37,8 +38,8 @@ export interface NexusaiWorkbenchProps {
   readonly t?: (key: NexusaiLocaleKey) => string
 }
 
-interface ToolCard { name: string; description: string }
-interface BuiltinToolCard { toolSquareId: string; name: string; description: string; tags: string[] }
+interface ToolCard { name: string; description: string; intranet?: boolean }
+interface BuiltinToolCard { toolSquareId: string; name: string; description: string; tags: string[]; intranet?: boolean }
 interface SkillCard { skillId: string; name: string; description: string; author: string }
 /** One 本地 connector card: a patch row (with the raw config the editor needs)
  * or a custom SSE connector's bridge state. */
@@ -89,6 +90,21 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   const [tools, setTools] = useState<ToolCard[]>([])
   const [builtinTools, setBuiltinTools] = useState<BuiltinToolCard[]>([])
   const [expertSource, setExpertSource] = useState<'custom' | 'builtin'>('custom')
+  const [intranetHint, setIntranetHint] = useState<{ x: number; y: number; maxWidth: number } | null>(null)
+  const showIntranetHint = (event: MouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setIntranetHint({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom - 12,
+      maxWidth: Math.max(120, rect.width - 28),
+    })
+  }
+  useEffect(() => {
+    if (intranetHint === null) return
+    const hide = () => { setIntranetHint(null) }
+    window.addEventListener('scroll', hide, true)
+    return () => { window.removeEventListener('scroll', hide, true) }
+  }, [intranetHint])
   const [skills, setSkills] = useState<SkillCard[]>([])
   const [connectors, setConnectors] = useState<ConnectorCard[]>([])
   // 连接器 has the same two sources as 技能: 本地 (this machine's own
@@ -1901,6 +1917,10 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
   return (
     <section className="nexusai-wb">
       <style>{WORKBENCH_CSS}</style>
+      {intranetHint !== null && createPortal(
+        <span className="nx-hint" role="tooltip" style={{ left: intranetHint.x, top: intranetHint.y, maxWidth: intranetHint.maxWidth }}>{resolve('intranetUnsupported')}</span>,
+        document.body,
+      )}
       {capHeader}
       <div className="wb-body">
         {error !== '' && (
@@ -1936,27 +1956,43 @@ export function NexusaiWorkbench({ useNexusai, auth, capabilities, slashSkills: 
               {expertSource === 'builtin'
                 ? (builtinTools.length === 0
                   ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyBuiltin')}</p></div>
-                  : grid(builtinTools.map(tool => (
-                    <article key={tool.toolSquareId} className="card">
-                      <div className="card-top">
-                        <span className="mark" aria-hidden>{tool.name.charAt(0).toUpperCase()}</span>
-                        <span className="card-title"><strong title={tool.name}>{tool.name}</strong></span>
-                      </div>
-                      <p className="muted clamp">{tool.description || '—'}</p>
-                      {tool.tags.length > 0 && <p className="muted clamp">{tool.tags.join(' · ')}</p>}
-                    </article>
-                  ))))
+                  : grid(builtinTools.map(tool => {
+                    return (
+                      <article
+                        key={tool.toolSquareId}
+                        className={tool.intranet === true ? 'card is-disabled' : 'card'}
+                        aria-disabled={tool.intranet === true || undefined}
+                        onMouseEnter={tool.intranet === true ? showIntranetHint : undefined}
+                        onMouseLeave={tool.intranet === true ? () => { setIntranetHint(null) } : undefined}
+                      >
+                        <div className="card-top">
+                          <span className="mark" aria-hidden>{tool.name.charAt(0).toUpperCase()}</span>
+                          <span className="card-title"><strong title={tool.name}>{tool.name}</strong></span>
+                        </div>
+                        <p className="muted clamp">{tool.description || '—'}</p>
+                        {tool.tags.length > 0 && <p className="muted clamp">{tool.tags.join(' · ')}</p>}
+                      </article>
+                    )
+                  })))
                 : (tools.length === 0
                   ? <div className="nexusai-empty"><strong>{resolve('emptyTitle')}</strong><p className="muted">{resolve('emptyHintSync')}</p></div>
-                  : grid(tools.map(tool => (
-                    <article key={tool.name} className="card">
-                      <div className="card-top">
-                        <span className="mark" aria-hidden>{tool.name.charAt(0).toUpperCase()}</span>
-                        <span className="card-title"><strong title={tool.name}>{tool.name}</strong></span>
-                      </div>
-                      <p className="muted clamp">{tool.description || '—'}</p>
-                    </article>
-                  ))))}
+                  : grid(tools.map(tool => {
+                    return (
+                      <article
+                        key={tool.name}
+                        className={tool.intranet === true ? 'card is-disabled' : 'card'}
+                        aria-disabled={tool.intranet === true || undefined}
+                        onMouseEnter={tool.intranet === true ? showIntranetHint : undefined}
+                        onMouseLeave={tool.intranet === true ? () => { setIntranetHint(null) } : undefined}
+                      >
+                        <div className="card-top">
+                          <span className="mark" aria-hidden>{tool.name.charAt(0).toUpperCase()}</span>
+                          <span className="card-title"><strong title={tool.name}>{tool.name}</strong></span>
+                        </div>
+                        <p className="muted clamp">{tool.description || '—'}</p>
+                      </article>
+                    )
+                  })))}
             </div>
           </>
         ) : activeTab === 'skills' ? (
@@ -2841,6 +2877,15 @@ const WORKBENCH_CSS = `
 .card { box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; min-height: 128px;
   padding: 14px; border-radius: 17px; border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-2); }
+.card.is-disabled { cursor: not-allowed; }
+.card.is-disabled > * { opacity: 0.45; filter: grayscale(1); }
+.nx-hint { position: fixed; z-index: 80; box-sizing: border-box; width: max-content; margin: 0; padding: 4px 8px;
+  border-radius: 6px; background: var(--dsw-alias-bg-layer-1, #fff); color: var(--dsw-alias-label-primary);
+  font-size: 12px; font-weight: 400; line-height: 16px; white-space: nowrap; text-align: center; pointer-events: none;
+  box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), 0 4px 12px rgba(16, 24, 40, 0.08);
+  transform: translate(-50%, -100%); animation: nx-hint-in 140ms ease-out; }
+@keyframes nx-hint-in { from { opacity: 0; transform: translate(-50%, calc(-100% + 4px)); } }
+@media (prefers-reduced-motion: reduce) { .nx-hint { animation: none; } }
 .card-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .mark { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;
   border-radius: 10px; background: var(--dsw-alias-interactive-bg-hover); font-weight: 600; }

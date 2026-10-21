@@ -60,6 +60,15 @@ export interface LoginResponse {
   readonly orgs: readonly { readonly id: string; readonly name: string }[]
 }
 
+/** `GET /v1/tool/square` → one square tool, including its OpenAPI schema. */
+export interface BuiltinToolDetailResponse {
+  readonly toolSquareId: string
+  readonly name: string
+  readonly desc: string
+  readonly schema: string
+  readonly apiAuth?: ApiAuthWebRequest
+}
+
 /** `GET /v1/tool/square/list` → `{list: ToolSquareInfo[], total}`. */
 export interface BuiltinToolListResponse {
   readonly list: readonly {

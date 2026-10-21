@@ -61,6 +61,8 @@ export interface CustomToolSummary {
   readonly customToolId: string
   readonly name: string
   readonly description: string
+  /** `servers[0].url` is a cluster-internal host this desktop cannot call. */
+  readonly intranet: boolean
 }
 
 /** One built-in tool listed by `GET /v1/tool/square/list`. */
@@ -69,6 +71,8 @@ export interface BuiltinToolSummary {
   readonly name: string
   readonly description: string
   readonly tags: readonly string[]
+  /** `servers[0].url` is a cluster-internal host this desktop cannot call. */
+  readonly intranet: boolean
 }
 
 /** One MCP Server entity listed by `GET /v1/mcp/server/list`. */

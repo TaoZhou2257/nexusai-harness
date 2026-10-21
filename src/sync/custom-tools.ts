@@ -13,6 +13,7 @@ import type { ParameterSchemaSpec, ToolRunContext } from '@deepseek-ai/dsh-tools
 import { NexusApiClient } from '../nexus/api-client'
 import type { ApiAuthWebRequest } from '../nexus/model'
 import { componentsOf, parseOpenApiDocument, toParameterSpec, type OpenApiOperation } from './openapi'
+import { placeServer } from './tool-host'
 import type { CustomToolSummary } from '../types'
 
 /** Constructor options. */
@@ -44,29 +45,36 @@ export class CustomToolRegistry {
     await this.clear()
     const errors: string[] = []
     const listed = await this.options.api.listCustomTools(signal)
-    this.summaries = (listed.list ?? []).map(item => ({
-      customToolId: item.customToolId,
-      name: item.name,
-      description: item.description,
-    }))
+    const summaries: CustomToolSummary[] = []
     let registered = 0
     for (const item of listed.list ?? []) {
+      let intranet = false
       try {
         const detail = await this.options.api.customToolDetail(item.customToolId, signal)
         const doc = parseOpenApiDocument(detail.schema)
         const components = componentsOf(parseValue(detail.schema))
         if (doc.serverUrl === '') {
           errors.push(`tool ${item.name}: OpenAPI document has no servers[0].url`)
-          continue
+        } else {
+          const placed = placeServer(doc.serverUrl, this.options.api.baseUrl)
+          intranet = placed.intranet
+          if (placed.intranet) {
+            errors.push(`tool ${item.name}: cluster intranet host is not callable from the desktop`)
+          } else {
+            for (const operation of doc.operations) {
+              const path = placed.pathPrefix === '' ? operation.path : `${placed.pathPrefix}${operation.path}`
+              this.registerOperation(item.name, item.description, placed.serverUrl, detail.apiAuth, { ...operation, path }, components)
+              registered++
+            }
+            if (doc.operations.length === 0) errors.push(`tool ${item.name}: no operations in schema`)
+          }
         }
-        for (const operation of doc.operations) {
-          this.registerOperation(item.name, item.description, doc.serverUrl, detail.apiAuth, operation, components)
-          registered++
-        }
-        if (doc.operations.length === 0) errors.push(`tool ${item.name}: no operations in schema`)      } catch (error) {
+      } catch (error) {
         errors.push(`tool ${item.name}: ${(error as Error).message}`)
       }
+      summaries.push({ customToolId: item.customToolId, name: item.name, description: item.description, intranet })
     }
+    this.summaries = summaries
     return { tools: registered, errors }
   }
 
@@ -74,6 +82,7 @@ export class CustomToolRegistry {
   async clear(): Promise<void> {
     const pending = this.disposers
     this.disposers = []
+    this.summaries = []
     for (const dispose of pending.reverse()) await dispose()
   }
 
@@ -110,7 +119,7 @@ export class CustomToolRegistry {
 }
 
 /** `nexusai__<tool>__<operation>`, slug-safe and capped. */
-function toolPublicName(prefix: string, toolName: string, operation: OpenApiOperation): string {
+export function toolPublicName(prefix: string, toolName: string, operation: OpenApiOperation): string {
   const operationPart = operation.operationId ?? `${operation.method}_${operation.path}`
   return `${prefix}__${slugifyTool(toolName)}__${slugifyTool(operationPart)}`.slice(0, NAME_LIMIT).replace(/_+$/, '')
 }
@@ -125,7 +134,7 @@ function slugifyTool(value: string): string {
 }
 
 /** Execute one operation against the target API, mirroring createHTTPHandler. */
-async function executeOperation(
+export async function executeOperation(
   serverUrl: string,
   apiAuth: ApiAuthWebRequest,
   operation: OpenApiOperation,

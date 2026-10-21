@@ -30,6 +30,7 @@ import { SseConnectors, bridgeInputOf } from './sync/sse-connectors'
 import { McpSseToolRegistry } from './sync/mcp-tools'
 import { NexusaiAuthService } from './service/auth'
 import { NexusaiCapabilitiesService } from './service/capabilities'
+import { BuiltinToolRegistry } from './sync/builtin-tools'
 import { CustomToolRegistry } from './sync/custom-tools'
 import { EndpointStore } from './sync/endpoint-store'
 import { CipherStore } from './sync/cipher-store'
@@ -82,6 +83,10 @@ export function apply(ctx: Context, config: ConfigType): void {
     api,
     toolNamePrefix: config.customTools.toolNamePrefix,
   })
+  const builtinTools = new BuiltinToolRegistry(ctx, {
+    api,
+    toolNamePrefix: config.customTools.toolNamePrefix,
+  })
   const mcp = new McpRowSync(ctx, {
     profilePatchFile: config.profilePatchFile,
     serverNamePrefix: config.mcp.serverNamePrefix,
@@ -114,6 +119,7 @@ export function apply(ctx: Context, config: ConfigType): void {
     store,
     endpoint,
     tools,
+    builtinTools,
     mcp,
     mcpSse,
     authorization: ctx.authorization,
@@ -142,7 +148,7 @@ export function apply(ctx: Context, config: ConfigType): void {
     return bridged.errors
   }
   const connectorTools = new ConnectorTools(ctx, { rows: mcp, sse: mcpSse, sseConnectors })
-  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, mcp, mcpSse, skills, skillhub, localSkills, connectors, sseConnectors, refreshSse, connectorTools })
+  const capabilities = new NexusaiCapabilitiesService(ctx, { api, tools, builtinTools, mcp, mcpSse, skills, skillhub, localSkills, connectors, sseConnectors, refreshSse, connectorTools })
   // Naming the resolved patch file up front is what makes "connectors don't
   // work" diagnosable: a wrong profile writes rows into a file the host never
   // loads, and nothing else in the logs would say so.
@@ -164,5 +170,6 @@ export function apply(ctx: Context, config: ConfigType): void {
 
   ctx.effect(() => () => {
     void tools.clear()
+    void builtinTools.clear()
   }, 'nexusai: disposals')
 }

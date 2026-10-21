@@ -1,21 +1,63 @@
-# HANDOFF — 交接摘要（2026-10-20 · 0.1.15）
+# HANDOFF — 交接摘要（2026-10-21 · 0.1.15，未发新版）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 进行中（2026-10-20，未提交、未打包）
+## 本次交接（2026-10-21）
 
-两处对齐 rc.2，dsh 源码没改：
+**一句话状态**：应用版本仍是 **0.1.15**（`45962bf`，tag `v0.1.15` 已发布）。这一笔在 tag 之后：公网内置工具注册成 dsh 可调用工具，集群内网工具只展示并置灰。**不升版本、不打 tag、不发 Release。** 内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。dsh 源码没改。推的是 GitHub 分支 `v1.0`，会跑分支构建，不会建 Release。没有推 Codeup。
 
-1. **home 里的 profile 不再链整棵 `node_modules`。** 安装目录里的 `build/profile` 仍是完整 dsh 安装。壳（`src/profile-link.cjs`）只把清单拷进 `profiles/nexusai`，并把 `@toby/dsh-plugin-nexusai` 链出去。CLI 从安装目录启动，核心包由 runtime resolution 解析。旧的整树链接在标记不含 `plugin-link` 时摘掉，不顺着链接删安装目录。已有一份真实 `build/profile` 上跑过 `--dump-config`，薄 profile 能组合出插件行。
-2. **登录 AES 不再写入 `cordis.patch.yml`。** `prepare-runtime` 在 key 和 iv 都有时写 `build/cipher-seed.json`（`after-pack` 带进安装包）。壳启动时写入 `$DSH_HOME/.credentials.yaml` 的 `nexusai/cipher`。同版本不覆盖；`seedVersion` 更大才替换。插件登录前读这条记录，补丁里的 `aesKey`/`aesIv` 只做没有记录时的后备。`dist/windows-trial/nexusai.patch.yml` 里的明文 key 已去掉。开发安装脚本不再内置那把曾公开的默认 key。
+**这一笔**
 
-**登录框：** 登录成功后侧栏已是账号，弹窗却不关。`NexusaiSignInDialog` 在 `loggedIn` 变真时只清错误，没有调用 `close`。已补上。要在已打开的窗口里看到，必须重启桌面端（client 包不热更新）。
+公网内置工具和改写后的 `bff-service` 可以让 dsh 调用。单标签集群主机名（`callback-nexusai` 这类）不注册。自定义工具用同一条主机规则。
 
-**本机开发窗口已开过（2026-10-20 08:11，源码 0.1.14，未打包）。** `prepare-runtime --skip-primary-runtime` 之后，补丁只剩 `baseUrl`，`build/cipher-seed.json` 已写出（`seedVersion` 1）。`electron .` 日志：整树 `node_modules` 链接被摘掉，只留下插件链接；`cipher credential written (nexusai/cipher, seed 1)`；`window shown`。现用 home 是 `~/Library/Application Support/NexusAIHarness/dsh-home`：`profiles/nexusai/node_modules` 是真实目录，里面只有 `@toby`，标记以 `+plugin-link` 结尾，补丁无 `aesKey`。没有点登录。服务端那把已公开的 key 仍要轮换。验收闸脚本已改成断言「`node_modules` 是目录、插件是链接、补丁无 aesKey」，要等下一次打包 CI 才在真安装包上跑。
+- 分类在 `src/sync/tool-host.ts` 的 `placeServer`。`bff-service` 改写成登录源，路径前缀 `/service/api`，不算内网。没有点的主机名，以及 `*.cluster.local`，算内网。`localhost` 和带冒号的主机名仍可调用。
+- 内置注册在 `src/sync/builtin-tools.ts`，名字 `nexusai__b_<toolSquareId>__<operation>`。详情 `GET /v1/tool/square` 里已存的 `apiAuth.apiKeyValue` 会带上；密钥参数从模型表和调用参数里去掉，避免模型另填一把覆盖平台的 key。平台没存 key 时仍注册，远端会返回错误，不会弹填 key 的框。
+- 自定义工具仍带自己的 `apiAuth`。内网的不注册。
+- 两个注册表各自 `clear()`，登录、切组织、启动时分开同步。
+- 卡片：`intranet: true` 置灰。悬停时在**这张卡片底部内侧**显示一行浅色说明「客户端不支持调用内网工具」（英文 `This client cannot call intranet tools.`），不盖住下一张卡。工作台选项卡中英文都是 **Tools**。侧栏标题没改，仍是「专家 · 技能 · 连接器」。
 
-## 本次交接（2026-10-18）
+**现在的坐标**
 
-**一句话状态**：源码版本 **0.1.14**，提交 `22e0165`，tag `v0.1.14` 已推 GitHub。内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。这一版是壳上的界面：macOS 顶栏按 dsh 原布局、右侧边栏浏览器改用 Electron `<webview>`、去掉侧栏设置齿轮。dsh 源码没改。tag CI 还在跑，Release 还没挂上安装包。上一份已发布安装包是 **0.1.13**。本机 `apps/nexusai-desktop/dist/` 里的 0.1.8 dmg 和 `.app` 已删掉。没有推 Codeup。
+| 项 | 值 |
+|---|---|
+| 已发布安装包 | **0.1.15**：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.15 （tag CI 已成功，https://github.com/TaoZhou2257/nexusai-harness/actions/runs/39451176534 ）。这份安装包**不含**上面这一笔 |
+| 应用版本 | **0.1.15** 不变。这一笔只在分支 `v1.0`，没有新 tag |
+| 内置 dsh | **0.2.1-rc.2**（`upstream.json`，commit `687f282e`） |
+| 仓库 | GitHub `TaoZhou2257/nexusai-harness`。Codeup `origin` 没有这次推送 |
+| 分支 | `v1.0`，在 `45962bf` 之上。tag `v0.1.15` 仍指向 `45962bf` |
+| 本机桌面 | 开着。`apps/nexusai-desktop` 里 `electron --remote-debugging-port=9223 .`，home `~/Library/Application Support/NexusAIHarness/dsh-home`。登录过 `admin` / `--- 系统 ---` |
+
+**已验证 / 未验证**
+
+- 已验证：`tsc` 通过。插件 `lib/` 已构建并拷进 profile 插件目录。登录后 Tools 内置 9 张：文件 URL 转 Base64、Base64 文件上传、心知天气可点；Tavily、博查、通义千问、通义万相、两路 ASR 置灰。悬停说明在当前卡片底部，一行浅色字。侧栏标题仍是「专家 · 技能 · 连接器」。
+- 未验证：让助手真的调用一个公网内置工具（心知天气或改写后的文件工具），确认请求带上平台已存的 key。没有新安装包。
+
+**下一步**
+
+1. 要发版再升版本、打 tag。这次用户明确不发 Release。
+2. 登录后让助手调用心知天气或文件 URL / base64，看上游是否认平台已存的 key。`callback-nexusai` 那批应保持不可调用。
+3. 公司仓库要跟上再说：`git push origin v1.0`。先问用户。`v0.1.15` 这个 tag 已经在 GitHub，不必再推。
+4. 服务端轮换曾公开过的 AES key，并同步本机 `.env` 与 GitHub Secrets。其余待办见 §11。
+
+**接手须知**
+
+- **推送前先问用户**。`git push github` 会触发两个平台的完整构建。一次授权只对应一次推送。本机 `tsc` / `build.mjs` 不受限。
+- 看界面用载体，不要用 `~/IdeaProjects/deepseek-harness` 那份旧检出（它没有 `.desktop-build`）：
+
+```bash
+cd ~/GoLandProjects/nexusai-harness
+node scripts/build.mjs
+cp -R lib/. apps/nexusai-desktop/build/profile/node_modules/@toby/dsh-plugin-nexusai/lib/
+cd apps/nexusai-desktop && ./node_modules/.bin/electron --remote-debugging-port=9223 .
+```
+
+- client 改动必须重启桌面端。同时只能跑一个实例。
+- 工作区有未跟踪的 `.pnpm-store/`，不要提交。
+- 升级 dsh 时，§8i 第 6 条（工作区目录那行字面量）必须还在；`prepare-runtime` 找不到或出现多次会直接失败。
+
+## 上一份交接（2026-10-18，0.1.14，已发布）
+
+**一句话状态**：源码版本 **0.1.14**，提交 `22e0165`，tag `v0.1.14` 已发布：https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.14 。内置 dsh 仍是 **0.2.1-rc.2**。这一版是壳上的界面：macOS 顶栏按 dsh 原布局、右侧边栏浏览器改用 Electron `<webview>`、去掉侧栏设置齿轮。下面的坐标表是当时的快照，以本节之前的 0.1.15 为准。没有推 Codeup。
 
 **这一轮（10-15 至 10-16）做完的事**
 
@@ -51,11 +93,11 @@
 - 已验证（本机开发窗口，源码 0.1.14，内核 rc.2）：页面启动没有插件失败。顶条 280×52，品牌在红绿灯下面；收起侧栏后列宽为 0，`shell.leading` 在 x=88。侧栏浏览器是 `<webview partition=dsh-sidebar-browser-…>`，`example.com` 与 `github.com` 都进了侧栏。没有设置齿轮；头像菜单有「打开设置」；组织下拉右侧约 70px 空白的点击目标不是账号按钮。`--dump-config` 里 `ui-sidebar-browser` 是 `disabled: false`。
 - 未验证：0.1.14 的安装包要等 tag CI。没有人在 Windows 桌面上点开过快捷方式；Windows 真机上让 agent 真写一个 docx；macOS「仍要打开」自 0.1.2 后未再人工确认。本机 `apps/nexusai-desktop/dist/` 的 0.1.8 包已删除。
 
-**下一步（建议顺序）**
+**当时的下一步**（0.1.14 的安装包已经挂上；现行下一步见上面「本次交接」）
 
-1. 等 `v0.1.14` 的 tag CI 把 dmg/exe 挂到 Release。没有推 Codeup。CI 绿了之后，把本文「已发布安装包」改成 0.1.14 的链接。在那之前 Latest 仍是 0.1.13。
-2. 若要公司仓库跟上：`git push origin v1.0 v0.1.14`。只同步，不构建。先问用户。`origin` 仍停在 `4bad92a`。
-3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。
+1. `v0.1.14` 的 tag CI 已完成，Release 已挂包。
+2. 公司仓库 `origin` 当时停在 `4bad92a`。要跟上仍须先问用户。
+3. 服务端轮换那个**曾公开过**的 AES key，并同步本机 `.env` 与 GitHub Secrets。仍未做。
 4. Windows 真机跑一次办公技能（用户侧，需要模型）。其余待办见 §11。
 
 **接手须知（最容易忽略的几条）**
@@ -103,9 +145,9 @@ cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup
 
 **同时只能跑一个实例**（详见坑 A3）。
 
-## 2. 当前运行状态（2026-10-20 · 0.1.15）
+## 2. 当前运行状态（2026-10-21 · 0.1.15，分支上多一笔，未发新版）
 
-应用版本 **0.1.15**。专家页增加来源「内置」，列表来自 `GET /v1/tool/square/list`，只展示、不注册成 dsh 工具。本机开发窗口开过一次后已关掉，当时未登录，所以「内置」卡片还没在界面上点开过。tag `v0.1.15` 推 GitHub，不推 Codeup。
+应用版本仍是 **0.1.15**。tag `v0.1.15` 的安装包已发布，里面的内置工具只展示。分支 `v1.0` 在这之上：公网内置工具注册成 dsh 工具并带上平台已存的 key；集群内网主机名不注册，卡片置灰，悬停说明在卡片底部。没有新 tag，没有推 Codeup。本机窗口开着，登录过 admin。
 
 ## 2b. 历史运行状态（2026-10-09 收尾）
 
@@ -129,7 +171,7 @@ cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup
 **工作台（侧栏「专家 · 技能 · 连接器」，键控面板 `nexusai`）**
 - 布局对齐 WorkBuddy：能力标签行右端常驻 搜索框 / `已安装(N)` / `＋添加技能`；计数挂在能力标签与来源标签上
 - **搜索按来源分开**：本地 / SkillHub / 远程各一个搜索词互不串味；占位符随来源变化（`搜索本地技能` / `搜索技能` / `搜索远程技能 · <品牌>`）；**只有 SkillHub 走服务端搜索**（回车 + 分类芯片），本地与远程是本地过滤
-- **专家** = 两个来源：**自定义**（NexusAI 自定义工具卡片）/ **内置**（`GET /v1/tool/square/list` 工具广场，只展示，不注册成 dsh 工具）
+- **专家**（选项卡文案是 **Tools**，侧栏标题仍是「专家 · 技能 · 连接器」）= 两个来源：**自定义**（注册为 `nexusai__<name>__<operation>`，请求带该工具已存的 `apiAuth`）/ **内置**（注册为 `nexusai__b_<toolSquareId>__<operation>`，公网地址带上平台已存的 key）。`servers[0].url` 是单标签集群主机名（`callback-nexusai`）的不注册，卡片置灰，悬停在卡片底部显示「客户端不支持调用内网工具」。`bff-service` 改写成登录源的 `/service/api`
 - **技能** 三来源：**本地**（与对话「/」目录同源；卡片带启用/关闭开关「开 = 产品绿 `#00C29A` + 白旋钮，尺寸沿用 dsh 36×20」，「…」菜单 = 查看内容 / 复制路径 / 删除技能(二次确认)；详情页不放开关；顺序稳定、切换不闪）/ **SkillHub**（腾讯市场：13 个分类芯片 + 全部，左右箭头翻页 + 向下无限翻页，钥匙图标标「需 APIKey」，★收藏，点卡片进详情含 SKILL.md 预览）/ **远程获取 · <品牌>**（NexusAI 目录，可下载）
 - **连接器** 两来源：**本地**（本机 profile 的 mcp-client 行）/ **远程获取 · <品牌>**（创建 + 导入两套 MCP；legacy SSE 的由插件桥接成 dsh 工具，卡片显「SSE 已桥接」）
 - **连接器工具栏**（2026-10-09，布局与技能一致）：搜索框（按来源各自过滤，含「没有匹配的连接器」）+ **自定义连接器** 四项菜单
@@ -636,6 +678,8 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-21 | **未发版**：公网内置工具注册成可调用 dsh 工具（带平台已存 key）；`bff-service` 改写成 `/service/api`；单标签集群主机名不注册，卡片置灰，悬停说明在卡片底部。选项卡改名为 Tools，侧栏标题不变。不升版本、不打 tag | `tsc` 通过。本机 admin：内置 9 张，6 张置灰，悬停说明在卡片内。助手实际调用公网工具未做 |
+| 10-20 | **v0.1.15**：专家页增加「内置」来源（`GET /v1/tool/square/list`，只展示）。同一 tag 还带上 `eeef50f`（profile 只链插件、登录密钥进 credentials）。tag `v0.1.15` 已推 GitHub，不推 Codeup。Release 已挂上 | `tsc` 通过。tag CI 成功 https://github.com/TaoZhou2257/nexusai-harness/actions/runs/39451176534 |
 | 10-18 | **v0.1.14**：macOS 顶栏按 dsh（hiddenInset + 侧栏顶条，收起时侧栏宽度为 0）、右侧边栏浏览器走 Electron `<webview>` 租约、去掉侧栏设置齿轮（设置留在头像菜单，下拉框右侧空白不响应点击）。内核仍是 dsh 0.2.1-rc.2。tag `v0.1.14`。不推 Codeup | 本机窗口：顶条与收起让位、`<webview>` 打开 example.com / github.com、下拉框右侧点不到账号按钮。安装包等 tag CI |
 | 10-18 | **右侧边栏浏览器按官方 webview**（本机未发版）：`nexusai` profile 把 `ui-sidebar-browser` 设为 `disabled: false`。壳在主窗口打开 `webviewTag`，`browser-guests.cjs` 按 dsh desktop 的租约/分区/导航规则管 guest，preload 暴露 `dshDesktop.browser`（`protocolVersion: 1`）。未改 dsh 源码 | 组合配置该行是 `disabled: false`。本机侧栏出现 `<webview partition=dsh-sidebar-browser-…>`，`example.com` 标题进了侧栏 |
 | 10-18 | **macOS 顶栏按 dsh 原布局**（本机未发版）：darwin 主窗口 `hiddenInset` + 红绿灯 `(16, 18)` + `vibrancy: sidebar`。`preload.cjs` 给页面打 `data-platform=darwin`，并补上 shortcuts 启动所需的 `window.dshDesktop.keyboard`（否则网页启动失败）。展开时侧栏自带 52px 顶条，收起时侧栏宽度为 0、控件挪到红绿灯右侧。Windows 标题栏不变。已发布的 0.1.13 安装包仍是旧标题栏 | 本机启动无插件失败；顶条 280×52，品牌 top≈58；收起后侧栏宽 0、`shell.leading` 在 x=88、`--dsh-frame-leading-clearance: 160px` |

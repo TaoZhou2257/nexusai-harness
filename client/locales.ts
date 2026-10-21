@@ -18,6 +18,7 @@ export type NexusaiLocaleKey =
   | 'sourceCustom'
   | 'sourceBuiltin'
   | 'emptyBuiltin'
+  | 'intranetUnsupported'
   | 'sourceLocal'
   | 'sourceSkillHub'
   | 'sourceRemote'
@@ -189,13 +190,14 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   nav: 'NexusAI',
   panel: '专家 · 技能 · 连接器',
   signedOutTitle: '登录后开始使用',
-  tabExperts: '专家',
+  tabExperts: 'Tools',
   tabSkills: '技能',
   tabConnectors: '连接器',
   tabExpertsDesc: '来自 {name} 的自定义工具与内置工具。',
   sourceCustom: '自定义',
   sourceBuiltin: '内置',
   emptyBuiltin: '服务器没有返回内置工具。',
+  intranetUnsupported: '客户端不支持调用内网工具',
   tabSkillsDesc: '浏览 {name} 技能包并下载到本地。',
   tabConnectorsDesc: '来自 {name} 的 MCP 服务及其可用工具。',
   emptyTitle: '这里还没有内容',
@@ -373,13 +375,14 @@ export const en: Record<NexusaiLocaleKey, string> = {
   nav: 'NexusAI',
   panel: 'Experts · Skills · Connectors',
   signedOutTitle: 'Sign in to get started',
-  tabExperts: 'Experts',
+  tabExperts: 'Tools',
   tabSkills: 'Skills',
   tabConnectors: 'Connectors',
   tabExpertsDesc: 'Custom and built-in tools from {name}.',
   sourceCustom: 'Custom',
   sourceBuiltin: 'Built-in',
   emptyBuiltin: 'The server returned no built-in tools.',
+  intranetUnsupported: 'This client cannot call intranet tools.',
   tabSkillsDesc: 'Browse {name} skill packages and download them locally.',
   tabConnectorsDesc: 'MCP services from {name} and their available tools.',
   emptyTitle: 'Nothing here yet',
