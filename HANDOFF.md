@@ -4,7 +4,7 @@
 
 ## 本次交接（2026-10-21）
 
-**一句话状态**：应用版本仍是 **0.1.15**（`45962bf`，tag `v0.1.15` 已发布）。这一笔在 tag 之后：公网内置工具注册成 dsh 可调用工具，集群内网工具只展示并置灰。**不升版本、不打 tag、不发 Release。** 内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。dsh 源码没改。推的是 GitHub 分支 `v1.0`，会跑分支构建，不会建 Release。没有推 Codeup。
+**一句话状态**：应用版本仍是 **0.1.15**（已发布的 tag `v0.1.15` 指向 `45962bf`）。这一笔是 **`efc9934`**：公网内置工具注册成 dsh 可调用工具，集群内网工具只展示并置灰。**不升版本、不打 tag、不发 Release。** 内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。dsh 源码没改。推的是 GitHub 分支 `v1.0`，会跑分支构建，不会建 Release。没有推 Codeup。
 
 **这一笔**
 
@@ -24,7 +24,7 @@
 | 应用版本 | **0.1.15** 不变。这一笔只在分支 `v1.0`，没有新 tag |
 | 内置 dsh | **0.2.1-rc.2**（`upstream.json`，commit `687f282e`） |
 | 仓库 | GitHub `TaoZhou2257/nexusai-harness`。Codeup `origin` 没有这次推送 |
-| 分支 | `v1.0`，在 `45962bf` 之上。tag `v0.1.15` 仍指向 `45962bf` |
+| 分支 / 提交 | `v1.0` @ `efc9934`。tag `v0.1.15` 仍指向 `45962bf` |
 | 本机桌面 | 开着。`apps/nexusai-desktop` 里 `electron --remote-debugging-port=9223 .`，home `~/Library/Application Support/NexusAIHarness/dsh-home`。登录过 `admin` / `--- 系统 ---` |
 
 **已验证 / 未验证**
