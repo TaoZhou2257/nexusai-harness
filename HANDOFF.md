@@ -1,8 +1,44 @@
-# HANDOFF — 交接摘要（2026-10-21 · 0.1.15，未发新版）
+# HANDOFF — 交接摘要（2026-10-25 · 内核 rc.3，未发新版）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 本次交接（2026-10-21）
+## 本次交接（2026-10-25）
+
+**一句话状态**：**dsh 内核 0.2.1-rc.2 → 0.2.1-rc.3**（`1f81c047`，轻量 tag；rc.3 于 10-23 发布，内容是侧栏/会话「更多」菜单、新会话草稿修复）。应用版本随 §8i 路径升到 **0.1.16（本地，未发布、未打 tag）**。§8i 六类依赖面逐条核对全部成立，**我们代码零改动**（tsc 一次通过）。dsh 源码没改。**未推送** —— 按 AGENTS 规则推送/CI 需用户同意。
+
+**这一笔**
+
+- `upstream.json`（version/tag/commit → `1f81c047`）、submodule checkout、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`）、`apps/nexusai-desktop/package.json`（0.1.15 → 0.1.16）、lockfile。`primary-runtime-lock.json` 与 rc.3 的 lock **逐字节相同，未改**。
+- 取提交号的链路：`upstream/` 的 `origin` 指向本地 dev 克隆（不是 GitHub），所以先 `git -C ~/IdeaProjects/deepseek-harness fetch --no-tags origin 'refs/tags/dsh-v0.2.1-rc.*:…'`（走用户代理 `127.0.0.1:7897`；直连 HTTP/2 会断流），再从 origin 拉。rc 系列是**轻量 tag**（无 `^{}` 解引用行），`upstream.json.commit` 直接钉 ls-remote 给的哈希。
+
+**现在的坐标**
+
+| 项 | 值 |
+|---|---|
+| 应用版本 | **0.1.16**（本地，无 tag、无安装包发布；本地 DMG `NexusAIHarness-0.1.16-arm64.dmg` 已打出并通过 `check-mac-app.sh` 验收，10-25 应用户要求已删，重跑 `dist:mac` 即可再生） |
+| 内置 dsh | **0.2.1-rc.3**（`upstream.json`，commit `1f81c047`） |
+| 分支 | `v1.0`，本笔未提交前的工作区改动（见 git status） |
+
+**已验证 / 未验证**
+
+- 已验证：`check:dsh (0.2.1-rc.3)` / `tsc` / `build` / 自研两套件（16 + 66 例）全绿；§8i 六项 grep 全过（hero CSS 局部名 `pXSMma_*`、4 槽位、设置键与 `WELCOME_NOTICE_VERSION`、`dsh web:` 输出、profile 组合、工作区字面量唯一）；`prepare-runtime` 打出 `0.1.0+dsh-0.2.1-rc.3+mac-arm64`（workspace anchor renamed、settings document hidden、`--dump-config` 组合成功）；`smoke:runtime` 过；两个桌面 verify 套件过；本机打包 + `check-mac-app.sh` 过；打包版（干净 home）CDP 走查 —— 侧栏品牌 `NexusAgent Builder ｜ v1.5.0.3`、hero「探索 AGI 之无限可能」+ 徽章 + N 字标、语言 zh、无预览说明、无 API Key 引导、无登录框、启动器在、技能「本地 39」（比上次的 31 多是本机 `~/.agents/skills` 新增了技能，非回归）。
+- **未验证**：dev 环境（`~/IdeaProjects/deepseek-harness`）的 `start:desktop` —— 该克隆工作区**先于本次升级就有 418 个未提交删除**（`apps/desktop/src/host-protocol.ts`、`cli/`、`installer/` 等，非 sparse-checkout），且 `.desktop-build` 整个不存在，rc.3 的 `dev.ts` 因缺文件起不来。**没擅自恢复**（不确定删除是否有意）。要修：
+  ```bash
+  git -C ~/IdeaProjects/deepseek-harness restore .   # 恢复全部删除（含 2 个 .env.example）
+  cd ~/IdeaProjects/deepseek-harness && pnpm install  # 已在 rc.3 上装过一次，restore 后无需重装
+  pnpm run start:desktop                              # 首次生成 .desktop-build/development
+  node ~/GoLandProjects/nexusai-harness/scripts/dev/install-into-dsh.mjs
+  # 再 start:desktop，CDP 9223 验证
+  ```
+  dev 克隆本体已 checkout 到 rc.3 并 `pnpm install` 过（29s，全绿）。
+- **坑（新）**：`npm test`（vitest）**没有配置文件**，默认 include 会扫进 `upstream/scripts/` 的 100+ 个 spec（rc.3 起还有会起重进程的 `run-gates.spec.ts`，tinypool 直接 `ERR_IPC_CHANNEL_CLOSED`）。本仓库自有没有任何 vitest 测试 —— **验证路径就是 tsc / build / check:dsh / `scripts/verify/` 两个套件，不要跑 `npm test`**。
+
+**下一步**
+
+1. 提交本笔（本地 commit，不推送）。要发版再打 tag `v0.1.16` 走 CI。
+2. 若要恢复 dev 桌面验证，按上面的 restore 手法（先问用户 418 个删除是否可弃）。
+
+## 上次交接（2026-10-21）
 
 **一句话状态**：应用版本仍是 **0.1.15**（已发布的 tag `v0.1.15` 指向 `45962bf`）。这一笔是 **`efc9934`**：公网内置工具注册成 dsh 可调用工具，集群内网工具只展示并置灰。**不升版本、不打 tag、不发 Release。** 内置 dsh 仍是 **0.2.1-rc.2**（`687f282e`）。dsh 源码没改。推的是 GitHub 分支 `v1.0`，会跑分支构建，不会建 Release。没有推 Codeup。
 
@@ -117,7 +153,7 @@ cd apps/nexusai-desktop && ./node_modules/.bin/electron --remote-debugging-port=
 | 位置 | 路径 |
 |---|---|
 | 插件仓库（本项目，可自由改） | `~/GoLandProjects/nexusai-harness` |
-| dsh 源码（**不要改**） | 本仓 `upstream/`（钉 `dsh-v0.2.1-rc.2`）。`~/IdeaProjects/deepseek-harness` 是另一份本地克隆，仍停在 alpha.2，打安装包不用它 |
+| dsh 源码（**不要改**） | 本仓 `upstream/`（钉 `dsh-v0.2.1-rc.3`）。`~/IdeaProjects/deepseek-harness` 是另一份本地克隆，已 checkout rc.3 但工作区有 418 个未提交删除、`.desktop-build` 不存在，dev 桌面暂起不来（修复手法见本次交接块）；打安装包不用它 |
 | dsh 运行目录（dev home，配置文件在这） | `~/IdeaProjects/deepseek-harness/apps/desktop/.desktop-build/development/home` |
 | NexusAI 服务器（当前用） | `http://agent.nexusai.net.cn:8081`（另有 `http://221.226.155.134:8081`；SkillHub 用公网 `api.skillhub.cn`） |
 
@@ -132,7 +168,7 @@ cd apps/nexusai-desktop && ./node_modules/.bin/electron --remote-debugging-port=
 cd ~/GoLandProjects/nexusai-harness
 npx tsc --noEmit        # 期望：无输出（0 错误）
 node scripts/build.mjs  # 期望：lib/index.js（宿主）+ lib/client.js（客户端）两个产物
-npm run check:dsh       # 期望：check-dsh-version: ok (dsh 0.2.1-rc.2)
+npm run check:dsh       # 期望：check-dsh-version: ok (dsh 0.2.1-rc.3)
 DSH_CDP_PORT=9223 node scripts/verify/cdp-eval.mjs "'ok'"   # 期望："ok"（能连上运行中的桌面端）
 ```
 
@@ -270,7 +306,7 @@ scripts/
   dev/install-into-dsh.mjs  新机器接线（构建 + 软链 + patch 行，幂等）
   dev/brand-dev-app.mjs     dev 包改名 + 换访达/Dock 图标（取服务端品牌，幂等）
   dev/{center-window.mjs,start-desktop.sh,watch-window.sh}  窗口摆放（macOS 专属，需辅助功能权限）
-upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit 687f282e = 0.2.1-rc.2）
+upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit 1f81c047 = 0.2.1-rc.3）
 apps/nexusai-desktop/       **v1.0 carrier**：薄 Electron 壳 + 运行时准备 + electron-builder（未签名）
   src/main.cjs              壳：home → 预置 profile → spawn 内置 dsh（Electron-as-Node）→ 读 token URL → 开居中窗
   scripts/prepare-runtime.mjs  npm pack 插件 + pnpm 装 profile（含 supportedArchitectures 与 allowBuilds）
@@ -348,7 +384,7 @@ ode_modules`）。后果是**把应用自己的运行时删空**，然后重链�
 ### D. 流程纪律
 1. **脚本化改代码必须断言**：曾因为锚点写错又没断言，替换静默失败（渲染仍是旧的 `skills.map`）。改完 `assert '<新片段>' in s` 复核。
 2. **凭据磁盘/进程内状态一致**（已用插桩定案）：干净运行下会话**不会自己消失**。历史上几次"磁盘没 session"都是测试自己造的：把 endpoint 换成另一台服务器（或恢复了不匹配的备份）→ 下次调用 401 → 插件按设计清会话并登出。恢复 = `cp` 回**同服务器**且含 session 的备份 + **重启**；备份前先 `grep -c 'nexusai/session'` 确认，并比对 `baseUrl:` 一致。
-3. **环境：dsh 基线 0.2.1-rc.2（developer preview）**：升级 dsh 后跑 `npm run check:dsh` + tsc + 两个自研套件 + 打包版真机走查，再更新 `dshBaseline`。**升级 dsh 时的核对表见 §8i**（我们只依赖 6 类面，逐条核对即可，不必全量回归）。
+3. **环境：dsh 基线 0.2.1-rc.3（developer preview）**：升级 dsh 后跑 `npm run check:dsh` + tsc + 两个自研套件 + 打包版真机走查，再更新 `dshBaseline`。**升级 dsh 时的核对表见 §8i**（我们只依赖 6 类面，逐条核对即可，不必全量回归）。
 4. **取 GitHub artifact 用并行分块，别用 `gh run download`**：这条链路单连接会"起步快、随后卡死"（实测 2MB 突发行完就掉到 ~35KB/s，273MB 要两小时）。`gh api .../actions/artifacts/<id>/zip` 返回 302 到 `productionresultssa*.blob.core.windows.net` 的**签名 URL（支持 `Accept-Ranges`，签名约 10 分钟过期）**，用 8 条 `curl -r start-end` 各写一个分片、按已下字节续传、403 时重取签名 URL，拼起来校验 `Content-Length` 再 `unzip -t`。实测 8 并发能到 ~200KB/s 且能跑完（脚本见本文件同目录会话日志，或照此重写十几行）。
 5. **推送前先问用户**：`git push github` 会跑两个平台构建 + 验收闸（每轮约 20 分钟额度），见 `AGENTS.md`。本机提交与 `scripts/ci/*` 本地跑不受限。
 
@@ -592,6 +628,8 @@ dsh 是 developer preview，**API 会 breaking**。但载体侧与我们提交�
 
 **这次（→ 0.2.1-alpha.2）的实测结果**：静态层 tsc/build/check:dsh/两个套件全绿；运行层 smoke + 打包 + 挂 DMG 启动通过；打包版逐项确认 —— 侧栏品牌 `NexusAgent Builder ｜ v1.5.0.3`、hero 标题「探索 AGI 之无限可能」+ 徽章 `v1.5.0.3` + 我们的字标、语言 `zh-CN`、无预览说明、无 API Key 引导、无登录框、启动器标记在、技能「本地 31」。唯一需要改我们代码的是第 4 步里那个 `sessions` 类型导入。
 
+**这次（→ 0.2.1-rc.3，2026-10-25）的实测结果**：六项核对全过、**我们代码零改动**（tsc 一次通过）。rc 系列是轻量 tag（无 `^{}` 行），`upstream.json.commit` 直接钉 ls-remote 哈希 `1f81c047`。`primary-runtime-lock.json` 与 rc.3 的 lock 逐字节相同。静态：check:dsh(0.2.1-rc.3) / tsc / build / 66 例 / 16 例全绿。运行层：`prepare-runtime` 打出 `0.1.0+dsh-0.2.1-rc.3+mac-arm64`（anchor renamed、settings hidden、dump 组合成功）、`smoke:runtime` 过、两个桌面 verify 套件过、本机 DMG `NexusAIHarness-0.1.16-arm64.dmg` + `check-mac-app.sh` 过。打包版（干净 home + CDP）走查逐项与 alpha.2 时代一致：侧栏品牌、hero、语言 zh、无预览说明、无 API Key 引导、无登录框、启动器在、技能「本地 39」（本机技能新增所致，非回归）。dev 克隆因工作区先存的 418 个未提交删除起不来 dev 桌面，以打包版走查为准（修复手法见本次交接块）。
+
 ## 8j. 首次使用的工作区目录名（deepseek-harness → nexusai-harness）
 
 dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness/default-workspace`**：
@@ -678,6 +716,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-25 | **dsh 内核 0.2.1-rc.2 → 0.2.1-rc.3**（应用版本随 §8i 路径 0.1.15 → 0.1.16，本地未发布）：`upstream.json`（commit `1f81c047`，轻量 tag）、submodule、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`）、lockfile。`primary-runtime-lock.json` 未改（与 rc.3 的 lock 逐字节相同）。我们代码零改动。**不推 Codeup，未打 tag** | 六项核对全过。静态：check:dsh(0.2.1-rc.3) / tsc / build / 66 例 / 16 例全绿。运行层：prepare-runtime `0.1.0+dsh-0.2.1-rc.3+mac-arm64`、smoke、两个桌面 verify、本机 DMG + `check-mac-app.sh` 全过。打包版干净 home CDP 走查逐项与 rc.2 时代一致（技能本地 39 = 本机新增，非回归） |
 | 10-21 | **未发版**：公网内置工具注册成可调用 dsh 工具（带平台已存 key）；`bff-service` 改写成 `/service/api`；单标签集群主机名不注册，卡片置灰，悬停说明在卡片底部。选项卡改名为 Tools，侧栏标题不变。不升版本、不打 tag | `tsc` 通过。本机 admin：内置 9 张，6 张置灰，悬停说明在卡片内。助手实际调用公网工具未做 |
 | 10-20 | **v0.1.15**：专家页增加「内置」来源（`GET /v1/tool/square/list`，只展示）。同一 tag 还带上 `eeef50f`（profile 只链插件、登录密钥进 credentials）。tag `v0.1.15` 已推 GitHub，不推 Codeup。Release 已挂上 | `tsc` 通过。tag CI 成功 https://github.com/TaoZhou2257/nexusai-harness/actions/runs/39451176534 |
 | 10-18 | **v0.1.14**：macOS 顶栏按 dsh（hiddenInset + 侧栏顶条，收起时侧栏宽度为 0）、右侧边栏浏览器走 Electron `<webview>` 租约、去掉侧栏设置齿轮（设置留在头像菜单，下拉框右侧空白不响应点击）。内核仍是 dsh 0.2.1-rc.2。tag `v0.1.14`。不推 Codeup | 本机窗口：顶条与收起让位、`<webview>` 打开 example.com / github.com、下拉框右侧点不到账号按钮。安装包等 tag CI |
