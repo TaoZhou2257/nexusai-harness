@@ -20,3 +20,5 @@ apps/nexusai-desktop/build/
 # Logs and OS junk
 *.log
 .DS_Store
+# pnpm 的本地 store（pnpm install 在仓库根跑时会出现）
+.pnpm-store/
