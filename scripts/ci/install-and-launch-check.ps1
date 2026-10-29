@@ -38,19 +38,22 @@ if ($env:NEXUSAI_CUSTOMER) {
   $productName = (Get-Content $brandPath -Raw | ConvertFrom-Json).name
 }
 
-# Where the installer actually put the app is read back from the NSIS uninstall
-# registry entry instead of being assumed: a non-ASCII productName (白标客户的
-# 中文品牌名) does not necessarily land in `Programs\<productName>`, and guessing
-# here would fail the gate for a working installer. DisplayName is the brand
-# name electron-builder configured.
-$uninstall = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-  ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
-  Where-Object { $_.DisplayName -eq $productName } |
-  Select-Object -First 1
-if (-not $uninstall) { throw "uninstaller registry entry for '$productName' not found — silent install may have failed" }
-$installDir = ($uninstall.InstallLocation ?? '').TrimEnd('\')
-if ($installDir -eq '' -or -not (Test-Path $installDir)) { throw "uninstaller entry has no InstallLocation (got '$($uninstall.InstallLocation)')" }
-$exe = Join-Path $installDir "$productName.exe"
+# Discover the installed app by locating its exe under the per-user Programs
+# root (electron-builder's NSIS default base) instead of assuming an exact
+# directory: a non-ASCII productName (白标客户的中文品牌名) does not necessarily
+# land in `Programs\<productName>`, and neither the registry nor the directory
+# name is a contract — the exe is.
+$programsRoot = Join-Path $env:LOCALAPPDATA 'Programs'
+$exeItem = Get-ChildItem $programsRoot -Recurse -Depth 2 -Filter "$productName.exe" -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $exeItem) {
+  Write-Host "--- what actually got installed under $programsRoot ---"
+  Get-ChildItem $programsRoot -Directory -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty FullName | Write-Host
+  throw "installed '$productName.exe' not found under $programsRoot — silent install may have failed"
+}
+$installDir = $exeItem.DirectoryName
+$exe = $exeItem.FullName
 # RUNNER_TEMP is GitHub's; Yunxiao has no equivalent, so fall back to the OS temp.
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $script:proc = $null
