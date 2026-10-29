@@ -28,8 +28,18 @@ $app = Join-Path $root 'apps\nexusai-desktop'
 $installer = Get-ChildItem (Join-Path $app 'dist') -Filter '*Setup*.exe' | Select-Object -First 1
 if (-not $installer) { throw "no *Setup*.exe in $app\dist — run build-app.ps1 first" }
 
-$installDir = Join-Path $env:LOCALAPPDATA 'Programs\NexusAIHarness'
-$exe = Join-Path $installDir 'NexusAIHarness.exe'
+# The product name follows the white-label brand, mirroring
+# electron-builder.config.cjs: a customer build (NEXUSAI_CUSTOMER) installs and
+# labels itself after branding/<customer>'s name, everything else stays
+# NexusAIHarness.
+$productName = 'NexusAIHarness'
+if ($env:NEXUSAI_CUSTOMER) {
+  $brandPath = Join-Path $root "apps\nexusai-desktop\branding\$env:NEXUSAI_CUSTOMER\brand.json"
+  $productName = (Get-Content $brandPath -Raw | ConvertFrom-Json).name
+}
+
+$installDir = Join-Path $env:LOCALAPPDATA "Programs\$productName"
+$exe = Join-Path $installDir "$productName.exe"
 # RUNNER_TEMP is GitHub's; Yunxiao has no equivalent, so fall back to the OS temp.
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $script:proc = $null
@@ -84,8 +94,8 @@ try {
   # installs. A rename that misses `nsis.shortcutName` leaves users with a
   # shortcut labelled after the old app name, so assert both by name.
   $shortcuts = @(
-    (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NexusAIHarness.lnk'),
-    (Join-Path ([Environment]::GetFolderPath('Desktop')) 'NexusAIHarness.lnk')
+    (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$productName.lnk"),
+    (Join-Path ([Environment]::GetFolderPath('Desktop')) "$productName.lnk")
   )
   foreach ($shortcut in $shortcuts) {
     if (-not (Test-Path $shortcut)) { throw "installer did not create $shortcut — check nsis.shortcutName in electron-builder.config.cjs" }

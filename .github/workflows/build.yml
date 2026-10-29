@@ -26,8 +26,19 @@ on:
 
 jobs:
   mac:
-    name: macOS (arm64, dmg)
+    name: macOS ${{ matrix.label }} (arm64, dmg)
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      # Every white-label customer builds beside the default brand. A customer
+      # is one directory under apps/nexusai-desktop/branding/ (see HANDOFF
+      # 本次交接 2026-10-30); '' is the default NexusAIHarness build.
+      matrix:
+        include:
+          - customer: ''
+            label: NexusAIHarness
+          - customer: shenyuanrunze
+            label: ShenYuanRunZe
     steps:
       - uses: actions/checkout@v4
         # No submodule checkout: the bundle is built from the dsh version pinned
@@ -40,18 +51,27 @@ jobs:
           NEXUSAI_BASE_URL: ${{ secrets.NEXUSAI_BASE_URL }}
           NEXUSAI_AES_KEY: ${{ secrets.NEXUSAI_AES_KEY }}
           NEXUSAI_AES_IV: ${{ secrets.NEXUSAI_AES_IV }}
+          NEXUSAI_CUSTOMER: ${{ matrix.customer }}
         run: bash scripts/ci/build-app.sh
       - name: The packaged app launches and its runtime comes up
         run: bash scripts/ci/check-mac-app.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: nexusai-builder-mac-arm64
+          name: nexusai-builder-mac-arm64-${{ matrix.label }}
           path: apps/nexusai-desktop/dist/*.dmg
           if-no-files-found: error
 
   windows:
-    name: Windows (x64, nsis)
+    name: Windows ${{ matrix.label }} (x64, nsis)
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - customer: ''
+            label: NexusAIHarness
+          - customer: shenyuanrunze
+            label: ShenYuanRunZe
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,9 +83,12 @@ jobs:
           NEXUSAI_BASE_URL: ${{ secrets.NEXUSAI_BASE_URL }}
           NEXUSAI_AES_KEY: ${{ secrets.NEXUSAI_AES_KEY }}
           NEXUSAI_AES_IV: ${{ secrets.NEXUSAI_AES_IV }}
+          NEXUSAI_CUSTOMER: ${{ matrix.customer }}
         run: scripts/ci/build-app.ps1
       - name: The installer installs and the installed app launches
         shell: pwsh
+        env:
+          NEXUSAI_CUSTOMER: ${{ matrix.customer }}
         run: scripts/ci/install-and-launch-check.ps1
       - name: Keep the runtime log even when a check failed
         if: always()
@@ -105,8 +128,9 @@ jobs:
 
           - macOS (arm64)：\`NexusAIHarness-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
           - Windows (x64)：\`NexusAIHarness-Setup-*.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
+          - 白标客户包（\`ShenYuanRunZe-*\`）：给审源润泽客户的定制版，未登录即显示客户品牌，登录逻辑与默认版一致
 
-          首次启动会在用户目录下生成 dsh home（升级自旧版本的应用名时会自动接管旧目录）（macOS：\`~/Library/Application Support/NexusAIHarness/dsh-home\`；Windows：\`%APPDATA%\\NexusAIHarness\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
+          首次启动会在用户目录下生成 dsh home（升级自旧版本的应用名时会自动接管旧目录）（macOS：\`~/Library/Application Support/<应用名>/dsh-home\`；Windows：\`%APPDATA%\\<应用名>\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
           # Filenames contain spaces; a glob keeps each match as one word, so it
           # is correct here where an unquoted variable would split.
           gh release create "$GITHUB_REF_NAME" \
