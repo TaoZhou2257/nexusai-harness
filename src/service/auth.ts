@@ -27,6 +27,7 @@ import type { Branding } from '../types'
 import { normalizeBaseUrl } from '../nexus/api-client'
 import type { NexusApiClient } from '../nexus/api-client'
 import type { EndpointStore } from '../sync/endpoint-store'
+import type { CustomerBranding } from '../nexus/customer-branding'
 import type { BuiltinToolRegistry } from '../sync/builtin-tools'
 import type { CustomToolRegistry } from '../sync/custom-tools'
 import type { McpRowSync } from '../sync/mcp-rows'
@@ -64,6 +65,12 @@ export interface NexusaiAuthServiceOptions {
   readonly mcpSse: McpSseToolRegistry
   /** The dsh authorization seam this service registers its login flow with. */
   readonly authorization: AuthorizationService
+  /**
+   * The deployment's own brand for white-label builds, served while nobody is
+   * signed in (`undefined` = no customer layer; the server's answer then
+   * applies at every sign-in state).
+   */
+  readonly customerBranding: () => Promise<CustomerBranding | undefined>
   /** Org chosen when the account has none configured. */
   readonly defaultOrgId: string
   /** Settles after the login cipher has been read from credentials. */
@@ -142,13 +149,20 @@ export class NexusaiAuthService extends TypertRemoteService {
    * the web frontend renders from): `name` is the product title shown on the
    * login dialog. Empty string when the server doesn't provide one — the
    * dialog then shows a bare 「登录」 without any hardcoded brand.
+   *
+   * White-label deployments invert the source before anyone signs in: a fresh
+   * machine has reached no server, so the brand packaged for the customer
+   * identifies the app (its fields win, the server's fill the rest). With a
+   * session — including one restored from credentials at startup — the
+   * platform's own answer is the single source of truth.
    */
   @Remote
   async getBranding(): Promise<Branding> {
+    let branding: Branding
     try {
       const info = await this.deps.api.customInfo()
       const name = (info.tab?.title ?? info.home?.title ?? '').trim()
-      return {
+      branding = {
         name,
         // Login-page assets come from the same admin 平台配置 as the name.
         logoUrl: this.deps.api.assetUrl(info.login?.logo?.path),
@@ -167,8 +181,20 @@ export class NexusaiAuthService extends TypertRemoteService {
       }
     } catch {
       // Branding is cosmetic: never block the login flow on it.
-      return { name: '', logoUrl: '', backgroundUrl: '', welcomeText: '', platformDesc: '', buttonColor: '', version: '', copyright: '', markUrl: '', dshVersion: dshClientVersion() }
+      branding = { name: '', logoUrl: '', backgroundUrl: '', welcomeText: '', platformDesc: '', buttonColor: '', version: '', copyright: '', markUrl: '', dshVersion: dshClientVersion() }
     }
+    if (this.deps.store.read() === undefined) {
+      const customer = await this.deps.customerBranding()
+      if (customer !== undefined) {
+        branding = {
+          ...branding,
+          name: customer.name,
+          ...(customer.markUrl === '' ? {} : { markUrl: customer.markUrl }),
+          ...(customer.logoUrl === '' ? {} : { logoUrl: customer.logoUrl }),
+        }
+      }
+    }
+    return branding
   }
 
   /**

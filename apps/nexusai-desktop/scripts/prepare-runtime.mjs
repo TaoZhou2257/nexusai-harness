@@ -26,7 +26,7 @@
  *   build/runtime-version.txt
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -112,6 +112,22 @@ const settings = { ...localEnv(), ...process.env }
 const baseUrl = settings.NEXUSAI_BASE_URL ?? ''
 const aesKey = settings.NEXUSAI_AES_KEY ?? ''
 const aesIv = settings.NEXUSAI_AES_IV ?? ''
+// White-label selection: `--customer=<name>` or NEXUSAI_CUSTOMER picks
+// `branding/<name>/`. Its brand.json + images ride inside the profile (the
+// plugin serves them while nobody is signed in, the shell takes the window
+// title from it) and electron-builder derives app name/icons from the same
+// manifest. Empty = the default NexusAIHarness build, untouched.
+const customer = (argValue('customer') ?? settings.NEXUSAI_CUSTOMER ?? '').trim()
+let brandName = ''
+if (customer !== '') {
+  const brandFile = join(APP_ROOT, 'branding', customer, 'brand.json')
+  if (!existsSync(brandFile)) {
+    throw new Error(`NEXUSAI_CUSTOMER=${customer}: ${brandFile} not found — create branding/${customer}/ first`)
+  }
+  const brand = JSON.parse(readFileSync(brandFile, 'utf8'))
+  brandName = typeof brand.name === 'string' ? brand.name.trim() : ''
+  if (brandName === '') throw new Error(`${brandFile} has no name`)
+}
 if (baseUrl === '') {
   throw new Error(
     'NEXUSAI_BASE_URL is not set. Put it in apps/nexusai-desktop/.env (git-ignored) '
@@ -151,6 +167,11 @@ say(`plugin tarball: ${join(CACHE, pluginTarball)}`)
 say(`writing the ${targetName} profile`)
 rmSync(join(PROFILE, 'package.json'), { force: true })
 rmSync(join(PROFILE, 'cordis.patch.yml'), { force: true })
+// The lockfile too, and for the same reason as the tarball cache below: the
+// plugin's version never changes between builds, so a surviving lock would pin
+// the *previous* tarball's integrity and pnpm would silently skip reinstalling
+// it — the bundle then ships a stale plugin no matter what was just packed.
+rmSync(join(PROFILE, 'pnpm-lock.yaml'), { force: true })
 mkdirSync(PROFILE, { recursive: true })
 // The official bundle set a dsh profile activates; our plugin is not a bundle —
 // it is mounted by the patch row below, exactly as it is in development.
@@ -202,6 +223,27 @@ writeFileSync(join(PROFILE, 'pnpm-workspace.yaml'), [
   '',
 ].join('\n'))
 writeFileSync(join(PROFILE, 'cordis.patch.yml'), profilePatch())
+// The customer brand travels *inside* the profile, so the plugin host and the
+// shell read the same manifest out of the packaged app with no extra plumbing.
+// Only the manifest and the images it references ship — icon sources and
+// provenance copies stay in the repo. A default build clears any earlier
+// customer build's copy instead of letting it ride along in the bundle.
+if (customer !== '') {
+  const brandDir = join(APP_ROOT, 'branding', customer)
+  const destination = join(PROFILE, 'branding')
+  rmSync(destination, { recursive: true, force: true })
+  mkdirSync(destination, { recursive: true })
+  cpSync(join(brandDir, 'brand.json'), join(destination, 'brand.json'))
+  const brand = JSON.parse(readFileSync(join(brandDir, 'brand.json'), 'utf8'))
+  for (const key of ['mark', 'logo']) {
+    if (typeof brand[key] === 'string' && brand[key] !== '') {
+      cpSync(join(brandDir, brand[key]), join(destination, brand[key]))
+    }
+  }
+  say(`customer brand: ${customer} (${brandName}) → profile branding/`)
+} else {
+  rmSync(join(PROFILE, 'branding'), { recursive: true, force: true })
+}
 
 /**
  * The bundled profile's user-layer patch.
@@ -288,6 +330,14 @@ function profilePatch() {
     `      name: '${plugin.name}'`,
     '      config:',
     `        baseUrl: '${baseUrl}'`,
+    ...(customer === '' ? [] : [
+      // The shell hands the bundled manifest's absolute path to dsh through
+      // this variable — the brand lives in the *bundle*, not in the materialized
+      // home, so the same env pattern as the office rows keeps it authoritative
+      // no matter how a profile is materialized. In dev (variable unset) the
+      // expression yields undefined and the schema defaults to no brand layer.
+      '        brandingFile: !!js "process.env.NEXUSAI_BRANDING_FILE"',
+    ]),
     '',
   ].join('\n')
 }
@@ -435,6 +485,25 @@ if (!args.includes('--skip-primary-runtime')) {
 
 const cli = join(PROFILE, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 if (!existsSync(cli)) throw new Error(`dsh CLI missing after install: ${cli}`)
+
+// The plugin's version never changes between builds, and pnpm keys a `file:`
+// dep's freshness on exactly that version — `install` reports "Already up to
+// date" and keeps whatever sits in node_modules, stale *or missing* (observed
+// on pnpm 11.7 even with the lockfile deleted). So the freshly packed tarball
+// is extracted over the installed copy, which is both authoritative (it IS the
+// artifact) and the only possible route — the repo root that hosts this script
+// is an ancestor of the profile, so copying the tree directly is a self-nested
+// copy that fs.cpSync refuses.
+const installedPlugin = join(PROFILE, 'node_modules', ...plugin.name.split('/'))
+const pluginStage = join(BUILD, '.plugin-stage')
+rmSync(pluginStage, { recursive: true, force: true })
+mkdirSync(pluginStage, { recursive: true })
+execFileSync('tar', ['-xzf', join(CACHE, pluginTarball), '-C', pluginStage])
+rmSync(installedPlugin, { recursive: true, force: true })
+mkdirSync(dirname(installedPlugin), { recursive: true })
+cpSync(join(pluginStage, 'package'), installedPlugin, { recursive: true, dereference: true })
+rmSync(pluginStage, { recursive: true, force: true })
+say('plugin tree replaced from the fresh tarball (pnpm would have kept whatever was there)')
 
 // dsh hardcodes `<Documents>/deepseek-harness/default-workspace`. Rewrite that
 // one join in the installed bundle so first use creates a real

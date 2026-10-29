@@ -1,8 +1,43 @@
-# HANDOFF — 交接摘要（2026-10-28 · 发行版 0.1.16，内核 rc.3）
+# HANDOFF — 交接摘要（2026-10-30 · 白标品牌层）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 本次交接（2026-10-25 升级，10-28 发版）
+## 本次交接（2026-10-30 · 白标品牌层）
+
+**一句话状态**：**白标（每客户）品牌落地**——未登录显示客户自己的名称/logo/桌面图标，登录后走原来的远程品牌逻辑。首个客户 **审源润泽**（`branding/shenyuanrunze/`），默认构建（不设变量）行为零变化。基于已发布的 v0.1.16（dc3ca99），本笔**未提交、未推送**。dsh 仍是 rc.3，源码零改动。
+
+**怎么做的一图流**
+
+```
+NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:mac
+  ├─ prepare-runtime：branding/<c>/ → build/profile/branding/（只拷 brand.json 引用的文件）
+  │   patch 行写 brandingFile: !!js "process.env.NEXUSAI_BRANDING_FILE"
+  ├─ 壳：窗口标题/app.setName 读包内 brand.json；spawn 时传 NEXUSAI_BRANDING_FILE
+  ├─ electron-builder（.cjs 动态）：productName/appId(=com.nexusai.builder.<c>)/icon(icns/ico
+  │   已由 make-icons --source/--out 预生成并提交)/dmg.title/nsis.shortName/artifactPrefix
+  └─ 插件宿主：getBranding() 未登录（store.read() 为空）时客户字段覆盖远程，登录后远程优先
+      客户端：watch 流身份（loggedIn|username|orgId）变化 → invalidateBranding() 重取
+```
+
+**维护要点**
+
+- **新客户 = 建一个目录**：`apps/nexusai-desktop/branding/<name>/` 放 `brand.json`（name/mark/logo/artifactPrefix）、`mark.png`（方形，≤512）、`logo.png`（登录弹窗）、`icon-1024.png`；跑 `node scripts/make-icons.mjs --source=branding/<name>/icon-1024.png --out=branding/<name>` 生成 icns/ico 并一并提交。构建只差一个环境变量。
+- 品牌文件是**字段级合并**：客户没配的（如 version 徽章）继续走远程/兜底；mark 必须近方形 PNG（0.8–1.25），否则回落插件自带图形。
+- dev 预览：dev home 的 cordis.patch.yml 给 nexusai 行加 `brandingFile: '<绝对路径>/brand.json'`（手改前停应用）。
+- ⚠️ **重大坑（影响所有构建，本笔修掉）**：pnpm 对 `file:` 依赖**只按包版本判断新鲜度**，插件版本恒为 0.1.0 → `pnpm install` 永远 "Already up to date"，不重装旧 tarball 内容（删 lockfile、删已装目录都不行，pnpm 11.7 实测）。prepare-runtime 现在在 install 后**用刚打的 tarball 解包强制覆盖**已装插件——此前每次发版能拿到新插件纯属版本号变更大掩护。今后凡是"改了插件但打出的包行为没变"，先查这里。
+
+**已验证 / 未验证**
+
+- 已验证：tsc/build/check:dsh/16+66 例全绿；客户包产物（`审源润泽.app`、`ShenYuanRunZe-0.1.16-arm64.dmg`、Info.plist 名称/appId、盾徽 icns、patch 行、包内 branding）；打包版干净 home 走查——**未登录侧栏 = 审源润泽 + 盾徽 mark**（版本徽章由远程补齐）、登录弹窗标题/logo/文案全客户化；默认 prepare 无注入、无残留；`check-mac-app.sh` 级别的启动链路（runtime ready + window shown）。
+- **未验证**：①已登录分支的实机走查——本机 admin 会话已过期（走查时用真实 home 启动还触发了过期 token 自动登出，那个 home 的登录态已被清掉），分支本身 3 行、静态核验过，等下次有可登录账号时在登录前后各看一眼侧栏；②Windows 客户包（icon.ico 已备好，跑 `NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:win` 即验）。
+
+**下一步**
+
+1. 本笔本地提交；要发版升 0.1.17 打 tag（先问用户）。
+2. 审源润泽 logo 若有透明底/矢量版，换掉现在的 JPG 裁切（`source.jpg` 保留作出处，不进包）。
+3. dev 环境仍是 418 删除状态（见 10-25 块），修好后可加一条 dev 预览走查。
+
+## 上次交接（2026-10-25 升级，10-28 发版）
 
 **一句话状态**：**dsh 内核 0.2.1-rc.2 → 0.2.1-rc.3**（`1f81c047`，轻量 tag；rc.3 于 10-23 发布，内容是侧栏/会话「更多」菜单、新会话草稿修复）。应用版本随 §8i 路径升到 **0.1.16**，**10-28 应用户要求打 tag `v0.1.16` 发布**（CI 双平台构建，release job 挂 Release）。§8i 六类依赖面逐条核对全部成立，**我们代码零改动**（tsc 一次通过）。dsh 源码没改。
 
@@ -309,7 +344,8 @@ scripts/
 upstream.json / upstream/   锁定的 dsh（submodule → 官方 GitHub，commit 1f81c047 = 0.2.1-rc.3）
 apps/nexusai-desktop/       **v1.0 carrier**：薄 Electron 壳 + 运行时准备 + electron-builder（未签名）
   src/main.cjs              壳：home → 预置 profile → spawn 内置 dsh（Electron-as-Node）→ 读 token URL → 开居中窗
-  scripts/prepare-runtime.mjs  npm pack 插件 + pnpm 装 profile（含 supportedArchitectures 与 allowBuilds）
+  scripts/prepare-runtime.mjs  npm pack 插件 + pnpm 装 profile + 覆盖拷贝新插件（pnpm file: 依赖不重装的坑）+ 客户品牌注入
+  branding/<customer>/         白标品牌目录：brand.json + mark/logo/icon-1024(+icns/ico)；NEXUSAI_CUSTOMER 选择
   scripts/smoke-runtime.mjs    无 GUI 冒烟：起内置运行时并等 `dsh web:` 行（CI 用）
   scripts/after-pack.cjs       把 build/profile 拷进包（见 §7 坑：extraResources 带不动 node_modules）
 .github/workflows/build.yml  mac + win 两个 job，各自宿主原生构建，产物传 artifact
@@ -716,6 +752,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-30 | **白标品牌层（未提交）**：未登录显示客户品牌，登录后走远程。`NEXUSAI_CUSTOMER` → `branding/<c>/`（brand.json + mark/logo/icon）；electron-builder 动态 productName/appId/icon/dmg.title/shortcutName/artifactPrefix；make-icons 参数化预生成 icns/ico；品牌随 profile 进包，壳经 `NEXUSAI_BRANDING_FILE` 交给插件；`getBranding()` 未登录分支 + 客户端身份变化刷新。首客户 `shenyuanrunze`（审源润泽）。**顺带修掉 pnpm file: 依赖按版本判新导致打包陈旧插件的坑**（prepare 改为 tarball 解包强制覆盖） | 静态层 + 16/66 例全绿；客户包 `审源润泽.app`/`ShenYuanRunZe-0.1.16-arm64.dmg` 产物核验；打包版走查：未登录侧栏=审源润泽+盾徽、登录弹窗全客户化；默认构建无注入、清残留。已登录分支待有账号时实机验（详见本次交接块） |
 | 10-25 | **dsh 内核 0.2.1-rc.2 → 0.2.1-rc.3**（应用版本随 §8i 路径 0.1.15 → 0.1.16，本地未发布）：`upstream.json`（commit `1f81c047`，轻量 tag）、submodule、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`）、lockfile。`primary-runtime-lock.json` 未改（与 rc.3 的 lock 逐字节相同）。我们代码零改动。**不推 Codeup，未打 tag** | 六项核对全过。静态：check:dsh(0.2.1-rc.3) / tsc / build / 66 例 / 16 例全绿。运行层：prepare-runtime `0.1.0+dsh-0.2.1-rc.3+mac-arm64`、smoke、两个桌面 verify、本机 DMG + `check-mac-app.sh` 全过。打包版干净 home CDP 走查逐项与 rc.2 时代一致（技能本地 39 = 本机新增，非回归） |
 | 10-21 | **未发版**：公网内置工具注册成可调用 dsh 工具（带平台已存 key）；`bff-service` 改写成 `/service/api`；单标签集群主机名不注册，卡片置灰，悬停说明在卡片底部。选项卡改名为 Tools，侧栏标题不变。不升版本、不打 tag | `tsc` 通过。本机 admin：内置 9 张，6 张置灰，悬停说明在卡片内。助手实际调用公网工具未做 |
 | 10-20 | **v0.1.15**：专家页增加「内置」来源（`GET /v1/tool/square/list`，只展示）。同一 tag 还带上 `eeef50f`（profile 只链插件、登录密钥进 credentials）。tag `v0.1.15` 已推 GitHub，不推 Codeup。Release 已挂上 | `tsc` 通过。tag CI 成功 https://github.com/TaoZhou2257/nexusai-harness/actions/runs/39451176534 |

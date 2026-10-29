@@ -30,7 +30,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: merges the `sessions` client service (Session object layer) onto Context.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import { NexusaiLauncher } from './NexusaiLauncher'
-import { NexusaiBrandMark, NexusaiBrandName } from './NexusaiBrand'
+import { NexusaiBrandMark, NexusaiBrandName, invalidateBranding } from './NexusaiBrand'
 import { NexusaiHeroMark } from './NexusaiHero'
 import { NexusaiPanelIcon } from './NexusaiPanelIcon'
 import { NexusaiWorkbench } from './NexusaiWorkbench'
@@ -101,7 +101,24 @@ function registerSurfaces(consumer: Context, t: (key: NexusaiLocaleKey) => strin
   // watch stream — the same store pattern the built-in account UI runs.
   let snapshot: NexusaiSnapshot = { view: undefined, failed: false }
   const listeners = new Set<() => void>()
-  const publish = (value: NexusaiSnapshot) => { snapshot = value; for (const listener of listeners) listener() }
+  // White-label branding flips with the signed-in identity: the customer's own
+  // brand applies before anyone signs in, the server's answer afterwards. So
+  // every identity change — sign-in, sign-out, org switch, a 401 teardown —
+  // makes the mounted brand readers refetch; a silent token refresh changes no
+  // field here and doesn't refetch.
+  let seenIdentity = ''
+  const publish = (value: NexusaiSnapshot) => {
+    const view = value.view
+    const identity = view === undefined
+      ? ''
+      : `${view.loggedIn ? 'in' : 'out'}|${view.username ?? ''}|${view.orgId ?? ''}`
+    if (identity !== seenIdentity) {
+      seenIdentity = identity
+      invalidateBranding()
+    }
+    snapshot = value
+    for (const listener of listeners) listener()
+  }
 
   const stream = remote.$stream<AuthViewFace>({
     name: 'nexusaiAuth',

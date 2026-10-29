@@ -4,8 +4,15 @@
  * Deliberately minimal: no signing, no notarization, no auto-update. The app is
  * a thin Electron shell; everything dsh needs travels in `build/profile`, which
  * `scripts/prepare-runtime.mjs` just produced.
+ *
+ * White-label: `NEXUSAI_CUSTOMER=<name>` selects `branding/<name>/brand.json`,
+ * and every user-visible identity derives from it — app/product name, macOS
+ * and Windows icons, DMG volume title, Windows shortcut, installer file names.
+ * The icon sources are plain ≥512 PNGs; electron-builder converts them to
+ * icns/ico itself, so no platform icon tooling joins the pipeline. Without the
+ * variable this is byte-for-byte the default build.
  */
-const { existsSync } = require('node:fs')
+const { existsSync, readFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 // Reuse the Electron that pnpm already installed instead of letting
@@ -15,16 +22,33 @@ const { join } = require('node:path')
 // target being packaged.
 const electronDist = join(__dirname, 'node_modules', 'electron', 'dist')
 
+const customer = (process.env.NEXUSAI_CUSTOMER ?? '').trim()
+let brand
+if (customer !== '') {
+  const manifest = join(__dirname, 'branding', customer, 'brand.json')
+  if (!existsSync(manifest)) {
+    throw new Error(`NEXUSAI_CUSTOMER=${customer}: ${manifest} not found — create branding/${customer}/ first`)
+  }
+  brand = { dir: join(__dirname, 'branding', customer), ...JSON.parse(readFileSync(manifest, 'utf8')) }
+}
+/** The display name every surface shows; ASCII fallback for file names. */
+const brandName = brand?.name
+const filePrefix = brand?.artifactPrefix ?? 'NexusAIHarness'
+
 module.exports = {
-  appId: 'com.nexusai.builder',
-  productName: 'NexusAIHarness',
+  // Distinct appId per customer: two white-label builds on one machine keep
+  // separate NSIS upgrade identities; brand.json may pin its own.
+  appId: brand === undefined ? 'com.nexusai.builder' : brand.appId ?? `com.nexusai.builder.${customer}`,
+  productName: brandName ?? 'NexusAIHarness',
   copyright: 'NexusAI',
   ...(existsSync(electronDist) ? { electronDist } : {}),
   // Artifact file names carry no spaces and use the brand's spelling
   // (`NexusAIHarness`): GitHub replaces spaces in Release asset names with dots,
   // so a spaced name reads differently on the download page than it does
   // locally. The *app* keeps its spaced product name; only the files differ.
-  artifactName: 'NexusAIHarness-${version}-${arch}.${ext}',
+  // A customer brand overrides the prefix with its ASCII `artifactPrefix`
+  // (Chinese display names must not land in installer file names).
+  artifactName: `${filePrefix}-\${version}-\${arch}.\${ext}`,
   directories: { output: 'dist', buildResources: 'resources' },
   // The shell is one CommonJS file plus its manifest; the runtime rides in
   // extraResources so it stays outside the asar (dsh reads it as real files).
@@ -52,20 +76,26 @@ module.exports = {
     // the runtime's third-party natives and the app dies at launch.
     entitlements: join(__dirname, 'resources', 'entitlements.mac.plist'),
     entitlementsInherit: join(__dirname, 'resources', 'entitlements.mac.plist'),
-    // Both icons are generated from resources/icon.svg by scripts/make-icons.mjs.
-    icon: join(__dirname, 'resources', 'icon.icns'),
+    // Default icons are generated from resources/icon.svg by make-icons.mjs; a
+    // customer build points at its own committed icon.icns (make-icons
+    // --source/--out generates them, same pipeline, no build-time conversion).
+    icon: brand === undefined
+      ? join(__dirname, 'resources', 'icon.icns')
+      : join(brand.dir, brand.icns ?? 'icon.icns'),
     target: [{ target: 'dmg', arch: ['arm64'] }],
   },
   // `title` is the mounted volume's name, so it is the first brand string a
   // macOS user sees (Finder sidebar, desktop, eject menu). Keep it identical to
   // productName; the Carrier's only remaining use of the old name is
   // LEGACY_APP_NAME in src/main.cjs, which finds data from older installs.
-  dmg: { title: 'NexusAIHarness' },
+  dmg: { title: brandName ?? 'NexusAIHarness' },
   win: {
-    icon: join(__dirname, 'resources', 'icon.ico'),
+    icon: brand === undefined
+      ? join(__dirname, 'resources', 'icon.ico')
+      : join(brand.dir, brand.ico ?? 'icon.ico'),
     // `Setup` kept in the Windows file name: it is an installer, and the name is
     // the only thing a user sees before running it.
-    artifactName: 'NexusAIHarness-Setup-${version}-${arch}.${ext}',
+    artifactName: `${filePrefix}-Setup-\${version}-\${arch}.\${ext}`,
     target: [{ target: 'nsis', arch: ['x64'] }],
   },
   nsis: {
@@ -73,6 +103,6 @@ module.exports = {
     perMachine: false,
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
-    shortcutName: 'NexusAIHarness',
+    shortcutName: brandName ?? 'NexusAIHarness',
   },
 }

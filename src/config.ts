@@ -45,6 +45,13 @@ export interface Config {
   }
   /** Profile user patch file the MCP rows are written to; empty = the `desktop` profile's. */
   profilePatchFile: string
+  /**
+   * Deployment branding manifest for white-label builds (`prepare-runtime`
+   * writes `branding/brand.json` here for a customer build). Relative paths
+   * resolve inside the profile carrying this row; empty = no customer brand
+   * layer — the server's own branding applies at every sign-in state.
+   */
+  brandingFile: string
 }
 
 export const Config: Schema<Config> = z.object({
@@ -72,4 +79,5 @@ export const Config: Schema<Config> = z.object({
     timeoutMs: z.natural().default(15_000),
   }),
   profilePatchFile: z.string().default(''),
+  brandingFile: z.string().default(''),
 })

@@ -26,7 +26,15 @@ const { createBrowserGuests } = require('./browser-guests.cjs')
 const { dirname, join, resolve } = require('node:path')
 
 const PROFILE_NAME = 'nexusai'
-const APP_NAME = process.env.NEXUSAI_APP_NAME || 'NexusAIHarness'
+/**
+ * White-label builds ship a brand manifest inside the bundled profile; its
+ * name becomes the window title, the About line and (via `app.setName`) the
+ * userData directory, so per-customer installs keep separate homes. Default
+ * builds resolve no manifest and behave exactly as before.
+ */
+const BRAND_NAME = customerAppName()
+if (process.env.NEXUSAI_APP_NAME === undefined && BRAND_NAME !== '') app.setName(BRAND_NAME)
+const APP_NAME = process.env.NEXUSAI_APP_NAME || BRAND_NAME || 'NexusAIHarness'
 /** The app name earlier builds shipped with; their home is adopted on first launch. */
 const LEGACY_APP_NAME = 'NexusAgent Builder'
 const READY_PATTERN = /dsh web:\s+(http:\/\/127\.0\.0\.1:\d+\/?\?token=[^\s]+)/u
@@ -41,6 +49,16 @@ function bundledRoot() {
 /** The profile shipped inside the bundle: node_modules + profile manifests. */
 function bundledProfileDir() {
   return join(bundledRoot(), 'profile')
+}
+
+/** The white-label name from the bundled profile's brand manifest ('' when absent). */
+function customerAppName() {
+  try {
+    const doc = JSON.parse(readFileSync(join(bundledProfileDir(), 'branding', 'brand.json'), 'utf8'))
+    return typeof doc.name === 'string' ? doc.name.trim() : ''
+  } catch {
+    return ''
+  }
 }
 
 function runtimeHome() {
@@ -519,6 +537,12 @@ function startRuntime(home, cli) {
       // plus Node and pnpm). dsh's `workspace-dependencies` row installs it into
       // the home on first use; see §8k.
       DSH_BUNDLED_PRIMARY_RUNTIME: bundledPrimaryRuntime(),
+      // White-label branding: the plugin serves this manifest while nobody is
+      // signed in — the profile's patch row reads it through `!!js`. Default
+      // builds ship no manifest; the variable is then simply absent.
+      ...(existsSync(join(bundledProfileDir(), 'branding', 'brand.json'))
+        ? { NEXUSAI_BRANDING_FILE: join(bundledProfileDir(), 'branding', 'brand.json') }
+        : {}),
       // The user's real toolchain, not the four directories a GUI app inherits.
       PATH: enrichedPath(),
       // `DSH_AGENTS_HOME` is deliberately NOT set. dsh's filesystem skill

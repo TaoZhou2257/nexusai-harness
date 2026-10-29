@@ -10,7 +10,10 @@
  * `icon.png` is committed, so a build (and CI) needs no Python — see
  * `compose-icon.py` for how it is produced from the brand's transparent mark.
  *
- * Usage: node scripts/make-icons.mjs
+ * Usage:
+ *   node scripts/make-icons.mjs                                    # the default brand
+ *   node scripts/make-icons.mjs --source=<png> --out=<dir>          # a customer brand;
+ *                                                                  # icon.icns/.ico land in <dir>, committed
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -19,11 +22,19 @@ import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(SCRIPT_DIR, '..')
+const args = process.argv.slice(2)
+const argValue = name => {
+  const hit = args.find(argument => argument.startsWith(`--${name}=`))
+  return hit === undefined ? undefined : hit.slice(name.length + 3)
+}
+// Custom paths are resolved against the current directory; the defaults are
+// exactly what the repo has always committed.
 const RESOURCES = join(APP_ROOT, 'resources')
-const PNG = join(RESOURCES, 'icon.png')
-const ICNS = join(RESOURCES, 'icon.icns')
-const ICO = join(RESOURCES, 'icon.ico')
-const ICONSET = join(RESOURCES, '.icon.iconset')
+const OUT = argValue('out') === undefined ? RESOURCES : resolve(argValue('out'))
+const PNG = argValue('source') === undefined ? join(RESOURCES, 'icon.png') : resolve(argValue('source'))
+const ICNS = join(OUT, 'icon.icns')
+const ICO = join(OUT, 'icon.ico')
+const ICONSET = join(OUT, '.icon.iconset')
 
 for (const tool of ['sips', 'iconutil']) {
   try {
@@ -36,6 +47,7 @@ if (!existsSync(PNG)) throw new Error(`missing ${PNG} — run scripts/compose-ic
 const source = readFileSync(PNG)
 if (source.length < 5_000) throw new Error(`${PNG} looks too small to be a 1024 icon`)
 console.log(`icon.png      source ${(source.length / 1024).toFixed(0)} KB`)
+if (OUT !== RESOURCES) mkdirSync(OUT, { recursive: true })
 
 // macOS needs an .icns; the iconset covers the sizes the system actually asks for.
 rmSync(ICONSET, { recursive: true, force: true })
@@ -54,7 +66,7 @@ console.log(`icon.icns     ${(readFileSync(ICNS).length / 1024).toFixed(0)} KB`)
 // 256 px render can be embedded verbatim — no image tooling required.
 const ICO_SIZES = [16, 32, 48, 64, 128, 256]
 const payloads = ICO_SIZES.map(size => {
-  const out = join(APP_ROOT, 'resources', `.icon-${size}.png`)
+  const out = join(OUT, `.icon-${size}.png`)
   execFileSync('sips', ['-z', String(size), String(size), PNG, '--out', out], { stdio: 'ignore' })
   const bytes = readFileSync(out)
   rmSync(out, { force: true })

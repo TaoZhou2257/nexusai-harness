@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import { Config } from './config'
 import type { Config as ConfigType } from './config'
 import { NexusApiClient } from './nexus/api-client'
+import { customerBrandingFile, loadCustomerBranding } from './nexus/customer-branding'
 import { SkillHubClient } from './nexus/skillhub'
 import { LocalSkills } from './sync/local-skills'
 import { ConnectorRows } from './sync/connector-rows'
@@ -114,6 +115,13 @@ export function apply(ctx: Context, config: ConfigType): void {
     skillsRoot,
   })
 
+  // White-label deployments package a brand manifest into the profile and point
+  // `brandingFile` at it; every other build leaves it empty and the layer is a
+  // no-op. Resolved once — the manifest's own mtime cache handles rebranding.
+  const brandingFile = customerBrandingFile(config.profilePatchFile, config.brandingFile)
+  if (brandingFile !== undefined) {
+    ctx.logger.info('nexusai: customer branding from %s', brandingFile)
+  }
   const auth = new NexusaiAuthService(ctx, {
     api,
     store,
@@ -125,6 +133,7 @@ export function apply(ctx: Context, config: ConfigType): void {
     authorization: ctx.authorization,
     defaultOrgId: config.defaultOrgId,
     cipherReady,
+    customerBranding: () => loadCustomerBranding(brandingFile),
   })
   // Local skill files: the first root is where uploads and downloads land, the
   // panel adds the directories of the skills the registry reports (user and
