@@ -30,7 +30,7 @@ NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:mac
 **已验证 / 未验证**
 
 - 已验证：tsc/build/check:dsh/16+66 例全绿；客户包产物（`审源润泽.app`、`ShenYuanRunZe-0.1.16-arm64.dmg`、Info.plist 名称/appId、盾徽 icns、patch 行、包内 branding）；打包版干净 home 走查——**未登录侧栏 = 审源润泽 + 盾徽 mark**（版本徽章由远程补齐）、登录弹窗标题/logo/文案全客户化；默认 prepare 无注入、无残留；`check-mac-app.sh` 级别的启动链路（runtime ready + window shown）。
-- **未验证**：①已登录分支的实机走查——本机 admin 会话已过期（走查时用真实 home 启动还触发了过期 token 自动登出，那个 home 的登录态已被清掉），分支本身 3 行、静态核验过，等下次有可登录账号时在登录前后各看一眼侧栏；②Windows 客户包（icon.ico 已备好，跑 `NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:win` 即验）。
+- **未验证**：①已登录分支的实机走查——本机 admin 会话已过期（走查时用真实 home 启动还触发了过期 token 自动登出，那个 home 的登录态已被清掉），分支本身 3 行、静态核验过，等下次有可登录账号时在登录前后各看一眼侧栏；②win 客户包：本机跨机打包不通（下载需 `NODE_USE_ENV_PROXY=1`、win 版 Electron 基座手动备、NSIS 工具链 x64-only 而本机无 Rosetta）——已由 CI 客户矩阵承担：win 构建 ✓，安装验收首跑失败（中文产品名不落 `Programs\<名>`）→ 验收脚本改为从 NSIS 卸载注册表自发现安装位置（2acebbb），重跑见 CI。
 
 **下一步**
 
@@ -753,7 +753,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
-| 10-30 | **v0.1.17 发版**：白标品牌层上版（首客户审源润泽；默认构建不变）。应用版本 0.1.16 → 0.1.17，tag `v0.1.17` 推 GitHub 触发 CI 双平台构建挂 Release。不推 Codeup | 本地：静态层 + 16/66 例全绿、客户包实机走查（未登录全客户化）、默认构建核验。CI 出包与 Release 挂载等 tag 构建 |
+| 10-30 | **v0.1.17 发版**：白标品牌层上版（首客户审源润泽；默认构建不变）。应用版本 0.1.16 → 0.1.17，tag `v0.1.17` 推 GitHub 触发 CI 双平台构建挂 Release。不推 Codeup | 本地：静态层 + 16/66 例全绿、客户包实机走查（未登录全客户化）、默认构建核验。CI（tag run 40970769187）：默认双平台全绿，Release `v0.1.17` 已挂两个默认包；客户矩阵 mac ✓（10m10s）、win 验收首跑失败→改为注册表自发现安装位置（2acebbb）后重跑中 |
 | 10-30 | **白标品牌层（未提交）**：未登录显示客户品牌，登录后走远程。`NEXUSAI_CUSTOMER` → `branding/<c>/`（brand.json + mark/logo/icon）；electron-builder 动态 productName/appId/icon/dmg.title/shortcutName/artifactPrefix；make-icons 参数化预生成 icns/ico；品牌随 profile 进包，壳经 `NEXUSAI_BRANDING_FILE` 交给插件；`getBranding()` 未登录分支 + 客户端身份变化刷新。首客户 `shenyuanrunze`（审源润泽）。**顺带修掉 pnpm file: 依赖按版本判新导致打包陈旧插件的坑**（prepare 改为 tarball 解包强制覆盖） | 静态层 + 16/66 例全绿；客户包 `审源润泽.app`/`ShenYuanRunZe-0.1.16-arm64.dmg` 产物核验；打包版走查：未登录侧栏=审源润泽+盾徽、登录弹窗全客户化；默认构建无注入、清残留。已登录分支待有账号时实机验（详见本次交接块） |
 | 10-25 | **dsh 内核 0.2.1-rc.2 → 0.2.1-rc.3**（应用版本随 §8i 路径 0.1.15 → 0.1.16，本地未发布）：`upstream.json`（commit `1f81c047`，轻量 tag）、submodule、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`）、lockfile。`primary-runtime-lock.json` 未改（与 rc.3 的 lock 逐字节相同）。我们代码零改动。**不推 Codeup，未打 tag** | 六项核对全过。静态：check:dsh(0.2.1-rc.3) / tsc / build / 66 例 / 16 例全绿。运行层：prepare-runtime `0.1.0+dsh-0.2.1-rc.3+mac-arm64`、smoke、两个桌面 verify、本机 DMG + `check-mac-app.sh` 全过。打包版干净 home CDP 走查逐项与 rc.2 时代一致（技能本地 39 = 本机新增，非回归） |
 | 10-21 | **未发版**：公网内置工具注册成可调用 dsh 工具（带平台已存 key）；`bff-service` 改写成 `/service/api`；单标签集群主机名不注册，卡片置灰，悬停说明在卡片底部。选项卡改名为 Tools，侧栏标题不变。不升版本、不打 tag | `tsc` 通过。本机 admin：内置 9 张，6 张置灰，悬停说明在卡片内。助手实际调用公网工具未做 |
