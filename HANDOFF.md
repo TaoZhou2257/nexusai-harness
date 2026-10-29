@@ -23,6 +23,7 @@ NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:mac
 
 - **新客户 = 建一个目录**：`apps/nexusai-desktop/branding/<name>/` 放 `brand.json`（name/mark/logo/artifactPrefix）、`mark.png`（方形，≤512）、`logo.png`（登录弹窗）、`icon-1024.png`；跑 `node scripts/make-icons.mjs --source=branding/<name>/icon-1024.png --out=branding/<name>` 生成 icns/ico 并一并提交。构建只差一个环境变量。
 - 品牌文件是**字段级合并**：客户没配的（如 version 徽章）继续走远程/兜底；mark 必须近方形 PNG（0.8–1.25），否则回落插件自带图形。
+- **发版规则（已入 AGENTS.md，务必遵守）**：打 tag 发版前**先问用户打哪个品牌**——CI 按 `NEXUSAI_CUSTOMER` 矩阵出包，用户确认后在发版提交里调整 workflow 矩阵再推 tag。
 - dev 预览：dev home 的 cordis.patch.yml 给 nexusai 行加 `brandingFile: '<绝对路径>/brand.json'`（手改前停应用）。
 - ⚠️ **重大坑（影响所有构建，本笔修掉）**：pnpm 对 `file:` 依赖**只按包版本判断新鲜度**，插件版本恒为 0.1.0 → `pnpm install` 永远 "Already up to date"，不重装旧 tarball 内容（删 lockfile、删已装目录都不行，pnpm 11.7 实测）。prepare-runtime 现在在 install 后**用刚打的 tarball 解包强制覆盖**已装插件——此前每次发版能拿到新插件纯属版本号变更大掩护。今后凡是"改了插件但打出的包行为没变"，先查这里。
 
