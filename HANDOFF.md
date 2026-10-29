@@ -1,10 +1,10 @@
-# HANDOFF — 交接摘要（2026-10-30 · 白标品牌层）
+# HANDOFF — 交接摘要（2026-10-30 · 白标品牌层，v0.1.17 发版）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
 ## 本次交接（2026-10-30 · 白标品牌层）
 
-**一句话状态**：**白标（每客户）品牌落地**——未登录显示客户自己的名称/logo/桌面图标，登录后走原来的远程品牌逻辑。首个客户 **审源润泽**（`branding/shenyuanrunze/`），默认构建（不设变量）行为零变化。基于已发布的 v0.1.16（dc3ca99），本笔**未提交、未推送**。dsh 仍是 rc.3，源码零改动。
+**一句话状态**：**白标（每客户）品牌落地**——未登录显示客户自己的名称/logo/桌面图标，登录后走原来的远程品牌逻辑。首个客户 **审源润泽**（`branding/shenyuanrunze/`），默认构建（不设变量）行为零变化。基于已发布的 v0.1.16（dc3ca99），本笔已提交（`7ab3a74`），应用版本升 **0.1.17**，**10-30 应用户要求打 tag `v0.1.17` 发布**（CI 双平台构建挂 GitHub Release）。dsh 仍是 rc.3，源码零改动。
 
 **怎么做的一图流**
 
@@ -33,7 +33,7 @@ NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:mac
 
 **下一步**
 
-1. 本笔本地提交；要发版升 0.1.17 打 tag（先问用户）。
+1. ~~本笔本地提交；要发版升 0.1.17 打 tag~~ 已发版 v0.1.17。
 2. 审源润泽 logo 若有透明底/矢量版，换掉现在的 JPG 裁切（`source.jpg` 保留作出处，不进包）。
 3. dev 环境仍是 418 删除状态（见 10-25 块），修好后可加一条 dev 预览走查。
 
@@ -752,6 +752,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 10-30 | **v0.1.17 发版**：白标品牌层上版（首客户审源润泽；默认构建不变）。应用版本 0.1.16 → 0.1.17，tag `v0.1.17` 推 GitHub 触发 CI 双平台构建挂 Release。不推 Codeup | 本地：静态层 + 16/66 例全绿、客户包实机走查（未登录全客户化）、默认构建核验。CI 出包与 Release 挂载等 tag 构建 |
 | 10-30 | **白标品牌层（未提交）**：未登录显示客户品牌，登录后走远程。`NEXUSAI_CUSTOMER` → `branding/<c>/`（brand.json + mark/logo/icon）；electron-builder 动态 productName/appId/icon/dmg.title/shortcutName/artifactPrefix；make-icons 参数化预生成 icns/ico；品牌随 profile 进包，壳经 `NEXUSAI_BRANDING_FILE` 交给插件；`getBranding()` 未登录分支 + 客户端身份变化刷新。首客户 `shenyuanrunze`（审源润泽）。**顺带修掉 pnpm file: 依赖按版本判新导致打包陈旧插件的坑**（prepare 改为 tarball 解包强制覆盖） | 静态层 + 16/66 例全绿；客户包 `审源润泽.app`/`ShenYuanRunZe-0.1.16-arm64.dmg` 产物核验；打包版走查：未登录侧栏=审源润泽+盾徽、登录弹窗全客户化；默认构建无注入、清残留。已登录分支待有账号时实机验（详见本次交接块） |
 | 10-25 | **dsh 内核 0.2.1-rc.2 → 0.2.1-rc.3**（应用版本随 §8i 路径 0.1.15 → 0.1.16，本地未发布）：`upstream.json`（commit `1f81c047`，轻量 tag）、submodule、根 `package.json`（`dshBaseline` + 16 个 `@deepseek-ai/dsh-*`）、lockfile。`primary-runtime-lock.json` 未改（与 rc.3 的 lock 逐字节相同）。我们代码零改动。**不推 Codeup，未打 tag** | 六项核对全过。静态：check:dsh(0.2.1-rc.3) / tsc / build / 66 例 / 16 例全绿。运行层：prepare-runtime `0.1.0+dsh-0.2.1-rc.3+mac-arm64`、smoke、两个桌面 verify、本机 DMG + `check-mac-app.sh` 全过。打包版干净 home CDP 走查逐项与 rc.2 时代一致（技能本地 39 = 本机新增，非回归） |
 | 10-21 | **未发版**：公网内置工具注册成可调用 dsh 工具（带平台已存 key）；`bff-service` 改写成 `/service/api`；单标签集群主机名不注册，卡片置灰，悬停说明在卡片底部。选项卡改名为 Tools，侧栏标题不变。不升版本、不打 tag | `tsc` 通过。本机 admin：内置 9 张，6 张置灰，悬停说明在卡片内。助手实际调用公网工具未做 |
