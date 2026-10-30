@@ -183,7 +183,16 @@ export class NexusaiAuthService extends TypertRemoteService {
       // Branding is cosmetic: never block the login flow on it.
       branding = { name: '', logoUrl: '', backgroundUrl: '', welcomeText: '', platformDesc: '', buttonColor: '', version: '', copyright: '', markUrl: '', dshVersion: dshClientVersion() }
     }
-    if (this.deps.store.read() === undefined) {
+    // White-label deployments invert the source before anyone signs in: a fresh
+    // machine has reached no server, so the brand packaged for the customer
+    // identifies the app (its fields win, the server's fill the rest). With a
+    // session — including one restored from credentials at startup — the
+    // platform's own answer is the single source of truth. `load()` is
+    // awaited, not just `read()`: the startup load runs in the background
+    // (src/index.ts), and a branding fetch that raced it would read "not signed
+    // in" and serve the customer brand to a logged-in user — with no later
+    // identity change to correct it.
+    if ((await this.deps.store.load().catch(() => undefined)) === undefined) {
       const customer = await this.deps.customerBranding()
       if (customer !== undefined) {
         branding = {

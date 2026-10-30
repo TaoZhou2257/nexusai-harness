@@ -16,7 +16,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const {
-  createWriteStream, existsSync, mkdirSync, readFileSync,
+  createWriteStream, existsSync, mkdirSync, rmdirSync, readFileSync,
   renameSync, rmSync, statSync, writeFileSync,
 } = require('node:fs')
 const { retireLegacyWorkspaceLink } = require('./workspace-anchor.cjs')
@@ -42,14 +42,16 @@ const PROFILE_NAME = 'nexusai'
  * and behave exactly as before.
  */
 const BRAND = customerBrand()
-if (process.env.NEXUSAI_APP_NAME === undefined) {
-  if (BRAND.artifactPrefix !== '') {
-    app.setName(BRAND.artifactPrefix)
-    // `setName` alone does not move userData once the bundle's CFBundleName has
-    // decided it (packaged macOS keeps 审源润泽 as the directory name), so the
-    // path is set explicitly — that directory holds the whole dsh home.
-    app.setPath('userData', join(app.getPath('appData'), BRAND.artifactPrefix))
-  } else if (BRAND.name !== '') app.setName(BRAND.name)
+if (BRAND.artifactPrefix !== '') {
+  // The file-safe identity owns the userData directory unconditionally — even
+  // when NEXUSAI_APP_NAME overrides the title, the dsh home must stay on the
+  // ASCII path. `setName` alone does not move userData once the bundle's
+  // CFBundleName has decided it (packaged macOS keeps 审源润泽 as the directory
+  // name), so the path is set explicitly.
+  app.setName(BRAND.artifactPrefix)
+  app.setPath('userData', join(app.getPath('appData'), BRAND.artifactPrefix))
+} else if (process.env.NEXUSAI_APP_NAME === undefined && BRAND.name !== '') {
+  app.setName(BRAND.name)
 }
 const APP_NAME = process.env.NEXUSAI_APP_NAME || BRAND.name || 'NexusAIHarness'
 /**
@@ -110,6 +112,11 @@ function runtimeHome() {
  */
 function adoptLegacyHome(home) {
   if (existsSync(home)) return home
+  // Adoption is for the *default* install path only. With NEXUSAI_DSH_HOME the
+  // caller targets a specific directory (CI gates, development) — moving a real
+  // user's home into a throwaway temp directory because a legacy name matches
+  // would be data destruction, not an upgrade.
+  if (process.env.NEXUSAI_DSH_HOME) return home
   for (const name of LEGACY_APP_NAMES) {
     const legacy = join(app.getPath('appData'), name, 'dsh-home')
     if (!existsSync(legacy)) continue
@@ -117,6 +124,10 @@ function adoptLegacyHome(home) {
       mkdirSync(dirname(home), { recursive: true })
       renameSync(legacy, home)
       logLine(`adopted the home of ${name} from ${legacy}`)
+      // The move leaves the legacy name's empty husk behind; drop it when it is
+      // one (rmdir refuses non-empty directories, so user data can never be
+      // removed here).
+      try { rmdirSync(dirname(legacy)) } catch { /* not empty: keep it */ }
       return home
     } catch (error) {
       // Leaving it be is the safe direction: the app then starts fresh instead of
