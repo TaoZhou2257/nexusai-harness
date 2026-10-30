@@ -11,10 +11,24 @@
 const port = process.argv[2] ?? '9224'
 const waitMs = Number(process.argv[3] ?? '3000')
 
-const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
-const page = targets.find(target => target.type === 'page' && target.url.includes('127.0.0.1'))
+// The DevTools HTTP endpoint comes up slightly after the main process does, so
+// the target fetch retries within the wait budget — a connection that is not
+// ready yet must not read as "the client did not mount" (that flake failed a
+// whole release: the win customer gate died 0.2s in, before the in-page wait
+// even started).
+const deadline = Date.now() + waitMs
+let page
+for (;;) {
+  let targets = []
+  try {
+    targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
+  } catch { /* endpoint not accepting yet */ }
+  page = targets.find(target => target.type === 'page' && target.url.includes('127.0.0.1'))
+  if (page !== undefined || Date.now() >= deadline) break
+  await new Promise(resolve => setTimeout(resolve, 500))
+}
 if (page === undefined) {
-  console.error(`no renderer page on ${port}: ${targets.map(t => `${t.type}:${t.url}`).join(', ')}`)
+  console.error(`no renderer page on ${port} within ${waitMs}ms`)
   process.exit(2)
 }
 const socket = new WebSocket(page.webSocketDebuggerUrl)
