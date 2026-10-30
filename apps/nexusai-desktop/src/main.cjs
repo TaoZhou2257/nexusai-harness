@@ -27,16 +27,41 @@ const { dirname, join, resolve } = require('node:path')
 
 const PROFILE_NAME = 'nexusai'
 /**
- * White-label builds ship a brand manifest inside the bundled profile; its
- * name becomes the window title, the About line and (via `app.setName`) the
- * userData directory, so per-customer installs keep separate homes. Default
- * builds resolve no manifest and behave exactly as before.
+ * White-label builds ship a brand manifest inside the bundled profile. Two
+ * different strings come out of it, and the difference matters:
+ *
+ * - `name` is the *display* brand (window title, About, menus) and may be any
+ *   script — 「审源润泽」.
+ * - `artifactPrefix` is the *file-safe* identity the installer uses for the
+ *   Windows install directory and exe name, ASCII by contract.
+ *
+ * `app.setName` decides Electron's userData directory, i.e. where the dsh home
+ * lives (`%APPDATA%\<name>\dsh-home`). A Chinese brand there would put every
+ * session, skill and connector under a non-ASCII path, so the file-safe name is
+ * used and the brand stays a display string. Default builds resolve no manifest
+ * and behave exactly as before.
  */
-const BRAND_NAME = customerAppName()
-if (process.env.NEXUSAI_APP_NAME === undefined && BRAND_NAME !== '') app.setName(BRAND_NAME)
-const APP_NAME = process.env.NEXUSAI_APP_NAME || BRAND_NAME || 'NexusAIHarness'
-/** The app name earlier builds shipped with; their home is adopted on first launch. */
-const LEGACY_APP_NAME = 'NexusAgent Builder'
+const BRAND = customerBrand()
+if (process.env.NEXUSAI_APP_NAME === undefined) {
+  if (BRAND.artifactPrefix !== '') {
+    app.setName(BRAND.artifactPrefix)
+    // `setName` alone does not move userData once the bundle's CFBundleName has
+    // decided it (packaged macOS keeps 审源润泽 as the directory name), so the
+    // path is set explicitly — that directory holds the whole dsh home.
+    app.setPath('userData', join(app.getPath('appData'), BRAND.artifactPrefix))
+  } else if (BRAND.name !== '') app.setName(BRAND.name)
+}
+const APP_NAME = process.env.NEXUSAI_APP_NAME || BRAND.name || 'NexusAIHarness'
+/**
+ * App names that may own an existing dsh home from an earlier build: the
+ * pre-rename official app, plus the customer's display name — v0.1.17's
+ * white-label build kept its home under the Chinese name before the file-safe
+ * one was introduced.
+ */
+const LEGACY_APP_NAMES = [
+  'NexusAgent Builder',
+  ...(BRAND.name !== '' && BRAND.name !== BRAND.artifactPrefix ? [BRAND.name] : []),
+]
 const READY_PATTERN = /dsh web:\s+(http:\/\/127\.0\.0\.1:\d+\/?\?token=[^\s]+)/u
 
 /** Bundled runtime root: `resources/nexusai-runtime` in a packaged app, `build/` when running from source. */
@@ -51,13 +76,20 @@ function bundledProfileDir() {
   return join(bundledRoot(), 'profile')
 }
 
-/** The white-label name from the bundled profile's brand manifest ('' when absent). */
-function customerAppName() {
+/**
+ * The white-label identity from the bundled profile's brand manifest.
+ * `name` is the display brand, `artifactPrefix` the file-safe one; both are ''
+ * for a default build.
+ */
+function customerBrand() {
   try {
     const doc = JSON.parse(readFileSync(join(bundledProfileDir(), 'branding', 'brand.json'), 'utf8'))
-    return typeof doc.name === 'string' ? doc.name.trim() : ''
+    return {
+      name: typeof doc.name === 'string' ? doc.name.trim() : '',
+      artifactPrefix: typeof doc.artifactPrefix === 'string' ? doc.artifactPrefix.trim() : '',
+    }
   } catch {
-    return ''
+    return { name: '', artifactPrefix: '' }
   }
 }
 
@@ -78,16 +110,20 @@ function runtimeHome() {
  */
 function adoptLegacyHome(home) {
   if (existsSync(home)) return home
-  const legacy = join(app.getPath('appData'), LEGACY_APP_NAME, 'dsh-home')
-  if (!existsSync(legacy)) return home
-  try {
-    mkdirSync(dirname(home), { recursive: true })
-    renameSync(legacy, home)
-    logLine(`adopted the home of ${LEGACY_APP_NAME} from ${legacy}`)
-  } catch (error) {
-    // Leaving it be is the safe direction: the app then starts fresh instead of
-    // risking anything.
-    logLine(`could not adopt ${legacy}: ${error && error.message ? error.message : String(error)}`)
+  for (const name of LEGACY_APP_NAMES) {
+    const legacy = join(app.getPath('appData'), name, 'dsh-home')
+    if (!existsSync(legacy)) continue
+    try {
+      mkdirSync(dirname(home), { recursive: true })
+      renameSync(legacy, home)
+      logLine(`adopted the home of ${name} from ${legacy}`)
+      return home
+    } catch (error) {
+      // Leaving it be is the safe direction: the app then starts fresh instead of
+      // risking anything.
+      logLine(`could not adopt ${legacy}: ${error && error.message ? error.message : String(error)}`)
+      return home
+    }
   }
   return home
 }

@@ -32,15 +32,21 @@ if (-not $installer) { throw "no *Setup*.exe in $app\dist — run build-app.ps1 
 # electron-builder.config.cjs: a customer build (NEXUSAI_CUSTOMER) installs and
 # labels itself after branding/<customer>'s name, everything else stays
 # NexusAIHarness.
-$productName = 'NexusAIHarness'
+# Two names, mirroring electron-builder.config.cjs: `$brandName` is what the
+# user sees (productName — the Add/Remove entry and the shortcut label) and
+# `$exeName` is the file-safe identity the Windows target derives from
+# `artifactPrefix` (`win.executableName` — install directory and exe name).
+# They differ for a white-label customer whose brand is non-ASCII.
+$brandName = 'NexusAIHarness'
+$exeName = 'NexusAIHarness'
 if ($env:NEXUSAI_CUSTOMER) {
   $brandPath = Join-Path $root "apps\nexusai-desktop\branding\$env:NEXUSAI_CUSTOMER\brand.json"
-  $productName = (Get-Content $brandPath -Raw | ConvertFrom-Json).name
+  $brand = Get-Content $brandPath -Raw | ConvertFrom-Json
+  $brandName = $brand.name
+  $exeName = if ($brand.artifactPrefix) { $brand.artifactPrefix } else { $brand.name }
 }
 # electron-builder's NSIS default per-user install base; the actual install
-# directory is discovered after the silent install (see the try block) — a
-# non-ASCII productName (白标客户的中文品牌名) does not necessarily land in
-# `Programs\<productName>`.
+# directory is discovered after the silent install (see the try block).
 $programsRoot = Join-Path $env:LOCALAPPDATA 'Programs'
 # RUNNER_TEMP is GitHub's; Yunxiao has no equivalent, so fall back to the OS temp.
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
@@ -87,28 +93,34 @@ try {
   $install = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
   Write-Host "installer exit code: $($install.ExitCode)"
   # Locate what the installer actually placed: the exe is searched for instead
-  # of assumed — see the note on $programsRoot above.
-  $exeItem = Get-ChildItem $programsRoot -Recurse -Depth 2 -Filter "$productName.exe" -ErrorAction SilentlyContinue |
+  # of assumed, and it carries the file-safe name (`win.executableName`).
+  $exeItem = Get-ChildItem $programsRoot -Recurse -Depth 2 -Filter "$exeName.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
   if (-not $exeItem) {
     Write-Host "--- what actually got installed under $programsRoot ---"
     Get-ChildItem $programsRoot -Directory -ErrorAction SilentlyContinue |
       Select-Object -ExpandProperty FullName | Write-Host
-    throw "installed '$productName.exe' not found under $programsRoot — silent install may have failed"
+    throw "installed '$exeName.exe' not found under $programsRoot — silent install may have failed"
   }
+  # A non-ASCII install path is a defect in its own right: every tool that reads
+  # the home from there (scripts, updaters, the customer's IT) has to cope.
   $installDir = $exeItem.DirectoryName
   $exe = $exeItem.FullName
+  if ($installDir -match '[^\x00-\x7F]') {
+    throw "install directory is not ASCII: $installDir — check win.executableName / artifactPrefix"
+  }
   Write-Host "OK: installed to $installDir"
 
-  # The shortcut labels are the other brand string that does not follow
-  # productName: app-builder-lib's NSIS templates create them as
-  # `${SHORTCUT_NAME}.lnk` (templates/nsis/common.nsh), and for the assisted
-  # installer they are created on the silent path too — which is how this gate
-  # installs. A rename that misses `nsis.shortcutName` leaves users with a
-  # shortcut labelled after the old app name, so assert both by name.
+  # The shortcut labels are the other brand string that does not follow the exe
+  # name: app-builder-lib's NSIS templates create them as `${SHORTCUT_NAME}.lnk`
+  # (templates/nsis/common.nsh) — our `nsis.shortcutName` is the brand name, so
+  # these stay in the customer's own script even though the exe is ASCII. For
+  # the assisted installer they are created on the silent path too, which is how
+  # this gate installs. A config that misses `nsis.shortcutName` leaves users
+  # with a shortcut labelled after the old app name, so assert both by name.
   $shortcuts = @(
-    (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$productName.lnk"),
-    (Join-Path ([Environment]::GetFolderPath('Desktop')) "$productName.lnk")
+    (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$brandName.lnk"),
+    (Join-Path ([Environment]::GetFolderPath('Desktop')) "$brandName.lnk")
   )
   foreach ($shortcut in $shortcuts) {
     if (-not (Test-Path $shortcut)) { throw "installer did not create $shortcut — check nsis.shortcutName in electron-builder.config.cjs" }

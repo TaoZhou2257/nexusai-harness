@@ -93,6 +93,14 @@ module.exports = {
     icon: brand === undefined
       ? join(__dirname, 'resources', 'icon.ico')
       : join(brand.dir, brand.ico ?? 'icon.ico'),
+    // The install directory and the exe name must stay ASCII. electron-builder
+    // only uses productName for the install directory when it matches
+    // /^[-_+0-9a-zA-Z .]+$/ and otherwise falls back to the package.json name
+    // — which put the customer build in `Programs\@tobynexusai-desktop`. This
+    // field is what that check reads, so deriving it from `artifactPrefix`
+    // keeps everything on disk file-safe while productName (and
+    // nsis.shortcutName) stay the customer's own brand.
+    executableName: filePrefix,
     // `Setup` kept in the Windows file name: it is an installer, and the name is
     // the only thing a user sees before running it.
     artifactName: `${filePrefix}-Setup-\${version}-\${arch}.\${ext}`,

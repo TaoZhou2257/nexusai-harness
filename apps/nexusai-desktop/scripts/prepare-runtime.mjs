@@ -119,6 +119,8 @@ const aesIv = settings.NEXUSAI_AES_IV ?? ''
 // manifest. Empty = the default NexusAIHarness build, untouched.
 const customer = (argValue('customer') ?? settings.NEXUSAI_CUSTOMER ?? '').trim()
 let brandName = ''
+/** File-safe ASCII identity: Windows install dir, exe name and the dsh home. */
+let brandPrefix = ''
 if (customer !== '') {
   const brandFile = join(APP_ROOT, 'branding', customer, 'brand.json')
   if (!existsSync(brandFile)) {
@@ -127,6 +129,14 @@ if (customer !== '') {
   const brand = JSON.parse(readFileSync(brandFile, 'utf8'))
   brandName = typeof brand.name === 'string' ? brand.name.trim() : ''
   if (brandName === '') throw new Error(`${brandFile} has no name`)
+  // Everything that lands on disk on Windows derives from this field (install
+  // directory, exe name) and Electron's userData directory too, so a
+  // non-ASCII value would silently produce `<用户>\AppData\Local\Programs\@tobynexusai-desktop`
+  // — electron-builder's fallback to the package name. Demand it explicitly.
+  brandPrefix = typeof brand.artifactPrefix === 'string' ? brand.artifactPrefix.trim() : ''
+  if (!/^[-_+0-9a-zA-Z .]+$/.test(brandPrefix)) {
+    throw new Error(`${brandFile}: artifactPrefix must be a non-empty ASCII file name (got ${JSON.stringify(brandPrefix)}) — it names the Windows install directory, the exe and the dsh home`)
+  }
 }
 if (baseUrl === '') {
   throw new Error(
