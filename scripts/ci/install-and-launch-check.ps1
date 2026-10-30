@@ -37,23 +37,11 @@ if ($env:NEXUSAI_CUSTOMER) {
   $brandPath = Join-Path $root "apps\nexusai-desktop\branding\$env:NEXUSAI_CUSTOMER\brand.json"
   $productName = (Get-Content $brandPath -Raw | ConvertFrom-Json).name
 }
-
-# Discover the installed app by locating its exe under the per-user Programs
-# root (electron-builder's NSIS default base) instead of assuming an exact
-# directory: a non-ASCII productName (白标客户的中文品牌名) does not necessarily
-# land in `Programs\<productName>`, and neither the registry nor the directory
-# name is a contract — the exe is.
+# electron-builder's NSIS default per-user install base; the actual install
+# directory is discovered after the silent install (see the try block) — a
+# non-ASCII productName (白标客户的中文品牌名) does not necessarily land in
+# `Programs\<productName>`.
 $programsRoot = Join-Path $env:LOCALAPPDATA 'Programs'
-$exeItem = Get-ChildItem $programsRoot -Recurse -Depth 2 -Filter "$productName.exe" -ErrorAction SilentlyContinue |
-  Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $exeItem) {
-  Write-Host "--- what actually got installed under $programsRoot ---"
-  Get-ChildItem $programsRoot -Directory -ErrorAction SilentlyContinue |
-    Select-Object -ExpandProperty FullName | Write-Host
-  throw "installed '$productName.exe' not found under $programsRoot — silent install may have failed"
-}
-$installDir = $exeItem.DirectoryName
-$exe = $exeItem.FullName
 # RUNNER_TEMP is GitHub's; Yunxiao has no equivalent, so fall back to the OS temp.
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $script:proc = $null
@@ -98,7 +86,18 @@ try {
   # that follow test a finished install.
   $install = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
   Write-Host "installer exit code: $($install.ExitCode)"
-  if (-not (Test-Path $exe)) { throw "installer did not place $exe" }
+  # Locate what the installer actually placed: the exe is searched for instead
+  # of assumed — see the note on $programsRoot above.
+  $exeItem = Get-ChildItem $programsRoot -Recurse -Depth 2 -Filter "$productName.exe" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $exeItem) {
+    Write-Host "--- what actually got installed under $programsRoot ---"
+    Get-ChildItem $programsRoot -Directory -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName | Write-Host
+    throw "installed '$productName.exe' not found under $programsRoot — silent install may have failed"
+  }
+  $installDir = $exeItem.DirectoryName
+  $exe = $exeItem.FullName
   Write-Host "OK: installed to $installDir"
 
   # The shortcut labels are the other brand string that does not follow
