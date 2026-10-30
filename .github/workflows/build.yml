@@ -100,7 +100,10 @@ jobs:
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: nexusai-builder-win-x64
+          # Matrix-scoped like the macOS artifacts: a shared name makes the
+          # default and the customer build collide, and whichever finished
+          # later silently replaced the other in the run's artifact list.
+          name: nexusai-builder-win-x64-${{ matrix.label }}
           path: apps/nexusai-desktop/dist/*.exe
           if-no-files-found: error
 
