@@ -130,10 +130,10 @@ function adoptLegacyHome(home) {
       try { rmdirSync(dirname(legacy)) } catch { /* not empty: keep it */ }
       return home
     } catch (error) {
-      // Leaving it be is the safe direction: the app then starts fresh instead of
-      // risking anything.
+      // Leaving it be is the safe direction — but keep trying the other legacy
+      // names before giving up (e.g. the pre-rename official app failed to move
+      // while the customer display name's home is still adoptable).
       logLine(`could not adopt ${legacy}: ${error && error.message ? error.message : String(error)}`)
-      return home
     }
   }
   return home
