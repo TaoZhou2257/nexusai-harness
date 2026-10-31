@@ -1,4 +1,4 @@
-# HANDOFF — 交接摘要（2026-10-31 · dsh rc.5，v0.1.20 发版）
+# HANDOFF — 交接摘要（2026-10-31 · dsh rc.5，v0.1.21 发版）
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
@@ -756,6 +756,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 |---|---|---|
 | 10-30 | **win 客户验收三修 + artifact 同名修复**：①安装位置改为静默安装后扫描 Programs 根定位 exe（中文 productName 不落 `Programs\<名>`，注册表项也不含 productName）；②win artifact 名加 `-${matrix.label}`，此前默认与客户同名撞车，只能按 ID 下载。客户端产物全部上 Release | CI run 40976962747 四 job 全绿（含 Windows ShenYuanRunZe 真机安装验收）；Release `v0.1.17` 现有 4 个资产（默认/客户 × mac/win） |
 | 10-31 | **代码自查修复三处（白标品牌层）**：①`getBranding()` 竞态——启动时 `store.load()` 是后台异步，带会话重启的首次取品牌可能误读"未登录"而给已登录用户发客户品牌且无法自愈 → 改为先 `await store.load()`；②`adoptLegacyHome` 在显式 `NEXUSAI_DSH_HOME`（CI/开发临时目录）时也会把用户真实旧品牌 home 搬进一次性目录 → 显式 env 时跳过接管；③`NEXUSAI_APP_NAME` 与客户构建组合时 userData 漏设 ASCII → `artifactPrefix` 存在即无条件 setPath；顺带接管后清掉空壳目录（rmdir 仅空目录，不可能误删数据） | 本机重打客户包实测：接管+空壳清理+ASCII home 全过，tsc/build 全绿 |
+| 10-31 | **v0.1.21 发版**：接管名单按产品线划分（客户构建不再认领 NexusAgent Builder 时代的默认品牌 home，只认领自己的显示名旧家）+ 接管单个 legacy 失败继续尝试其余。tag `v0.1.21` 发布 | 双场景实机回归（A：不碰别家 home；B：接管自家旧 home）通过 |
 | 10-31 | **v0.1.20 发版**（**混合发版**：CI win 包 + 本机 mac 包，release job 因 mac 容量取消被跳过，`gh release create` 手动挂四资产）：launcher 未登录显示「更多」（⋯ 图标 + 文字，与原生 dsh AccountMenu 一致），登录收进二级菜单（打开设置/登录，菜单项不变）；语言包加 `more` 键。tag `v0.1.20` 发布，CI 四 job + Release 自动挂四资产 | 打包实测截图：未登录=更多、菜单不变、登录后仍显示账号名 |
 | 10-31 | **坑三条（本轮发版沉淀）**：①**macOS arm64 runner 池容量**——mac job 三次尝试全部"排队未启动即被取消"（Windows 池正常），注解有 capacity 警告；容量期走混合发版（本机 mac + CI win）。②**发版必 bump 版本号**——launcher 一笔漏 bump，v0.1.20 tag 首跑产物全带 0.1.19 版本串，作废重打。③**手动 Release 脚本**：`gh release create <tag> --notes … <dmg们> <exe们>`，win 包从 CI run artifacts 下载（注意别下成旧 run 的，按 run id 取） |
 | 10-31 | **dsh 内核 0.2.1-rc.3 → 0.2.1-rc.5**（应用版本随 §8i 路径 0.1.18 → 0.1.19，tag `v0.1.19` 发布）：rc.4 修 ACP 诊断泄漏，rc.5 为 0.2.1 线最新候选；`upstream.json`（commit `b830ec950f`，轻量 tag）、submodule、根 `package.json`（`dshBaseline` + 16 个依赖）、lockfile。`primary-runtime-lock.json` 未改（逐字节相同）。我们代码零改动（tsc 一次通过）。dev 克隆同步 checkout rc.5 | 六项核对全过。静态：check:dsh(0.2.1-rc.5) / tsc / build / 66 例 / 16 例全绿。运行层：prepare-runtime `0.1.0+dsh-0.2.1-rc.5+mac-arm64`（anchor renamed、settings hidden、组合成功）、smoke、两个桌面 verify、打包 + `check-mac-app.sh` 全过 |
