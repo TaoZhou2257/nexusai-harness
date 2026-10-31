@@ -55,15 +55,16 @@ if (BRAND.artifactPrefix !== '') {
 }
 const APP_NAME = process.env.NEXUSAI_APP_NAME || BRAND.name || 'NexusAIHarness'
 /**
- * App names that may own an existing dsh home from an earlier build: the
- * pre-rename official app, plus the customer's display name — v0.1.17's
- * white-label build kept its home under the Chinese name before the file-safe
- * one was introduced.
+ * App names that may own an existing dsh home **of this product line** — a
+ * build only ever adopts its own lineage's legacy home, never another brand's:
+ * the default build's lineage is the pre-rename official app; a customer
+ * build's is its own display name (v0.1.17 kept the white-label home under the
+ * Chinese brand before the file-safe identity existed). Adopting across brands
+ * would steal another product's data instead of upgrading this one's.
  */
-const LEGACY_APP_NAMES = [
-  'NexusAgent Builder',
-  ...(BRAND.name !== '' && BRAND.name !== BRAND.artifactPrefix ? [BRAND.name] : []),
-]
+const LEGACY_APP_NAMES = BRAND.artifactPrefix !== ''
+  ? (BRAND.name !== '' ? [BRAND.name] : [])
+  : ['NexusAgent Builder']
 const READY_PATTERN = /dsh web:\s+(http:\/\/127\.0\.0\.1:\d+\/?\?token=[^\s]+)/u
 
 /** Bundled runtime root: `resources/nexusai-runtime` in a packaged app, `build/` when running from source. */
