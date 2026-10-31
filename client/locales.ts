@@ -103,6 +103,7 @@ export type NexusaiLocaleKey =
   | 'menu'
   | 'signedInAs'
   | 'openSettings'
+  | 'more'
   | 'signOutIdle'
   | 'signOutRunning'
   | 'signOutUnknown'
@@ -287,6 +288,7 @@ export const zh: Record<NexusaiLocaleKey, string> = {
   menu: 'NexusAI 账号',
   signedInAs: '已登录：',
   openSettings: '打开设置',
+  more: '更多',
   signOutIdle: '退出登录不会丢失任何数据，你仍可以登录此账号。',
   signOutRunning: '当前有任务正在执行，退出登录会打断它们。确定退出登录？',
   signOutUnknown: '暂时无法确认任务状态，退出登录可能会打断正在执行的任务，是否继续？',
@@ -472,6 +474,7 @@ export const en: Record<NexusaiLocaleKey, string> = {
   menu: 'NexusAI account',
   signedInAs: 'Signed in: ',
   openSettings: 'Open settings',
+  more: 'More',
   signOutIdle: 'Signing out will not delete any data. You can sign in to this account again.',
   signOutRunning: 'Tasks are currently running. Signing out will interrupt them. Sign out now?',
   signOutUnknown: 'Could not check running tasks. Signing out may interrupt tasks using this account. Continue?',

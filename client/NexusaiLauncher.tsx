@@ -4,13 +4,15 @@
  * mirrors the built-in account button — avatar disc plus label, collapsing to
  * a rail disc when the sidebar hides labels — and opens a `Menu side="top"`
  * with the NexusAI actions. Settings lives in that menu, the same place as
- * dsh's account menu, so the sidebar has no separate gear. Signed out, the
- * menu offers settings and sign-in. Sign-out asks first, reporting whether
+ * dsh's account menu, so the sidebar has no separate gear. Signed out the
+ * trigger reads 「更多」 (the built-in account menu's own wording — sign-in is
+ * one menu down, not on the button) and the menu offers settings and sign-in.
+ * Sign-out asks first, reporting whether
  * tasks are running (the built-in account menu's own confirmation, kept
  * because signing out drops the tools and MCP rows those tasks may be using).
  */
 import { useState, type ReactNode } from 'react'
-import { Button, IconChevronDownOutlineRegular, IconLoadingOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconChevronDownOutlineRegular, IconEllipsisOutlineMedium, IconLoadingOutlineRegular, IconSettingsOutlineMedium, IconUserOutlineMedium, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { NexusaiSignInDialog } from './NexusaiSignInDialog'
 import type { NexusaiLocaleKey } from './locales'
 import type { NexusaiAuthOps, NexusaiRuntimeOps, NexusaiSnapshot } from './face'
@@ -98,8 +100,10 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
       // on copy or locale (the sign-in dialog is user-driven, so it cannot be
       // the evidence any more — see scripts/ci/*).
       data-nexusai="launcher"
-      aria-label={signedIn ? `${resolve('signedInAs')}${name}` : resolve('login')}
-      title={signedIn ? `${resolve('signedInAs')}${name}` : resolve('login')}
+      // Signed out, the trigger reads 「更多」 like the built-in account menu
+      // (sign-in lives one menu down, not on the button) — see the items below.
+      aria-label={signedIn ? `${resolve('signedInAs')}${name}` : resolve('more')}
+      title={signedIn ? `${resolve('signedInAs')}${name}` : resolve('more')}
       aria-haspopup="menu"
       aria-expanded={menuOpen}
       onClick={() => { setMenuOpen(value => !value) }}
@@ -107,12 +111,15 @@ export function NexusaiLauncher({ wide, openSettings, settingsShortcut, useNexus
       data-collapsed={wide !== true ? '' : undefined}
     >
       <span style={avatarStyle} aria-hidden={true}>
-        {signedIn && initial !== '' ? initial : <IconUserOutlineMedium size={16} />}
+        {signedIn
+          ? initial !== '' ? initial : <IconUserOutlineMedium size={16} />
+          : <IconEllipsisOutlineMedium size={14} />}
       </span>
       {wide === true && (
         <span style={labelStyle}>
-          {/* Signed in: just the account name; the tooltip carries the state. */}
-          {signedIn ? name : resolve('login')}
+          {/* Signed in: just the account name; the tooltip carries the state.
+              Signed out: 「更多」, matching the built-in account menu. */}
+          {signedIn ? name : resolve('more')}
         </span>
       )}
       {/* Organization: a chip right after the name that switches orgs (the
