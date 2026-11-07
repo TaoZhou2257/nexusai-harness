@@ -2,6 +2,16 @@
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
+## 本次交接（2026-11-08 · v0.1.22：自定义模型 API 重启丢失修复 + 审源润泽新 logo，已发版）
+
+**问题**：`materializeProfile` 每次启动都用包内 `cordis.patch.yml` `force` 覆盖 home 里的那份，而设置页保存的自定义模型（`llm-pi-ai` 行）、语言等也写在这个文件里 → 重启/升级即丢。官方 dsh 不覆盖，是我们壳的 bug。
+
+**修法**：新文件 `apps/nexusai-desktop/src/profile-patch.cjs` 做三方合并（新出厂 / 上次出厂基准 `.nexusai-factory-patch.yml` / 用户当前文件），`profile-link.cjs` 对 patch 改调 `refreshProfilePatch`，其余三个清单仍直接拷。规则：用户没改的取新出厂值，用户改过的保留；用户独有行（模型、连接器 insert）原样保留；新出厂行插在其出厂前驱之后（dsh 按行序组合，覆盖行在 insert 之前会被丢）；insert 块按"与出厂块有共同条目"认领（升级增删条目不重复插入）；无基准的老 home 冲突时取出厂；解析失败备份为 `cordis.patch.yml.bak-<ts>` 再写出厂。`!!js` 原样回写。
+
+**已验证**：`verify-profile-layout.mjs` 32/32、`verify-workspace-anchor.mjs` 通过；真机（临时 `NEXUSAI_DSH_HOME` + 伪造升级 bundle `NEXUSAI_BUNDLED_RUNTIME`）：UI 建的自定义模型重启、升级后仍在；升级拿到新出厂值、删行生效、insert 不重复；UI 改语言重启保留。
+
+**整体回归（11-08，默认 + 审源润泽两个品牌都打了本机 DMG）**：tsc / build / check:dsh(rc.5) / 16 + 66 + 32 例 / workspace-anchor 全绿；两品牌 `prepare-runtime`（组合成功）、`smoke:runtime`、`check-mac-app.sh` 全过。打包版干净 home 走查：品牌（侧栏/hero/徽章/登录框标题与 logo）、`zh-CN`、无登录框/API Key 引导/预览说明、启动器 1、技能本地 39 / SkillHub 24；UI 新建 stdio 自定义连接器（连上、1 个工具）+ 自定义模型 API，重启后两者都在、patch 逐字节不变；登录框能连通服务器并刷出验证码（无账号，未走已登录分支）。正常退出（AppleScript quit）与 SIGTERM 各两轮均 2s 内退出、dsh 子进程一并结束、不自重启。默认品牌那次 `check-mac-app.sh` 结尾出现过一次 Electron 退出析构段错误（判定通过之后，栈在 `node::AsyncWrap::~AsyncWrap`），之后 5 次未复现，暂记为上游偶发。`build/` 最后留在审源润泽客户构建（与测试前一致）。**发版**：用户确认两个品牌都打（矩阵不变），应用版本 0.1.21 → 0.1.22，tag `v0.1.22` 推 GitHub 走 CI。**下一步**：看 CI 四 job 与 Release 资产是否齐（mac 池若再遇容量取消，按 §13 10-31 的混合发版处理）。
+
 ## 本次交接（2026-10-30 · 白标品牌层）
 
 **一句话状态**：**白标（每客户）品牌落地**——未登录显示客户自己的名称/logo/桌面图标，登录后走原来的远程品牌逻辑。首个客户 **审源润泽**（`branding/shenyuanrunze/`），默认构建（不设变量）行为零变化。基于已发布的 v0.1.16（dc3ca99），本笔已提交（`7ab3a74`），应用版本升 **0.1.17**，**10-30 应用户要求打 tag `v0.1.17` 发布**（CI 双平台构建挂 GitHub Release）。dsh 仍是 rc.3，源码零改动。
@@ -36,7 +46,7 @@ NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:mac
 **下一步**
 
 1. ~~本笔本地提交；要发版升 0.1.17 打 tag~~ 已发版 v0.1.17。
-2. 审源润泽 logo 若有透明底/矢量版，换掉现在的 JPG 裁切（`source.jpg` 保留作出处，不进包）。
+2. 审源润泽 logo 已于 11-08 按用户给的新图（圆形 + 轨道，3168×1312 横版，带「豆包AI生成」水印）更换：从浅蓝渐变底上抠出深蓝图形（拟合背景曲面求不透明度，低于 0.12 归零），再统一合成到 #E1F0FA 底上——`logo.png` 568×512（图形 + 中英文字）、`mark.png` 512 方形与 `icon-1024.png`（只取图形），水印区域不取；icns/ico 用 `make-icons.mjs` 重生成。`source.jpg` 为新原图（出处，不进包）。若客户给出透明底/矢量版，可直接替换。首页 hero 的图标固定是产品 N 字标（`NexusaiHero.tsx`，不读品牌），未改。
 3. dev 环境仍是 418 删除状态（见 10-25 块），修好后可加一条 dev 预览走查。
 
 ## 上次交接（2026-10-25 升级，10-28 发版）
@@ -754,6 +764,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 11-08 | **v0.1.22 发版**（默认 + 审源润泽两个品牌）：①修自定义模型 API / 语言等设置重启、升级后丢失——profile patch 由每次强制覆盖改为三方合并（新文件 `src/profile-patch.cjs`，见文首 11-08「本次交接」段）；②审源润泽换新 logo（圆形 + 轨道，侧栏/登录框/桌面图标）。tag `v0.1.22` | 本机两品牌全链路回归（静态 + 4 套件 + prepare/smoke/打包/check-mac-app + 打包版走查 + 伪造升级 bundle）全过 |
 | 10-30 | **win 客户验收三修 + artifact 同名修复**：①安装位置改为静默安装后扫描 Programs 根定位 exe（中文 productName 不落 `Programs\<名>`，注册表项也不含 productName）；②win artifact 名加 `-${matrix.label}`，此前默认与客户同名撞车，只能按 ID 下载。客户端产物全部上 Release | CI run 40976962747 四 job 全绿（含 Windows ShenYuanRunZe 真机安装验收）；Release `v0.1.17` 现有 4 个资产（默认/客户 × mac/win） |
 | 10-31 | **代码自查修复三处（白标品牌层）**：①`getBranding()` 竞态——启动时 `store.load()` 是后台异步，带会话重启的首次取品牌可能误读"未登录"而给已登录用户发客户品牌且无法自愈 → 改为先 `await store.load()`；②`adoptLegacyHome` 在显式 `NEXUSAI_DSH_HOME`（CI/开发临时目录）时也会把用户真实旧品牌 home 搬进一次性目录 → 显式 env 时跳过接管；③`NEXUSAI_APP_NAME` 与客户构建组合时 userData 漏设 ASCII → `artifactPrefix` 存在即无条件 setPath；顺带接管后清掉空壳目录（rmdir 仅空目录，不可能误删数据） | 本机重打客户包实测：接管+空壳清理+ASCII home 全过，tsc/build 全绿 |
 | 10-31 | **v0.1.21 发版**：接管名单按产品线划分（客户构建不再认领 NexusAgent Builder 时代的默认品牌 home，只认领自己的显示名旧家）+ 接管单个 legacy 失败继续尝试其余。tag `v0.1.21` 发布 | 双场景实机回归（A：不碰别家 home；B：接管自家旧 home）通过 |
