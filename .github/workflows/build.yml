@@ -27,7 +27,7 @@ on:
 jobs:
   mac:
     name: macOS ${{ matrix.label }} (arm64, dmg)
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       fail-fast: false
       # Every white-label customer builds beside the default brand. A customer

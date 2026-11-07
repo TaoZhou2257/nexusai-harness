@@ -764,7 +764,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
-| 11-08 | **v0.1.22 发版**（默认 + 审源润泽两个品牌）：①修自定义模型 API / 语言等设置重启、升级后丢失——profile patch 由每次强制覆盖改为三方合并（新文件 `src/profile-patch.cjs`，见文首 11-08「本次交接」段）；②审源润泽换新 logo（圆形 + 轨道，侧栏/登录框/桌面图标）。tag `v0.1.22` | 本机两品牌全链路回归（静态 + 4 套件 + prepare/smoke/打包/check-mac-app + 打包版走查 + 伪造升级 bundle）全过 |
+| 11-08 | **v0.1.22 发版**（默认 + 审源润泽两个品牌）：①修自定义模型 API / 语言等设置重启、升级后丢失——profile patch 由每次强制覆盖改为三方合并（新文件 `src/profile-patch.cjs`，见文首 11-08「本次交接」段）；②审源润泽换新 logo（圆形 + 轨道，侧栏/登录框/桌面图标）。tag `v0.1.22`。**坑**：首推时 mac 两个 job 0 秒即取消，注解 `The configuration 'macos-14-arm64-us-default' is not supported`（GitHub 已下线 macos-14 镜像，与 10-31 的容量取消不是一回事）→ `runs-on` 改 `macos-15`，tag 移到修复提交重推 | 本机两品牌全链路回归（静态 + 4 套件 + prepare/smoke/打包/check-mac-app + 打包版走查 + 伪造升级 bundle）全过 |
 | 10-30 | **win 客户验收三修 + artifact 同名修复**：①安装位置改为静默安装后扫描 Programs 根定位 exe（中文 productName 不落 `Programs\<名>`，注册表项也不含 productName）；②win artifact 名加 `-${matrix.label}`，此前默认与客户同名撞车，只能按 ID 下载。客户端产物全部上 Release | CI run 40976962747 四 job 全绿（含 Windows ShenYuanRunZe 真机安装验收）；Release `v0.1.17` 现有 4 个资产（默认/客户 × mac/win） |
 | 10-31 | **代码自查修复三处（白标品牌层）**：①`getBranding()` 竞态——启动时 `store.load()` 是后台异步，带会话重启的首次取品牌可能误读"未登录"而给已登录用户发客户品牌且无法自愈 → 改为先 `await store.load()`；②`adoptLegacyHome` 在显式 `NEXUSAI_DSH_HOME`（CI/开发临时目录）时也会把用户真实旧品牌 home 搬进一次性目录 → 显式 env 时跳过接管；③`NEXUSAI_APP_NAME` 与客户构建组合时 userData 漏设 ASCII → `artifactPrefix` 存在即无条件 setPath；顺带接管后清掉空壳目录（rmdir 仅空目录，不可能误删数据） | 本机重打客户包实测：接管+空壳清理+ASCII home 全过，tsc/build 全绿 |
 | 10-31 | **v0.1.21 发版**：接管名单按产品线划分（客户构建不再认领 NexusAgent Builder 时代的默认品牌 home，只认领自己的显示名旧家）+ 接管单个 legacy 失败继续尝试其余。tag `v0.1.21` 发布 | 双场景实机回归（A：不碰别家 home；B：接管自家旧 home）通过 |
