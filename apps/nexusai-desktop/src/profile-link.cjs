@@ -12,6 +12,7 @@ const {
   cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, rmdirSync, symlinkSync, writeFileSync,
 } = require('node:fs')
 const { join, resolve } = require('node:path')
+const { refreshProfilePatch } = require('./profile-patch.cjs')
 
 const LAYOUT = 'plugin-link'
 const PLUGIN_SCOPE = '@toby'
@@ -82,9 +83,15 @@ function materializeProfile(options) {
   const marker = join(target, '.nexusai-desktop-runtime')
   const expected = `${options.appVersion}+${options.runtimeVersion}+${LAYOUT}`
   mkdirSync(target, { recursive: true })
-  for (const name of ['package.json', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'pnpm-lock.yaml']) {
+  for (const name of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
     const from = join(source, name)
     if (existsSync(from)) cpSync(from, join(target, name), { force: true })
+  }
+  // The patch also holds what the user saved in settings, so it is merged, not copied.
+  const patch = join(source, 'cordis.patch.yml')
+  if (existsSync(patch)) {
+    const outcome = refreshProfilePatch({ source: patch, target: join(target, 'cordis.patch.yml'), log })
+    if (outcome !== 'kept') log(`profile patch ${outcome}`)
   }
 
   const installed = readTextIfExists(marker)
