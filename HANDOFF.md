@@ -46,7 +46,7 @@ NEXUSAI_CUSTOMER=shenyuanrunze npm run dist:mac
 **下一步**
 
 1. ~~本笔本地提交；要发版升 0.1.17 打 tag~~ 已发版 v0.1.17。
-2. 审源润泽 logo 已于 11-08 按用户给的新图（圆形 + 轨道，3168×1312 横版，带「豆包AI生成」水印）更换：从浅蓝渐变底上抠出深蓝图形（拟合背景曲面求不透明度，低于 0.12 归零），再统一合成到 #E1F0FA 底上——`logo.png` 568×512（图形 + 中英文字）、`mark.png` 512 方形与 `icon-1024.png`（只取图形），水印区域不取；icns/ico 用 `make-icons.mjs` 重生成。`source.jpg` 为新原图（出处，不进包）。若客户给出透明底/矢量版，可直接替换。首页 hero 的图标固定是产品 N 字标（`NexusaiHero.tsx`，不读品牌），未改。
+2. 审源润泽 logo 现为绿色矢量版（v0.1.23，原稿 `branding/shenyuanrunze/source.svg`，不进包）：圆形图形 + 「审源润泽 / SHENYUAN RUNZE」，深绿 #014C47，白底合成。**再换时注意**：SVG 文字未转曲，要按原稿字体渲染（Noto Serif SC Bold / Inter Light，本机未装，用 npmmirror 的 `@fontsource/*` + 无头 Chrome，不装系统字体）；`logo.png` 取全图、`mark.png` / `icon-1024.png` 只取图形（隐藏 `<text>`），再 `make-icons.mjs` 生成 icns/ico。（11-08 当天先换过一版「圆形 + 轨道」位图，已被这版取代。）首页 hero 的图标固定是产品 N 字标（`NexusaiHero.tsx`，不读品牌），未改。
 3. dev 环境仍是 418 删除状态（见 10-25 块），修好后可加一条 dev 预览走查。
 
 ## 上次交接（2026-10-25 升级，10-28 发版）
@@ -764,6 +764,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 11-08 | **v0.1.23 发版（只发审源润泽）**：审源润泽换绿色 logo（用户给的矢量原稿 `shenyuan_runze_green.svg`，深绿 #014C47）。SVG 里文字未转曲、字体（Noto Serif CJK SC Bold / Inter Light）本机没装 → 从 npmmirror 取 `@fontsource/noto-serif-sc`、`@fontsource/inter`，用无头 Chrome 2x 渲染（不装系统字体），合成到白底：`logo.png` 568×512、`mark.png` 512、`icon-1024.png`，icns/ico 重生成；出处存 `source.svg`。发版提交临时把 CI 矩阵改为只含 `shenyuanrunze`，随后一笔 `[skip ci]` 提交恢复两品牌矩阵；先推 tag 再推分支，避免分支重复构建 | dev 运行实测侧栏/登录框新 logo；`prepare-runtime --customer` 组合成功 |
 | 11-08 | **v0.1.22 发版**（默认 + 审源润泽两个品牌）：①修自定义模型 API / 语言等设置重启、升级后丢失——profile patch 由每次强制覆盖改为三方合并（新文件 `src/profile-patch.cjs`，见文首 11-08「本次交接」段）；②审源润泽换新 logo（圆形 + 轨道，侧栏/登录框/桌面图标）。tag `v0.1.22`。**坑**：首推时 mac 两个 job 0 秒即取消，注解 `The configuration 'macos-14-arm64-us-default' is not supported`（GitHub 已下线 macos-14 镜像，与 10-31 的容量取消不是一回事）→ `runs-on` 改 `macos-15`，tag 移到修复提交重推 | 本机两品牌全链路回归（静态 + 4 套件 + prepare/smoke/打包/check-mac-app + 打包版走查 + 伪造升级 bundle）全过 |
 | 10-30 | **win 客户验收三修 + artifact 同名修复**：①安装位置改为静默安装后扫描 Programs 根定位 exe（中文 productName 不落 `Programs\<名>`，注册表项也不含 productName）；②win artifact 名加 `-${matrix.label}`，此前默认与客户同名撞车，只能按 ID 下载。客户端产物全部上 Release | CI run 40976962747 四 job 全绿（含 Windows ShenYuanRunZe 真机安装验收）；Release `v0.1.17` 现有 4 个资产（默认/客户 × mac/win） |
 | 10-31 | **代码自查修复三处（白标品牌层）**：①`getBranding()` 竞态——启动时 `store.load()` 是后台异步，带会话重启的首次取品牌可能误读"未登录"而给已登录用户发客户品牌且无法自愈 → 改为先 `await store.load()`；②`adoptLegacyHome` 在显式 `NEXUSAI_DSH_HOME`（CI/开发临时目录）时也会把用户真实旧品牌 home 搬进一次性目录 → 显式 env 时跳过接管；③`NEXUSAI_APP_NAME` 与客户构建组合时 userData 漏设 ASCII → `artifactPrefix` 存在即无条件 setPath；顺带接管后清掉空壳目录（rmdir 仅空目录，不可能误删数据） | 本机重打客户包实测：接管+空壳清理+ASCII home 全过，tsc/build 全绿 |

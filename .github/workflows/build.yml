@@ -35,8 +35,6 @@ jobs:
       # 本次交接 2026-10-30); '' is the default NexusAIHarness build.
       matrix:
         include:
-          - customer: ''
-            label: NexusAIHarness
           - customer: shenyuanrunze
             label: ShenYuanRunZe
     steps:
@@ -68,8 +66,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - customer: ''
-            label: NexusAIHarness
           - customer: shenyuanrunze
             label: ShenYuanRunZe
     steps:
