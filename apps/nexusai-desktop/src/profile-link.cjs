@@ -2,9 +2,11 @@
  * Materialize the user profile against a bundled dsh installation.
  *
  * The installation (the prepared profile tree shipped in the app) stays where
- * it was built. The home receives the small manifests plus one link: the
- * NexusAI plugin package. Core packages resolve from the installation the CLI
- * is launched from, which is the layout dsh's runtime resolution expects.
+ * it was built. The home receives the small manifests plus links to the
+ * packages the profile itself resolves: the NexusAI plugin, and the IM bundle
+ * (a selected profile dependency, so dsh looks it up from the home, not from
+ * the CLI). Core packages still resolve from the installation the CLI is
+ * launched from.
  * A previous build linked the whole `node_modules` tree; that link is removed
  * without following it.
  */
@@ -17,6 +19,11 @@ const { refreshProfilePatch } = require('./profile-patch.cjs')
 const LAYOUT = 'plugin-link'
 const PLUGIN_SCOPE = '@toby'
 const PLUGIN_NAME = 'dsh-plugin-nexusai'
+/** Profile dependencies dsh resolves from the home, not from the CLI install. */
+const LINKED_PACKAGES = [
+  [PLUGIN_SCOPE, PLUGIN_NAME],
+  ['@xmanrui', 'dsh-im'],
+]
 
 /**
  * Remove a link without ever touching what it points at.
@@ -107,18 +114,21 @@ function materializeProfile(options) {
     )
   }
 
-  mkdirSync(join(modules, PLUGIN_SCOPE), { recursive: true })
-  const linkEntry = lstatSync(pluginLink, { throwIfNoEntry: false })
-  const linkOk = linkEntry?.isSymbolicLink() === true && existsSync(pluginLink) && readlinkSync(pluginLink) === sourcePlugin
-  if (installed !== expected || !linkOk) {
-    if (linkEntry !== undefined) removeLink(pluginLink, log)
-    symlinkSync(sourcePlugin, pluginLink, process.platform === 'win32' ? 'junction' : 'dir')
-    log(`plugin link ${pluginLink} → ${sourcePlugin}`)
+  for (const [scope, name] of LINKED_PACKAGES) {
+    const from = join(source, 'node_modules', scope, name)
+    const to = join(modules, scope, name)
+    if (!existsSync(from)) throw new Error(`bundled runtime is incomplete (missing ${from})`)
+    mkdirSync(join(modules, scope), { recursive: true })
+    const linkEntry = lstatSync(to, { throwIfNoEntry: false })
+    const linkOk = linkEntry?.isSymbolicLink() === true && existsSync(to) && readlinkSync(to) === from
+    if (installed !== expected || !linkOk) {
+      if (linkEntry !== undefined) removeLink(to, log)
+      symlinkSync(from, to, process.platform === 'win32' ? 'junction' : 'dir')
+      log(`plugin link ${to} → ${from}`)
+    }
+    if (!existsSync(to)) throw new Error(`plugin link is broken: ${to} → ${from}. Delete that path and reopen.`)
   }
   writeFileSync(marker, `${expected}\n`, 'utf8')
-  if (!existsSync(pluginLink)) {
-    throw new Error(`plugin link is broken: ${pluginLink} → ${sourcePlugin}. Delete that path and reopen.`)
-  }
   return { profileDir: target, cli }
 }
 

@@ -21,6 +21,7 @@
  *
  * Output:
  *   build/package-cache/toby-dsh-plugin-nexusai-<version>.tgz
+ *   build/package-cache/xmanrui-dsh-im.tgz   (copied from vendor/)
  *   build/profile/{package.json,pnpm-workspace.yaml,cordis.patch.yml,node_modules}
  *   build/cipher-seed.json    (only when AES key and IV are both set)
  *   build/runtime-version.txt
@@ -173,6 +174,15 @@ const pluginTarball = packedName.startsWith('toby-dsh-plugin-nexusai')
 if (!existsSync(join(CACHE, pluginTarball))) throw new Error(`npm pack produced no tarball in ${CACHE}`)
 say(`plugin tarball: ${join(CACHE, pluginTarball)}`)
 
+// The IM connector is a real dsh bundle (its own cordis.patch.yml), packed from
+// the nexusai/hide-update-and-github branch of dsh-im and committed under vendor/.
+const imPackage = '@xmanrui/dsh-im'
+const imTarball = 'xmanrui-dsh-im.tgz'
+const imVendor = join(APP_ROOT, 'vendor', imTarball)
+if (!existsSync(imVendor)) throw new Error(`bundled IM plugin is missing: ${imVendor}`)
+cpSync(imVendor, join(CACHE, imTarball))
+say(`IM plugin tarball: ${imTarball}`)
+
 // ── 2. the profile ──────────────────────────────────────────────────────────
 say(`writing the ${targetName} profile`)
 rmSync(join(PROFILE, 'package.json'), { force: true })
@@ -183,9 +193,10 @@ rmSync(join(PROFILE, 'cordis.patch.yml'), { force: true })
 // it — the bundle then ships a stale plugin no matter what was just packed.
 rmSync(join(PROFILE, 'pnpm-lock.yaml'), { force: true })
 mkdirSync(PROFILE, { recursive: true })
-// The official bundle set a dsh profile activates; our plugin is not a bundle —
-// it is mounted by the patch row below, exactly as it is in development.
-const bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
+// The official bundles, then the IM connector. Listing it here is what the
+// Plugins page calls installed and enabled: a profile dependency that is also
+// selected. Our own plugin is not a bundle — the patch row below mounts it.
+const bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', imPackage]
 writeFileSync(join(PROFILE, 'package.json'), `${JSON.stringify({
   name: `dsh-profile-nexusai`,
   private: true,
@@ -194,6 +205,7 @@ writeFileSync(join(PROFILE, 'package.json'), `${JSON.stringify({
     '@deepseek-ai/dsh-base': dshVersion,
     '@deepseek-ai/dsh-web-app': dshVersion,
     [plugin.name]: `file:../package-cache/${pluginTarball}`,
+    [imPackage]: `file:../package-cache/${imTarball}`,
   },
   dsh: { profile: { bundles } },
 }, null, 2)}\n`)
@@ -584,6 +596,9 @@ if (target.platform === process.platform) {
   })
   if (!output.includes(plugin.name)) {
     throw new Error('composed profile does not list the nexusai plugin row')
+  }
+  if (!output.includes(imPackage)) {
+    throw new Error('composed profile does not list the IM plugin row')
   }
   if (!output.includes('ui-settings-account')) {
     console.warn('warning: composed profile has no ui-settings-account row')
