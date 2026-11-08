@@ -15,6 +15,7 @@ const {
 } = require('node:fs')
 const { join, resolve } = require('node:path')
 const { refreshProfilePatch } = require('./profile-patch.cjs')
+const { refreshProfileManifest } = require('./profile-manifest.cjs')
 
 const LAYOUT = 'plugin-link'
 const PLUGIN_SCOPE = '@toby'
@@ -90,7 +91,14 @@ function materializeProfile(options) {
   const marker = join(target, '.nexusai-desktop-runtime')
   const expected = `${options.appVersion}+${options.runtimeVersion}+${LAYOUT}`
   mkdirSync(target, { recursive: true })
-  for (const name of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
+  // Dependencies stay a straight copy: pnpm has to see this build. The bundle
+  // list is the user's on/off switches, so it is merged, not copied.
+  const manifest = join(source, 'package.json')
+  if (existsSync(manifest)) {
+    const outcome = refreshProfileManifest({ source: manifest, target: join(target, 'package.json'), log })
+    if (outcome === 'merged' || outcome === 'replaced') log(`profile manifest ${outcome}`)
+  }
+  for (const name of ['pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
     const from = join(source, name)
     if (existsSync(from)) cpSync(from, join(target, name), { force: true })
   }

@@ -42,6 +42,8 @@ check('plugin link points at the installation', lstatSync(linked).isSymbolicLink
 check('IM bundle link points at the installation', readlinkSync(join(modules, '@xmanrui', 'dsh-im')) === im)
 check('cli stays in the installation', first.cli === join(cli, 'bin.js') && !existsSync(join(modules, '@deepseek-ai')))
 check('patch copied without being the install tree', readFileSync(join(home, 'profiles', 'nexusai', 'cordis.patch.yml'), 'utf8') === 'baseUrl: only\n')
+check('a manifest without a bundle list is copied whole', readFileSync(join(home, 'profiles', 'nexusai', 'package.json'), 'utf8') === '{"name":"dsh-profile-nexusai"}\n')
+check('a manifest without a bundle list leaves no baseline', !existsSync(join(home, 'profiles', 'nexusai', '.nexusai-factory-bundles.json')))
 
 const marker = join(home, 'profiles', 'nexusai', '.nexusai-desktop-runtime')
 writeFileSync(marker, '0.0.0+old\n')
@@ -182,6 +184,77 @@ writeFileSync(patchFile, '- id: [broken\n')
 run('0.1.22')
 const backups = readdirSync(join(patchHome, 'profiles', 'nexusai')).filter(name => name.startsWith('cordis.patch.yml.bak-'))
 check('an unreadable patch is backed up and replaced', backups.length === 1 && row('added-row')?.disabled === true)
+
+const manifestSource = join(root, 'manifest-install')
+mkdirSync(join(manifestSource, 'node_modules', '@toby', 'dsh-plugin-nexusai'), { recursive: true })
+mkdirSync(join(manifestSource, 'node_modules', '@xmanrui', 'dsh-im'), { recursive: true })
+mkdirSync(join(manifestSource, 'node_modules', '@deepseek-ai', 'dsh', 'lib'), { recursive: true })
+writeFileSync(join(manifestSource, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'), '// cli\n')
+writeFileSync(join(manifestSource, 'node_modules', '@toby', 'dsh-plugin-nexusai', 'package.json'), '{"name":"@toby/dsh-plugin-nexusai"}\n')
+writeFileSync(join(manifestSource, 'node_modules', '@xmanrui', 'dsh-im', 'package.json'), '{"name":"@xmanrui/dsh-im"}\n')
+const bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@xmanrui/dsh-im']
+const manifestText = (list, version = '0.2.1') => `${JSON.stringify({
+  name: 'dsh-profile-nexusai',
+  private: true,
+  dependencies: {
+    '@deepseek-ai/dsh': version,
+    '@deepseek-ai/dsh-base': version,
+    '@deepseek-ai/dsh-web-app': version,
+    '@toby/dsh-plugin-nexusai': 'file:../package-cache/plugin.tgz',
+    '@xmanrui/dsh-im': 'file:../package-cache/im.tgz',
+  },
+  dsh: { profile: { bundles: list } },
+}, null, 2)}\n`
+writeFileSync(join(manifestSource, 'package.json'), manifestText(bundles))
+const manifestHome = join(root, 'manifest-home')
+const manifestFile = join(manifestHome, 'profiles', 'nexusai', 'package.json')
+const bundleBaseline = join(manifestHome, 'profiles', 'nexusai', '.nexusai-factory-bundles.json')
+const materializeManifest = () => materializeProfile({
+  home: manifestHome, profileName: 'nexusai', sourceProfile: manifestSource, appVersion: '0.1.25', runtimeVersion: 'rt', log() {},
+})
+const readBundles = () => JSON.parse(readFileSync(manifestFile, 'utf8')).dsh.profile.bundles
+materializeManifest()
+check('a fresh home selects the factory bundles', JSON.stringify(readBundles()) === JSON.stringify(bundles))
+check('a fresh home records the factory bundle list', readFileSync(bundleBaseline, 'utf8') === `${JSON.stringify(bundles)}\n`)
+
+const turnedOff = JSON.parse(readFileSync(manifestFile, 'utf8'))
+turnedOff.dsh.profile.bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
+writeFileSync(manifestFile, `${JSON.stringify(turnedOff, null, 2)}\n`)
+materializeManifest()
+check('restart keeps a bundle the user turned off', JSON.stringify(readBundles()) === JSON.stringify(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']))
+
+rmSync(bundleBaseline)
+writeFileSync(manifestFile, `${JSON.stringify(turnedOff, null, 2)}\n`)
+materializeManifest()
+check('a home without a baseline still keeps a bundle turned off', JSON.stringify(readBundles()) === JSON.stringify(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']))
+
+const older = JSON.parse(manifestText(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'], '0.2.0'))
+delete older.dependencies['@xmanrui/dsh-im']
+rmSync(bundleBaseline)
+writeFileSync(manifestFile, `${JSON.stringify(older, null, 2)}\n`)
+materializeManifest()
+check('a home that never had a factory bundle gains it', readBundles().includes('@xmanrui/dsh-im'))
+check('gaining a bundle also takes the factory dependency', JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@deepseek-ai/dsh'] === '0.2.1')
+
+writeFileSync(manifestFile, `${JSON.stringify(turnedOff, null, 2)}\n`)
+writeFileSync(join(manifestSource, 'package.json'), manifestText([...bundles, '@deepseek-ai/dsh-skill-office'], '0.2.2'))
+materializeManifest()
+check('an upgrade adds a factory bundle without turning a disabled one back on',
+  JSON.stringify(readBundles()) === JSON.stringify(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-skill-office']))
+check('an upgrade refreshes dependencies around a kept toggle', JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@deepseek-ai/dsh'] === '0.2.2')
+
+const withExtra = JSON.parse(readFileSync(manifestFile, 'utf8'))
+withExtra.dsh.profile.bundles = [...readBundles(), '@someone/extra']
+withExtra.dependencies['@someone/extra'] = '1.0.0'
+writeFileSync(manifestFile, `${JSON.stringify(withExtra, null, 2)}\n`)
+materializeManifest()
+check('a bundle the user installed is not kept once its dependency is replaced', !readBundles().includes('@someone/extra'))
+check('a replaced dependency does not stay in the manifest', JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@someone/extra'] === undefined)
+
+writeFileSync(manifestFile, '{ broken\n')
+materializeManifest()
+const manifestBackups = readdirSync(join(manifestHome, 'profiles', 'nexusai')).filter(name => name.startsWith('package.json.bak-'))
+check('an unreadable manifest is backed up and replaced', manifestBackups.length === 1 && readBundles().includes('@xmanrui/dsh-im'))
 
 const seedHome = join(root, 'secrets')
 mkdirSync(seedHome, { recursive: true })
