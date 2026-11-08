@@ -2,6 +2,14 @@
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
+## 本次交接（2026-11-08 · v0.1.25：插件开关重启后保持关闭，已发版）
+
+v0.1.24 的坑：关掉 IM 后再开会被打开。这是我们的问题，不是 dsh 的。dsh 关组合包只从 `package.json` 的 `dsh.profile.bundles` 里删掉名字，依赖留着；我们每次启动整份覆盖这个文件，出厂清单里有 `@xmanrui/dsh-im`，于是又被选上。
+
+**修法**：新文件 `apps/nexusai-desktop/src/profile-manifest.cjs`，`profile-link.cjs` 对 `package.json` 改调它。依赖、锁文件、workspace 仍整份用出厂的。只合并 bundle 列表：用户关掉的保持关掉；出厂新加的会选上。上次出厂清单记在 `.nexusai-factory-bundles.json`。没有这份基准的老 home（以前每次都在覆盖）：依赖里有、列表里没有，算用户已经关掉，保留关闭；依赖里也没有的名字是出厂新加的，会选上。所以从 0.1.23 直接升上来的人仍会得到 IM，在 0.1.24 里关掉过 IM 的人第一次启动这次修复也不会被重新打开。用户自己另装的组合包仍留不住，因为依赖还是整份覆盖。
+
+**已验证**：`verify-profile-layout.mjs` 覆盖了重启保持关闭、无基准仍保持关闭、从没装过的出厂组合包会补上、升级时新组合包加上而关掉的不再打开。**发版**：用户只要审源润泽的 Windows 包。发版提交把 mac 任务停掉、windows 矩阵只留 `shenyuanrunze`、Release 只依赖 windows（没有 dmg，发布步骤只上传 exe）；随后一笔 `[skip ci]` 提交恢复两品牌、两平台。先推 tag 再推分支。版本 0.1.24 → 0.1.25，tag `v0.1.25`。
+
 ## 本次交接（2026-11-08 · v0.1.24：内置 dsh-im，已发版）
 
 **做什么**：把 `/Users/toby/Projects/dsh-im` 打进安装包。插件页「已安装插件」里默认有「IM 机器人 (dsh-im)」，开关打开，组件运行中。页头只留「通用设置」（检查更新、GitHub、会话记录都去掉）。侧栏多出的「IM机器人」是插件自己注册的入口。
@@ -776,6 +784,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 11-08 | **v0.1.25 发版（只发审源润泽 Windows）**：插件页关掉组合包后重启保持关闭。`package.json` 不再整份覆盖，只合并 `dsh.profile.bundles`（新文件 `src/profile-manifest.cjs`）；依赖和锁文件仍用出厂的。无基准的老 home：依赖里有、列表里没有，视为用户已关。发版提交停掉 mac、windows 只留 `shenyuanrunze`，随后 `[skip ci]` 恢复 | `verify-profile-layout.mjs` 通过 |
 | 11-08 | **v0.1.24 发版**（默认 + 审源润泽）：内置 dsh-im。profile 依赖 + `dsh.profile.bundles` 使「已安装插件」默认打开；启动时自动把 `@xmanrui/dsh-im` 链进 home（用户不用操作）。插件分支 `nexusai/hide-update-and-github` 未推上游，包在 `vendor/xmanrui-dsh-im.tgz`。页头只留「通用设置」。关掉后重启会被 `package.json` 覆盖重新打开 | 临时 home：卡片开、组件运行中、页头仅设置；`verify-profile-layout` 通过；prepare 组合含 `xmanrui-dsh-im` |
 | 11-08 | **v0.1.23 发版（只发审源润泽）**：审源润泽换绿色 logo（用户给的矢量原稿 `shenyuan_runze_green.svg`，深绿 #014C47）。SVG 里文字未转曲、字体（Noto Serif CJK SC Bold / Inter Light）本机没装 → 从 npmmirror 取 `@fontsource/noto-serif-sc`、`@fontsource/inter`，用无头 Chrome 2x 渲染（不装系统字体），合成到白底：`logo.png` 568×512、`mark.png` 512、`icon-1024.png`，icns/ico 重生成；出处存 `source.svg`。发版提交临时把 CI 矩阵改为只含 `shenyuanrunze`，随后一笔 `[skip ci]` 提交恢复两品牌矩阵；先推 tag 再推分支，避免分支重复构建 | dev 运行实测侧栏/登录框新 logo；`prepare-runtime --customer` 组合成功 |
 | 11-08 | **v0.1.22 发版**（默认 + 审源润泽两个品牌）：①修自定义模型 API / 语言等设置重启、升级后丢失——profile patch 由每次强制覆盖改为三方合并（新文件 `src/profile-patch.cjs`，见文首 11-08「本次交接」段）；②审源润泽换新 logo（圆形 + 轨道，侧栏/登录框/桌面图标）。tag `v0.1.22`。**坑**：首推时 mac 两个 job 0 秒即取消，注解 `The configuration 'macos-14-arm64-us-default' is not supported`（GitHub 已下线 macos-14 镜像，与 10-31 的容量取消不是一回事）→ `runs-on` 改 `macos-15`，tag 移到修复提交重推 | 本机两品牌全链路回归（静态 + 4 套件 + prepare/smoke/打包/check-mac-app + 打包版走查 + 伪造升级 bundle）全过 |
