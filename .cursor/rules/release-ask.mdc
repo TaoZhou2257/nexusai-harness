@@ -1,0 +1,21 @@
+---
+description: 每次发版先问品牌，勾选后再问架构，不沿用上次的选择
+alwaysApply: true
+---
+
+# 发版前必须询问
+
+用户要求发版、打 tag、推 Release 时，先问再动手。改版本号、改 workflow 矩阵、打 tag、推送之前，用 AskQuestion 分两步问。不要改成聊天里的口头选项，也不要把两题放进同一次提问。
+
+上次发版选了什么都不算。用户同一句话里已经写了品牌或架构，也不算已经确认。第一步没勾选完，不要问第二步。
+
+1. 先问 `brand`：这次发版打哪些品牌？
+   - `both`：两个都打（NexusAIHarness + `apps/nexusai-desktop/branding/` 下每一个客户目录；现在是审源润泽）
+   - `default`：只打 NexusAIHarness
+   - 每个客户目录一项。现在只有 `syrz`：只打审源润泽。`branding/` 新增目录时加选项。
+2. 用户勾选品牌之后，再单独问 `arch`：这次发版打哪些架构？这一问对上一步选中的每个品牌都生效。
+   - `both`：macOS arm64 和 Windows x64 都打
+   - `win`：只打 Windows x64
+   - `mac`：只打 macOS arm64
+
+一次两步勾选只对应这一次 tag。勾选之后怎么改 CI、怎么恢复矩阵，按 AGENTS.md「推送与构建」里的发版步骤做。

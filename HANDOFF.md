@@ -784,6 +784,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 11-08 | **发版询问规范**：每次发版分两步问。先问品牌，勾选后再问架构（macOS arm64 / Windows x64 / 都打）。两题不要放在同一次提问里。上次的选择不算。见 AGENTS.md「推送与构建」和 `.cursor/rules/release-ask.mdc` | 规范已写入，尚未提交 |
 | 11-08 | **v0.1.25 发版（只发审源润泽 Windows）**：插件页关掉组合包后重启保持关闭。`package.json` 不再整份覆盖，只合并 `dsh.profile.bundles`（新文件 `src/profile-manifest.cjs`）；依赖和锁文件仍用出厂的。无基准的老 home：依赖里有、列表里没有，视为用户已关。发版提交停掉 mac、windows 只留 `shenyuanrunze`，随后 `[skip ci]` 恢复 | `verify-profile-layout.mjs` 通过 |
 | 11-08 | **v0.1.24 发版**（默认 + 审源润泽）：内置 dsh-im。profile 依赖 + `dsh.profile.bundles` 使「已安装插件」默认打开；启动时自动把 `@xmanrui/dsh-im` 链进 home（用户不用操作）。插件分支 `nexusai/hide-update-and-github` 未推上游，包在 `vendor/xmanrui-dsh-im.tgz`。页头只留「通用设置」。关掉后重启会被 `package.json` 覆盖重新打开 | 临时 home：卡片开、组件运行中、页头仅设置；`verify-profile-layout` 通过；prepare 组合含 `xmanrui-dsh-im` |
 | 11-08 | **v0.1.23 发版（只发审源润泽）**：审源润泽换绿色 logo（用户给的矢量原稿 `shenyuan_runze_green.svg`，深绿 #014C47）。SVG 里文字未转曲、字体（Noto Serif CJK SC Bold / Inter Light）本机没装 → 从 npmmirror 取 `@fontsource/noto-serif-sc`、`@fontsource/inter`，用无头 Chrome 2x 渲染（不装系统字体），合成到白底：`logo.png` 568×512、`mark.png` 512、`icon-1024.png`，icns/ico 重生成；出处存 `source.svg`。发版提交临时把 CI 矩阵改为只含 `shenyuanrunze`，随后一笔 `[skip ci]` 提交恢复两品牌矩阵；先推 tag 再推分支，避免分支重复构建 | dev 运行实测侧栏/登录框新 logo；`prepare-runtime --customer` 组合成功 |
