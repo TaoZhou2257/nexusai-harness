@@ -2,11 +2,11 @@
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 进行中（2026-11-09 · 首次使用的默认工作区目录按品牌区分，未发版）
+## 已发版（2026-11-09 · 首次使用的默认工作区目录按品牌区分，见 v0.1.26）
 
 `brand.json` 新增 `workspaceDirectory`：审源润泽为 `ShenYuanRunZe`（拼音全拼），赛孚唯为 `isafeways`，默认版本仍为 `nexusai-harness`。改动文件：`src/workspace-anchor.cjs`（`renameInstalledWorkspaceAnchor(controllerFile, segment)`，校验段名为单段 ASCII）、`scripts/prepare-runtime.mjs`（读取 `brandWorkspace` 传入）、`scripts/verify-workspace-anchor.mjs`（按 build 里的品牌目录名校验）、两份 `brand.json`。已在本机三个品牌分别跑 prepare + verify 通过。没有提交，也没有发版。没有旧目录迁移。
 
-## 进行中（2026-11-09 · 新品牌赛孚唯 isafeways，未发版）
+## 已发版（2026-11-09 · 新品牌赛孚唯 isafeways，见 v0.1.26）
 
 第二个白标客户。目录 `apps/nexusai-desktop/branding/isafeways/`。界面名称「赛孚唯」；凡是英文/文件名用 `isafeways`：目录名、`NEXUSAI_CUSTOMER`、`artifactPrefix`（Windows 安装目录、exe、dsh home）、安装包前缀 `isafeways-*`。CI 矩阵 mac 和 windows 都加了这一项，下次全量构建是三个品牌 × 两个架构。发版询问的品牌选项已加上 `isafeways`。
 
@@ -14,13 +14,25 @@
 
 首页 hero 的 N 字标仍不读品牌。还没发版。
 
-## 进行中（2026-11-09 · 用户自己装的插件重启后消失，已修好，未发版）
+## 已发版（2026-11-09 · 用户自己装的插件重启后消失，已修好，见 v0.1.26）
 
 和 v0.1.25 同一处。dsh 安装插件会把包写进 `package.json` 的 `dependencies`，组合包再写入 `dsh.profile.bundles`，并改 `pnpm-lock.yaml`。我们每次启动仍用出厂依赖整份覆盖，用户装的包和它的开关一起没了。锁文件也被出厂那份盖掉，下次 pnpm 会把已经装上的目录清掉。
 
 **修法**：仍在 `profile-manifest.cjs`。出厂依赖的版本以这次安装包为准；用户多出来的依赖留下。组合包列表在出厂合并结果后面接上用户自己选中的名字。出厂依赖清单记在 `.nexusai-factory-dependencies.json`，用来区分「用户装的」和「上一版出厂有、这一版删了」。没有这份基准的老 home：出厂清单里没有的依赖算用户装的。home 还依赖用户的包时，不再覆盖 `pnpm-lock.yaml`；用户的包都卸掉之后才恢复覆盖。`node_modules` 里用户装上的目录本来就不会被删。
 
 **已验证**：`verify-profile-layout.mjs`。还没发版。
+
+## 本次交接（2026-11-09 · v0.1.26：赛孚唯上线 + 用户自装插件重启保留 + 工作区目录按品牌，发版 Windows x64）
+
+这一版合并了三件事，都在 `6201e9f`（功能提交，`[skip ci]`，已推 `v1.0`）里：
+
+- **赛孚唯（isafeways）**：新品牌，图标、字标、CI 矩阵都已加。
+- **用户自装插件重启后保留**：`profile-manifest.cjs` 合并 `bundles` 和 `dependencies`；用户还有包时保留 `pnpm-lock.yaml`。
+- **首次使用的工作区目录按品牌区分**：`brand.json` 的 `workspaceDirectory`。默认 `nexusai-harness`，审源润泽 `ShenYuanRunZe`（拼音全拼），赛孚唯 `isafeways`。没有做旧目录迁移。
+
+**发版选择**（两步询问确认）：品牌 `both`（NexusAIHarness + 审源润泽 + 赛孚唯），架构 `win`（只打 Windows x64）。发版提交：版本 0.1.25 → 0.1.26；mac 任务加 `if: false`；Release 的 `needs` 只留 `windows`；只上传 `*.exe`；发布说明只写 Windows。tag `v0.1.26` 打在这份发版提交上。随后一笔 `[skip ci]` 提交把 workflow 恢复成两品牌、两平台（mac 恢复运行），再推分支。
+
+**已验证（本机）**：`verify-profile-layout.mjs`、`workspace-anchor.cjs` 自检通过；三个品牌各自 `prepare-runtime` + `verify-workspace-anchor` 通过（首次使用分别建出 `Documents/nexusai-harness`、`Documents/ShenYuanRunZe`、`Documents/isafeways` 下的 `default-workspace`）。workflow YAML 用 ruby 解析过。
 
 ## 本次交接（2026-11-08 · v0.1.25：插件开关重启后保持关闭，已发版）
 
