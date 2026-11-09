@@ -4,5 +4,6 @@
   "logo": "logo.png",
   "icns": "icon.icns",
   "ico": "icon.ico",
-  "artifactPrefix": "ShenYuanRunZe"
+  "artifactPrefix": "ShenYuanRunZe",
+  "workspaceDirectory": "ShenYuanRunZe"
 }

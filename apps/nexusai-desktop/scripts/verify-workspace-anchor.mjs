@@ -20,10 +20,11 @@ import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 const {
+  DEFAULT_SEGMENT,
   WORKSPACE_JOIN_FROM,
-  WORKSPACE_JOIN_TO,
   renameInstalledWorkspaceAnchor,
   retireLegacyWorkspaceLink,
+  workspaceSegment,
 } = require('../src/workspace-anchor.cjs')
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -37,6 +38,12 @@ const controller = join(
 )
 const cli = join(PROFILE, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+// The folder this build's brand names (nexusai-harness for the default build).
+const brandFile = join(PROFILE, 'branding', 'brand.json')
+const segment = existsSync(brandFile)
+  ? workspaceSegment(JSON.parse(readFileSync(brandFile, 'utf8')).workspaceDirectory)
+  : DEFAULT_SEGMENT
+const joinFor = folder => `paths.join(directory, "${folder}", DEFAULT_WORKSPACE_DIRECTORY)`
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -56,16 +63,16 @@ assert(existsSync(chrome), `Google Chrome missing at ${chrome}`)
 
 // ── 1. prepare rename ───────────────────────────────────────────────────────
 let source = readFileSync(controller, 'utf8')
-if (source.includes(WORKSPACE_JOIN_TO)) {
-  writeFileSync(controller, source.replace(WORKSPACE_JOIN_TO, WORKSPACE_JOIN_FROM))
-  source = readFileSync(controller, 'utf8')
-}
+// Put back dsh's published join whatever folder a previous build wrote there.
+source = source.replace(/paths\.join\(directory, "[^"]+", DEFAULT_WORKSPACE_DIRECTORY\)/, WORKSPACE_JOIN_FROM)
+writeFileSync(controller, source)
 assert(source.includes(WORKSPACE_JOIN_FROM), 'could not restore the published deepseek-harness join')
-assert(renameInstalledWorkspaceAnchor(controller) === 'renamed', 'expected renamed')
-assert(renameInstalledWorkspaceAnchor(controller) === 'already', 'expected already')
-assert(readFileSync(controller, 'utf8').includes(WORKSPACE_JOIN_TO), 'new join missing after rename')
-assert(!readFileSync(controller, 'utf8').includes(WORKSPACE_JOIN_FROM), 'old join still present after rename')
-say('1/3 prepare rename: ok')
+assert(renameInstalledWorkspaceAnchor(controller, segment) === 'renamed', 'expected renamed')
+assert(renameInstalledWorkspaceAnchor(controller, segment) === 'already', 'expected already')
+const renamed = readFileSync(controller, 'utf8')
+assert(renamed.includes(joinFor(segment)), `new join for ${segment} missing after rename`)
+assert(!renamed.includes(WORKSPACE_JOIN_FROM), 'old join still present after rename')
+say(`1/3 prepare rename (${segment}): ok`)
 
 // ── 2. leftover-link cleanup ────────────────────────────────────────────────
 const linkRoot = mkdtempSync(join(tmpdir(), 'workspace-anchor-link-'))
@@ -160,7 +167,7 @@ try {
   ])
 
   // Poll for the directory — client init is async after page load.
-  const workspace = join(documents, 'nexusai-harness', 'default-workspace')
+  const workspace = join(documents, segment, 'default-workspace')
   const legacy = join(documents, 'deepseek-harness')
   let workspaceStat
   for (let i = 0; i < 30; i += 1) {
@@ -181,10 +188,10 @@ try {
   const storage = join(home, 'storages', 'workspace.json')
   assert(existsSync(storage), `workspace storage missing at ${storage}`)
   const text = readFileSync(storage, 'utf8')
-  assert(text.includes('nexusai-harness'), `workspace storage missing nexusai-harness:\n${text.slice(0, 800)}`)
+  assert(text.includes(segment), `workspace storage missing ${segment}:\n${text.slice(0, 800)}`)
   assert(!text.includes('deepseek-harness'), `workspace storage still mentions deepseek-harness:\n${text.slice(0, 800)}`)
   say(`3/3 first-use: ${workspace}`)
-  say(`storage path contains nexusai-harness (${storage})`)
+  say(`storage path contains ${segment} (${storage})`)
 } finally {
   child.kill('SIGTERM')
   await Promise.race([
@@ -194,4 +201,4 @@ try {
   rmSync(root, { recursive: true, force: true })
 }
 
-say('ok — Documents/nexusai-harness/default-workspace created with no deepseek-harness link')
+say(`ok — Documents/${segment}/default-workspace created with no deepseek-harness link`)

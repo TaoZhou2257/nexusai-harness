@@ -247,9 +247,31 @@ const withExtra = JSON.parse(readFileSync(manifestFile, 'utf8'))
 withExtra.dsh.profile.bundles = [...readBundles(), '@someone/extra']
 withExtra.dependencies['@someone/extra'] = '1.0.0'
 writeFileSync(manifestFile, `${JSON.stringify(withExtra, null, 2)}\n`)
+const lockSource = join(manifestSource, 'pnpm-lock.yaml')
+const lockFile = join(manifestHome, 'profiles', 'nexusai', 'pnpm-lock.yaml')
+writeFileSync(lockSource, 'lockfileVersion: factory\n')
+writeFileSync(lockFile, 'lockfileVersion: user\n')
 materializeManifest()
-check('a bundle the user installed is not kept once its dependency is replaced', !readBundles().includes('@someone/extra'))
-check('a replaced dependency does not stay in the manifest', JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@someone/extra'] === undefined)
+check('restart keeps a plugin the user installed', readBundles().includes('@someone/extra'))
+check('restart keeps that plugin dependency', JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@someone/extra'] === '1.0.0')
+check('a factory dependency still updates around a user plugin', JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@deepseek-ai/dsh'] === '0.2.2')
+check('the pnpm lock is kept while a user plugin is installed', readFileSync(lockFile, 'utf8') === 'lockfileVersion: user\n')
+materializeManifest()
+check('a second start still has the user plugin', readBundles().includes('@someone/extra') && JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@someone/extra'] === '1.0.0')
+
+const extraOff = JSON.parse(readFileSync(manifestFile, 'utf8'))
+extraOff.dsh.profile.bundles = readBundles().filter(name => name !== '@someone/extra')
+writeFileSync(manifestFile, `${JSON.stringify(extraOff, null, 2)}\n`)
+materializeManifest()
+check('turning a user plugin off survives restart', !readBundles().includes('@someone/extra') && JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@someone/extra'] === '1.0.0')
+
+const uninstalled = JSON.parse(readFileSync(manifestFile, 'utf8'))
+delete uninstalled.dependencies['@someone/extra']
+writeFileSync(manifestFile, `${JSON.stringify(uninstalled, null, 2)}\n`)
+writeFileSync(lockSource, 'lockfileVersion: factory-next\n')
+materializeManifest()
+check('uninstalling a user plugin drops it', JSON.parse(readFileSync(manifestFile, 'utf8')).dependencies['@someone/extra'] === undefined && !readBundles().includes('@someone/extra'))
+check('the pnpm lock is refreshed once no user plugin remains', readFileSync(lockFile, 'utf8') === 'lockfileVersion: factory-next\n')
 
 writeFileSync(manifestFile, '{ broken\n')
 materializeManifest()

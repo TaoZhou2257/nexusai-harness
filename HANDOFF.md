@@ -2,6 +2,26 @@
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
+## 进行中（2026-11-09 · 首次使用的默认工作区目录按品牌区分，未发版）
+
+`brand.json` 新增 `workspaceDirectory`：审源润泽为 `ShenYuanRunZe`（拼音全拼），赛孚唯为 `isafeways`，默认版本仍为 `nexusai-harness`。改动文件：`src/workspace-anchor.cjs`（`renameInstalledWorkspaceAnchor(controllerFile, segment)`，校验段名为单段 ASCII）、`scripts/prepare-runtime.mjs`（读取 `brandWorkspace` 传入）、`scripts/verify-workspace-anchor.mjs`（按 build 里的品牌目录名校验）、两份 `brand.json`。已在本机三个品牌分别跑 prepare + verify 通过。没有提交，也没有发版。没有旧目录迁移。
+
+## 进行中（2026-11-09 · 新品牌赛孚唯 isafeways，未发版）
+
+第二个白标客户。目录 `apps/nexusai-desktop/branding/isafeways/`。界面名称「赛孚唯」；凡是英文/文件名用 `isafeways`：目录名、`NEXUSAI_CUSTOMER`、`artifactPrefix`（Windows 安装目录、exe、dsh home）、安装包前缀 `isafeways-*`。CI 矩阵 mac 和 windows 都加了这一项，下次全量构建是三个品牌 × 两个架构。发版询问的品牌选项已加上 `isafeways`。
+
+原稿是桌面上的 `isafeways.png`（横版字标，黑底），存成 `source.png`，不进包。黑底抠掉：`logo.png` 是整条字标、透明底，给登录框；`mark.png` 512 和 `icon-1024.png` 只取中间的绿蓝图形，白底正方形，侧栏和桌面图标用这个。icns/ico 由 `make-icons.mjs` 生成。`make-icons.mjs` 顺手改了一处：iconset 里不再放 `icon_64` / `icon_1024`，当前系统的 `iconutil` 会把多出来的文件判成无效。
+
+首页 hero 的 N 字标仍不读品牌。还没发版。
+
+## 进行中（2026-11-09 · 用户自己装的插件重启后消失，已修好，未发版）
+
+和 v0.1.25 同一处。dsh 安装插件会把包写进 `package.json` 的 `dependencies`，组合包再写入 `dsh.profile.bundles`，并改 `pnpm-lock.yaml`。我们每次启动仍用出厂依赖整份覆盖，用户装的包和它的开关一起没了。锁文件也被出厂那份盖掉，下次 pnpm 会把已经装上的目录清掉。
+
+**修法**：仍在 `profile-manifest.cjs`。出厂依赖的版本以这次安装包为准；用户多出来的依赖留下。组合包列表在出厂合并结果后面接上用户自己选中的名字。出厂依赖清单记在 `.nexusai-factory-dependencies.json`，用来区分「用户装的」和「上一版出厂有、这一版删了」。没有这份基准的老 home：出厂清单里没有的依赖算用户装的。home 还依赖用户的包时，不再覆盖 `pnpm-lock.yaml`；用户的包都卸掉之后才恢复覆盖。`node_modules` 里用户装上的目录本来就不会被删。
+
+**已验证**：`verify-profile-layout.mjs`。还没发版。
+
 ## 本次交接（2026-11-08 · v0.1.25：插件开关重启后保持关闭，已发版）
 
 v0.1.24 的坑：关掉 IM 后再开会被打开。这是我们的问题，不是 dsh 的。dsh 关组合包只从 `package.json` 的 `dsh.profile.bundles` 里删掉名字，依赖留着；我们每次启动整份覆盖这个文件，出厂清单里有 `@xmanrui/dsh-im`，于是又被选上。
@@ -706,7 +726,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 - **中段 `deepseek-harness`：`packages/api/workspace-controller/src/default-directory.ts:77` 里的字面量**，既不是配置也没有环境变量 —— 在 dsh 里改不了；
 - 叶子 `default-workspace`：`DEFAULT_WORKSPACE_DIRECTORY` 常量，且它的 basename 会被当作**自动标题**（显示为本地化的「默认工作区」）。
 
-**换成 nexusai-harness 的做法（不改 dsh 源码）**：`prepare-runtime` 在 `pnpm install` 之后改安装包里的那一行字面量（`src/workspace-anchor.cjs` 的 `renameInstalledWorkspaceAnchor`），把 `"deepseek-harness"` 换成 `"nexusai-harness"`。dsh 因此直接创建真实目录 `<文档>/nexusai-harness/default-workspace`，磁盘上没有链接。前段与叶子的规则都不变。用户侧没有额外步骤：这一行在打进 DMG/exe 之前就改好了。升级 dsh 后若这行挪走或出现多次，准备步骤失败，不会悄悄退回旧目录名。
+**换成品牌目录名的做法（不改 dsh 源码）**：`prepare-runtime` 在 `pnpm install` 之后改安装包里的那一行字面量（`src/workspace-anchor.cjs` 的 `renameInstalledWorkspaceAnchor`），把 `"deepseek-harness"` 换成该品牌的目录名。目录名取自 `branding/<客户>/brand.json` 的 `workspaceDirectory`，默认版本（无品牌）是 `nexusai-harness`。现在各品牌首次使用的目录是：默认 `<文档>/nexusai-harness/default-workspace`，审源润泽 `<文档>/ShenYuanRunZe/default-workspace`，赛孚唯 `<文档>/isafeways/default-workspace`。dsh 直接创建真实目录，磁盘上没有链接。没有做旧目录迁移（用户确认暂不需要）。`verify-workspace-anchor.mjs` 读取 `build/profile/branding/brand.json` 决定校验哪个目录名。前段与叶子的规则都不变。用户侧没有额外步骤：这一行在打进 DMG/exe 之前就改好了。升级 dsh 后若这行挪走或出现多次，准备步骤失败，不会悄悄退回旧目录名。
 
 早先的做法是在首次启动时把 `<文档>/deepseek-harness` 做成指向 `nexusai-harness` 的链接（Windows 上是 junction），再靠 dsh 的 `realpath()` 登记解析后的路径。链接会留在用户的「文档」里，也和「顺着 junction 删掉目标」那类事故是同一类风险，所以弃用了。
 
@@ -784,6 +804,7 @@ dsh 把首次使用的工作区建在 **`<系统"文档"目录>/deepseek-harness
 
 | 日期 | 变更 | 验证 |
 |---|---|---|
+| 11-09 | **新品牌赛孚唯（isafeways）**：`branding/isafeways/`。显示名「赛孚唯」，文件名和 `artifactPrefix` 用 `isafeways`。logo 为整条字标，侧栏 mark 和桌面图标只取中间图形。CI 矩阵加入该客户 | 图标已生成；未跑打包 |
 | 11-08 | **发版询问规范**：每次发版分两步问。先问品牌，勾选后再问架构（macOS arm64 / Windows x64 / 都打）。两题不要放在同一次提问里。上次的选择不算。见 AGENTS.md「推送与构建」和 `.cursor/rules/release-ask.mdc` | 规范已写入，尚未提交 |
 | 11-08 | **v0.1.25 发版（只发审源润泽 Windows）**：插件页关掉组合包后重启保持关闭。`package.json` 不再整份覆盖，只合并 `dsh.profile.bundles`（新文件 `src/profile-manifest.cjs`）；依赖和锁文件仍用出厂的。无基准的老 home：依赖里有、列表里没有，视为用户已关。发版提交停掉 mac、windows 只留 `shenyuanrunze`，随后 `[skip ci]` 恢复 | `verify-profile-layout.mjs` 通过 |
 | 11-08 | **v0.1.24 发版**（默认 + 审源润泽）：内置 dsh-im。profile 依赖 + `dsh.profile.bundles` 使「已安装插件」默认打开；启动时自动把 `@xmanrui/dsh-im` 链进 home（用户不用操作）。插件分支 `nexusai/hide-update-and-github` 未推上游，包在 `vendor/xmanrui-dsh-im.tgz`。页头只留「通用设置」。关掉后重启会被 `package.json` 覆盖重新打开 | 临时 home：卡片开、组件运行中、页头仅设置；`verify-profile-layout` 通过；prepare 组合含 `xmanrui-dsh-im` |

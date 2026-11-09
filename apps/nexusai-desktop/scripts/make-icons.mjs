@@ -52,11 +52,11 @@ if (OUT !== RESOURCES) mkdirSync(OUT, { recursive: true })
 // macOS needs an .icns; the iconset covers the sizes the system actually asks for.
 rmSync(ICONSET, { recursive: true, force: true })
 mkdirSync(ICONSET, { recursive: true })
-for (const size of [16, 32, 64, 128, 256, 512, 1024]) {
+// iconutil only accepts the ten Apple iconset names. 64 and 1024 exist as
+// icon_32x32@2x and icon_512x512@2x; extra files make the set invalid.
+for (const size of [16, 32, 128, 256, 512]) {
   execFileSync('sips', ['-z', String(size), String(size), PNG, '--out', join(ICONSET, `icon_${size}x${size}.png`)], { stdio: 'ignore' })
-  if (size <= 512) {
-    execFileSync('sips', ['-z', String(size * 2), String(size * 2), PNG, '--out', join(ICONSET, `icon_${size}x${size}@2x.png`)], { stdio: 'ignore' })
-  }
+  execFileSync('sips', ['-z', String(size * 2), String(size * 2), PNG, '--out', join(ICONSET, `icon_${size}x${size}@2x.png`)], { stdio: 'ignore' })
 }
 execFileSync('iconutil', ['-c', 'icns', ICONSET, '-o', ICNS])
 rmSync(ICONSET, { recursive: true, force: true })

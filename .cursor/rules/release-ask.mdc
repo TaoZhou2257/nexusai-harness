@@ -10,9 +10,9 @@ alwaysApply: true
 上次发版选了什么都不算。用户同一句话里已经写了品牌或架构，也不算已经确认。第一步没勾选完，不要问第二步。
 
 1. 先问 `brand`：这次发版打哪些品牌？
-   - `both`：两个都打（NexusAIHarness + `apps/nexusai-desktop/branding/` 下每一个客户目录；现在是审源润泽）
+   - `both`：全部都打（NexusAIHarness + `apps/nexusai-desktop/branding/` 下每一个客户目录；现在是审源润泽和赛孚唯）
    - `default`：只打 NexusAIHarness
-   - 每个客户目录一项。现在只有 `syrz`：只打审源润泽。`branding/` 新增目录时加选项。
+   - 每个客户目录一项。现在是 `syrz`：只打审源润泽；`isafeways`：只打赛孚唯。`branding/` 新增目录时加选项。
 2. 用户勾选品牌之后，再单独问 `arch`：这次发版打哪些架构？这一问对上一步选中的每个品牌都生效。
    - `both`：macOS arm64 和 Windows x64 都打
    - `win`：只打 Windows x64

@@ -13,27 +13,54 @@ const {
 } = require('node:fs')
 const { dirname, isAbsolute, join, normalize, resolve } = require('node:path')
 
-const WORKSPACE_JOIN_FROM = 'paths.join(directory, "deepseek-harness", DEFAULT_WORKSPACE_DIRECTORY)'
-const WORKSPACE_JOIN_TO = 'paths.join(directory, "nexusai-harness", DEFAULT_WORKSPACE_DIRECTORY)'
+/** The directory name dsh publishes; the one literal this module rewrites. */
+const PUBLISHED_SEGMENT = 'deepseek-harness'
+/** The segment a build uses when its brand names none. */
+const DEFAULT_SEGMENT = 'nexusai-harness'
+const WORKSPACE_JOIN_FROM = `paths.join(directory, "${PUBLISHED_SEGMENT}", DEFAULT_WORKSPACE_DIRECTORY)`
+const WORKSPACE_JOIN_TO = `paths.join(directory, "${DEFAULT_SEGMENT}", DEFAULT_WORKSPACE_DIRECTORY)`
+/** Any `paths.join(directory, "<segment>", DEFAULT_WORKSPACE_DIRECTORY)` the controller might hold. */
+const WORKSPACE_JOIN_PATTERN = /paths\.join\(directory, "([^"]+)", DEFAULT_WORKSPACE_DIRECTORY\)/g
+/** ASCII, one path segment: it names a folder under Documents on every OS. */
+const SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 
 /**
- * Rewrite the installed controller so first-use creates `nexusai-harness`.
- * Idempotent. Throws when the literal is missing or duplicated — a dsh upgrade
- * moved it, and shipping that bundle would recreate the old directory name.
- * @param {string} controllerFile - `dsh-api-workspace-controller/lib/index.js`.
+ * The workspace segment a brand's build uses: its `workspaceDirectory`, or
+ * `nexusai-harness` when it names none. Throws on anything that is not one
+ * ASCII path segment, because it becomes a folder name under Documents.
+ * @param {unknown} value - the brand manifest's `workspaceDirectory`.
+ * @returns {string}
  */
-function renameInstalledWorkspaceAnchor(controllerFile) {
+function workspaceSegment(value) {
+  if (value === undefined) return DEFAULT_SEGMENT
+  if (typeof value !== 'string' || !SEGMENT_PATTERN.test(value)) {
+    throw new Error(`workspaceDirectory must be one ASCII folder name (got ${JSON.stringify(value)})`)
+  }
+  return value
+}
+
+/**
+ * Rewrite the installed controller so first-use creates `<segment>/default-workspace`.
+ * Idempotent. Throws unless the controller holds exactly one such join — a dsh
+ * upgrade that moved or duplicated it would otherwise ship the old directory.
+ * @param {string} controllerFile - `dsh-api-workspace-controller/lib/index.js`.
+ * @param {string} [segment] - the brand's folder name under Documents.
+ * @returns {'renamed' | 'already'}
+ */
+function renameInstalledWorkspaceAnchor(controllerFile, segment = DEFAULT_SEGMENT) {
+  const wanted = workspaceSegment(segment)
   const source = readFileSync(controllerFile, 'utf8')
-  const fromCount = countOccurrences(source, WORKSPACE_JOIN_FROM)
-  const toCount = countOccurrences(source, WORKSPACE_JOIN_TO)
-  if (fromCount === 1 && toCount === 0) {
-    writeFileSync(controllerFile, source.replace(WORKSPACE_JOIN_FROM, WORKSPACE_JOIN_TO))
+  const joins = [...source.matchAll(WORKSPACE_JOIN_PATTERN)]
+  if (joins.length === 1) {
+    const [literal, current] = joins[0]
+    if (current === wanted) return 'already'
+    const target = `paths.join(directory, "${wanted}", DEFAULT_WORKSPACE_DIRECTORY)`
+    writeFileSync(controllerFile, source.replace(literal, target))
     return 'renamed'
   }
-  if (fromCount === 0 && toCount === 1) return 'already'
   throw new Error(
     `workspace anchor literal is not where prepare-runtime expects it in ${controllerFile} `
-    + `(deepseek-harness joins: ${fromCount}, nexusai-harness joins: ${toCount}). `
+    + `(default-directory joins found: ${joins.length}). `
     + 'dsh changed default-directory; update workspace-anchor.cjs before shipping.',
   )
 }
@@ -66,18 +93,6 @@ function retireLegacyWorkspaceLink(documents, log = () => {}) {
     log(`workspace anchor: could not remove ${literal}: ${error && error.message ? error.message : String(error)}`)
     return 'failed'
   }
-}
-
-function countOccurrences(source, needle) {
-  let count = 0
-  let from = 0
-  while (from <= source.length) {
-    const at = source.indexOf(needle, from)
-    if (at === -1) return count
-    count += 1
-    from = at + needle.length
-  }
-  return count
 }
 
 function linkPointsAt(linkPath, wanted) {
@@ -115,10 +130,12 @@ function samePath(left, right) {
 }
 
 module.exports = {
+  DEFAULT_SEGMENT,
   WORKSPACE_JOIN_FROM,
   WORKSPACE_JOIN_TO,
   renameInstalledWorkspaceAnchor,
   retireLegacyWorkspaceLink,
+  workspaceSegment,
 }
 
 if (require.main === module) {
@@ -132,6 +149,17 @@ if (require.main === module) {
   if (!readFileSync(controller, 'utf8').includes(WORKSPACE_JOIN_TO)) throw new Error('join was not rewritten')
   if (readFileSync(controller, 'utf8').includes('deepseek-harness */') === false) throw new Error('comment should stay')
   if (renameInstalledWorkspaceAnchor(controller) !== 'already') throw new Error('expected already')
+  if (renameInstalledWorkspaceAnchor(controller, 'syrz') !== 'renamed') throw new Error('expected a brand segment to rename')
+  if (!readFileSync(controller, 'utf8').includes('paths.join(directory, "syrz", DEFAULT_WORKSPACE_DIRECTORY)')) {
+    throw new Error('brand segment was not written')
+  }
+  if (renameInstalledWorkspaceAnchor(controller, 'syrz') !== 'already') throw new Error('expected a brand segment to be idempotent')
+  for (const bad of ['', '../x', 'a b', '中文', 'a/b']) {
+    let rejected = false
+    try { workspaceSegment(bad) } catch { rejected = true }
+    if (!rejected) throw new Error(`expected workspaceSegment to reject ${JSON.stringify(bad)}`)
+  }
+  if (workspaceSegment(undefined) !== DEFAULT_SEGMENT) throw new Error('missing segment should default')
   write(controller, 'no join here\n')
   let threw = false
   try { renameInstalledWorkspaceAnchor(controller) } catch { threw = true }

@@ -64,6 +64,20 @@ function readTextIfExists(path) {
 }
 
 /**
+ * @param {string} path
+ * @returns {string[]}
+ */
+function readDependencyNames(path) {
+  try {
+    const dependencies = JSON.parse(readFileSync(path, 'utf8')).dependencies
+    if (typeof dependencies !== 'object' || dependencies === null || Array.isArray(dependencies)) return []
+    return Object.keys(dependencies)
+  } catch {
+    return []
+  }
+}
+
+/**
  * @param {object} options
  * @param {string} options.home
  * @param {string} options.profileName
@@ -91,16 +105,29 @@ function materializeProfile(options) {
   const marker = join(target, '.nexusai-desktop-runtime')
   const expected = `${options.appVersion}+${options.runtimeVersion}+${LAYOUT}`
   mkdirSync(target, { recursive: true })
-  // Dependencies stay a straight copy: pnpm has to see this build. The bundle
-  // list is the user's on/off switches, so it is merged, not copied.
+  // Factory dependency specs win. Packages the user installed stay, and so do
+  // their on/off switches. The lockfile is the other half of a pnpm install:
+  // replacing it would drop those packages the next time pnpm runs, so it is
+  // left alone while the home still depends on one.
   const manifest = join(source, 'package.json')
+  const homeManifest = join(target, 'package.json')
   if (existsSync(manifest)) {
-    const outcome = refreshProfileManifest({ source: manifest, target: join(target, 'package.json'), log })
+    const outcome = refreshProfileManifest({ source: manifest, target: homeManifest, log })
     if (outcome === 'merged' || outcome === 'replaced') log(`profile manifest ${outcome}`)
   }
-  for (const name of ['pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
-    const from = join(source, name)
-    if (existsSync(from)) cpSync(from, join(target, name), { force: true })
+  const workspace = join(source, 'pnpm-workspace.yaml')
+  if (existsSync(workspace)) cpSync(workspace, join(target, 'pnpm-workspace.yaml'), { force: true })
+  const lockFrom = join(source, 'pnpm-lock.yaml')
+  const lockTo = join(target, 'pnpm-lock.yaml')
+  if (existsSync(lockFrom)) {
+    const factoryDeps = readDependencyNames(manifest)
+    const homeDeps = readDependencyNames(homeManifest)
+    const extras = homeDeps.filter(name => !factoryDeps.includes(name))
+    if (extras.length === 0 || !existsSync(lockTo)) {
+      cpSync(lockFrom, lockTo, { force: true })
+    } else {
+      log(`pnpm lock kept; user packages: ${extras.join(', ')}`)
+    }
   }
   // The patch also holds what the user saved in settings, so it is merged, not copied.
   const patch = join(source, 'cordis.patch.yml')

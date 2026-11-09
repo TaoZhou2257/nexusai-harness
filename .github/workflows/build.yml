@@ -39,6 +39,8 @@ jobs:
             label: NexusAIHarness
           - customer: shenyuanrunze
             label: ShenYuanRunZe
+          - customer: isafeways
+            label: isafeways
     steps:
       - uses: actions/checkout@v4
         # No submodule checkout: the bundle is built from the dsh version pinned
@@ -72,6 +74,8 @@ jobs:
             label: NexusAIHarness
           - customer: shenyuanrunze
             label: ShenYuanRunZe
+          - customer: isafeways
+            label: isafeways
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -131,7 +135,7 @@ jobs:
 
           - macOS (arm64)：\`NexusAIHarness-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
           - Windows (x64)：\`NexusAIHarness-Setup-*.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
-          - 白标客户包（\`ShenYuanRunZe-*\`）：给审源润泽客户的定制版，未登录即显示客户品牌，登录逻辑与默认版一致
+          - 白标客户包（\`ShenYuanRunZe-*\` 审源润泽，\`isafeways-*\` 赛孚唯）：给客户的定制版，未登录即显示客户品牌，登录逻辑与默认版一致
 
           首次启动会在用户目录下生成 dsh home（升级自旧版本的应用名时会自动接管旧目录）（macOS：\`~/Library/Application Support/<应用名>/dsh-home\`；Windows：\`%APPDATA%\\<应用名>\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
           # Filenames contain spaces; a glob keeps each match as one word, so it

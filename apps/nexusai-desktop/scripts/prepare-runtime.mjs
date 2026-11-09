@@ -32,7 +32,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const { renameInstalledWorkspaceAnchor } = createRequire(import.meta.url)('../src/workspace-anchor.cjs')
+const { renameInstalledWorkspaceAnchor, workspaceSegment } = createRequire(import.meta.url)('../src/workspace-anchor.cjs')
 const { hideInstalledSettingsDocument } = createRequire(import.meta.url)('./settings-chrome.cjs')
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -122,6 +122,8 @@ const customer = (argValue('customer') ?? settings.NEXUSAI_CUSTOMER ?? '').trim(
 let brandName = ''
 /** File-safe ASCII identity: Windows install dir, exe name and the dsh home. */
 let brandPrefix = ''
+/** Folder under Documents that first use creates for this brand's workspace. */
+let brandWorkspace = workspaceSegment(undefined)
 if (customer !== '') {
   const brandFile = join(APP_ROOT, 'branding', customer, 'brand.json')
   if (!existsSync(brandFile)) {
@@ -138,6 +140,9 @@ if (customer !== '') {
   if (!/^[-_+0-9a-zA-Z .]+$/.test(brandPrefix)) {
     throw new Error(`${brandFile}: artifactPrefix must be a non-empty ASCII file name (got ${JSON.stringify(brandPrefix)}) — it names the Windows install directory, the exe and the dsh home`)
   }
+  // The workspace folder under Documents (`<Documents>/<this>/default-workspace`).
+  // Absent = the shared nexusai-harness folder; a brand names its own.
+  brandWorkspace = workspaceSegment(brand.workspaceDirectory)
 }
 if (baseUrl === '') {
   throw new Error(
@@ -529,12 +534,13 @@ say('plugin tree replaced from the fresh tarball (pnpm would have kept whatever 
 
 // dsh hardcodes `<Documents>/deepseek-harness/default-workspace`. Rewrite that
 // one join in the installed bundle so first use creates a real
-// `nexusai-harness` directory. Must run after install (pnpm may restore the
+// `<Documents>/<brand workspace>/default-workspace` directory (nexusai-harness
+// unless the brand names its own). Must run after install (pnpm may restore the
 // published file) and must fail the build if the literal moved.
 const workspaceController = join(
   PROFILE, 'node_modules', '@deepseek-ai', 'dsh-api-workspace-controller', 'lib', 'index.js',
 )
-say(`workspace anchor: ${renameInstalledWorkspaceAnchor(workspaceController)}`)
+say(`workspace anchor: ${renameInstalledWorkspaceAnchor(workspaceController, brandWorkspace)} (${brandWorkspace})`)
 
 // The "打开配置文件" button is the settings header action, so it shows on
 // every settings page. dsh has no switch for it; the host always reports
