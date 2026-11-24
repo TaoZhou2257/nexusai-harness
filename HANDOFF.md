@@ -6,7 +6,7 @@
 
 **变更**：仓库默认打包地址改为 `http://127.0.0.1:8081`（`prepare-runtime.mjs` 未设 `NEXUSAI_BASE_URL` 时写入）。GitHub Secret `NEXUSAI_BASE_URL` 已改为同一地址。
 
-**发版**：品牌 `isafeways`，架构 `both`。矩阵只留 isafeways；Release 上传 dmg + exe。
+**发版**：品牌 `isafeways`，架构 `both`。矩阵只留 isafeways；Release 上传 dmg + exe。tag `v0.1.27` 已发布 https://github.com/TaoZhou2257/nexusai-harness/releases/tag/v0.1.27 。Windows 验收闸首次与 v0.1.26 同类误报 `launcher marker`，仅重跑失败 job 后 Release 成功。workflow 已 `[skip ci]` 恢复三品牌双平台。
 
 ## 已发版（2026-11-09 · 首次使用的默认工作区目录按品牌区分，见 v0.1.26）
 
