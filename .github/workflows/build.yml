@@ -35,10 +35,6 @@ jobs:
       # 本次交接 2026-10-30); '' is the default NexusAIHarness build.
       matrix:
         include:
-          - customer: ''
-            label: NexusAIHarness
-          - customer: shenyuanrunze
-            label: ShenYuanRunZe
           - customer: isafeways
             label: isafeways
     steps:
@@ -70,10 +66,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - customer: ''
-            label: NexusAIHarness
-          - customer: shenyuanrunze
-            label: ShenYuanRunZe
           - customer: isafeways
             label: isafeways
     steps:
@@ -131,13 +123,14 @@ jobs:
         run: |
           set -euo pipefail
           ls -la release-assets
-          notes="内置 dsh 的 NexusAI 桌面端，**未签名**安装包。
+          notes="内置 dsh 的 NexusAI 桌面端，**未签名**安装包。本次只发布赛孚唯（isafeways）的 macOS arm64 与 Windows x64。
 
-          - macOS (arm64)：\`NexusAIHarness-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
-          - Windows (x64)：\`NexusAIHarness-Setup-*.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
-          - 白标客户包（\`ShenYuanRunZe-*\` 审源润泽，\`isafeways-*\` 赛孚唯）：给客户的定制版，未登录即显示客户品牌，登录逻辑与默认版一致
+          - macOS (arm64)：\`isafeways-*-arm64.dmg\` — 首次打开需右键 →「打开」，或在「系统设置 → 隐私与安全性」里放行
+          - Windows (x64)：\`isafeways-Setup-*.exe\` — SmartScreen 拦一下，「更多信息 → 仍要运行」
 
-          首次启动会在用户目录下生成 dsh home（升级自旧版本的应用名时会自动接管旧目录）（macOS：\`~/Library/Application Support/<应用名>/dsh-home\`；Windows：\`%APPDATA%\\<应用名>\\dsh-home\`），其中已预置好 NexusAI 连接器配置；默认服务器地址可在登录弹窗顶部修改。"
+          预置 NexusAI 服务器地址为 \`http://127.0.0.1:8081\`（可在登录弹窗顶部修改）。
+
+          首次启动会在用户目录下生成 dsh home（macOS：\`~/Library/Application Support/<应用名>/dsh-home\`；Windows：\`%APPDATA%\\<应用名>\\dsh-home\`），其中已预置好 NexusAI 连接器配置。"
           # Filenames contain spaces; a glob keeps each match as one word, so it
           # is correct here where an unquoted variable would split.
           gh release create "$GITHUB_REF_NAME" \

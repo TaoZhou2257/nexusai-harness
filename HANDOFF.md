@@ -2,9 +2,11 @@
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
-## 进行中（2026-11-24 · 预置服务器地址改为本机 127.0.0.1:8081）
+## 本次交接（2026-11-24 · v0.1.27：预置服务器 localhost + 只发赛孚唯双平台）
 
-仓库里不再写死 `http://agent.nexusai.net.cn:8081`。`prepare-runtime.mjs` 在 `NEXUSAI_BASE_URL` 未设时用 `http://127.0.0.1:8081`；`.env.example`、`install-into-dsh.mjs` 同步。**CI 若 Secret 里仍是旧公网地址，打出来的包还会是旧地址** — 发版前把 GitHub Secret `NEXUSAI_BASE_URL` 改成 `http://127.0.0.1:8081` 或删掉让构建走代码默认。
+**变更**：仓库默认打包地址改为 `http://127.0.0.1:8081`（`prepare-runtime.mjs` 未设 `NEXUSAI_BASE_URL` 时写入）。GitHub Secret `NEXUSAI_BASE_URL` 已改为同一地址。
+
+**发版**：品牌 `isafeways`，架构 `both`。矩阵只留 isafeways；Release 上传 dmg + exe。
 
 ## 已发版（2026-11-09 · 首次使用的默认工作区目录按品牌区分，见 v0.1.26）
 
