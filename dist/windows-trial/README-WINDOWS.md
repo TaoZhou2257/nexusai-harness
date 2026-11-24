@@ -66,7 +66,7 @@ pnpm run dev:desktop
 | 安装/运行被 SmartScreen 拦（未签名） | 「更多信息 → 仍要运行」 |
 | 找不到 `.dsh` 目录 | 先启动一次应用；目录是 `%USERPROFILE%\.dsh`，若不存在看应用设置里的 data 目录 |
 | 侧栏没有「专家 · 技能 · 连接器」 | 确认 patch 片段已写入且 YAML 解析没问题（缩进别弄坏）；重启应用 |
-| 登录报「验证码错误」/ 无法连接 | 服务器地址默认 `http://agent.nexusai.net.cn:8081`；如换了部署，在登录界面顶部的「服务器地址」里改，点「应用」会先做连通性测试 |
+| 登录报「验证码错误」/ 无法连接 | 预置服务器地址默认为 `http://127.0.0.1:8081`（打包时可用 `NEXUSAI_BASE_URL` 覆盖）；在登录界面顶部的「服务器地址」里改成你的部署，点「应用」会先做连通性测试 |
 | 「插件」页安装 tgz 失败（路线 B） | 回退：把 `plugin-offline.zip` 解到 `%USERPROFILE%\.dsh\profiles\desktop\`（覆盖同名目录），并在该 profile 的 `package.json` 里把 `@toby/dsh-plugin-nexusai` 加进 `dependencies`，然后重启 |
 | 想换插件版本 | 重新 `npm pack` 出新 tgz，重复路线 B 第 4 步 |
 

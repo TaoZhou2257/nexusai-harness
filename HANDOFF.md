@@ -2,6 +2,10 @@
 
 > 读者：接手这个项目的**新 AI 工具或新同事**。本文自包含，读完即可开工。所有"已验证"都是真机验证（CDP 驱动运行中的桌面端 + 截图 + CI 的验收闸），不是推理。
 
+## 进行中（2026-11-24 · 预置服务器地址改为本机 127.0.0.1:8081）
+
+仓库里不再写死 `http://agent.nexusai.net.cn:8081`。`prepare-runtime.mjs` 在 `NEXUSAI_BASE_URL` 未设时用 `http://127.0.0.1:8081`；`.env.example`、`install-into-dsh.mjs` 同步。**CI 若 Secret 里仍是旧公网地址，打出来的包还会是旧地址** — 发版前把 GitHub Secret `NEXUSAI_BASE_URL` 改成 `http://127.0.0.1:8081` 或删掉让构建走代码默认。
+
 ## 已发版（2026-11-09 · 首次使用的默认工作区目录按品牌区分，见 v0.1.26）
 
 `brand.json` 新增 `workspaceDirectory`：审源润泽为 `ShenYuanRunZe`（拼音全拼），赛孚唯为 `isafeways`，默认版本仍为 `nexusai-harness`。改动文件：`src/workspace-anchor.cjs`（`renameInstalledWorkspaceAnchor(controllerFile, segment)`，校验段名为单段 ASCII）、`scripts/prepare-runtime.mjs`（读取 `brandWorkspace` 传入）、`scripts/verify-workspace-anchor.mjs`（按 build 里的品牌目录名校验）、两份 `brand.json`。已在本机三个品牌分别跑 prepare + verify 通过。没有提交，也没有发版。没有旧目录迁移。
@@ -254,7 +258,7 @@ cd apps/nexusai-desktop && ./node_modules/.bin/electron --remote-debugging-port=
 | 插件仓库（本项目，可自由改） | `~/GoLandProjects/nexusai-harness` |
 | dsh 源码（**不要改**） | 本仓 `upstream/`（钉 `dsh-v0.2.1-rc.3`）。`~/IdeaProjects/deepseek-harness` 是另一份本地克隆，已 checkout rc.3 但工作区有 418 个未提交删除、`.desktop-build` 不存在，dev 桌面暂起不来（修复手法见本次交接块）；打安装包不用它 |
 | dsh 运行目录（dev home，配置文件在这） | `~/IdeaProjects/deepseek-harness/apps/desktop/.desktop-build/development/home` |
-| NexusAI 服务器（当前用） | `http://agent.nexusai.net.cn:8081`（另有 `http://221.226.155.134:8081`；SkillHub 用公网 `api.skillhub.cn`） |
+| NexusAI 服务器（打包预置） | 未设 `NEXUSAI_BASE_URL` 时写入 `http://127.0.0.1:8081`；真部署在 `.env` 或 CI Secret 里覆盖。SkillHub 用公网 `api.skillhub.cn` |
 
 **三条硬红线**（源自 `AGENTS.md`，违反即返工）
 1. **不改 nexusai-server 任何代码** —— 只通过它的 REST API（bff，nginx 前缀 `/service/api`，envelope `{code,data,msg}`）。
@@ -288,7 +292,7 @@ cd ~/IdeaProjects/deepseek-harness && DSH_DESKTOP_RENDERER_DEBUG_PORT=9223 nohup
 
 | 项 | 值 |
 |---|---|
-| 服务器 | `http://agent.nexusai.net.cn:8081` |
+| 服务器（预置） | `http://127.0.0.1:8081`（可用环境变量覆盖） |
 | 登录 | 已登录 `admin`，组织 `--- 系统 ---` |
 | 侧栏品牌 | `NexusAgent Builder ｜ v1.5.0.3`（远程取到；取不到回默认 `NexusAI DSH` + 节点图 mark） |
 | 工作台计数 | 专家 11 / 技能 1 / 连接器 5 |

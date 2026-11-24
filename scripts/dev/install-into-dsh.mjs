@@ -45,7 +45,7 @@ const patchFile = join(home, 'profiles', 'desktop', 'cordis.patch.yml')
 const linkDir = join(devRoot, 'project', 'node_modules', '@toby')
 const linkPath = join(linkDir, 'dsh-plugin-nexusai')
 
-const baseUrl = process.env.DSH_BASE_URL ?? process.env.NEXUSAI_BASE_URL ?? 'http://agent.nexusai.net.cn:8081'
+const baseUrl = process.env.DSH_BASE_URL ?? process.env.NEXUSAI_BASE_URL ?? 'http://127.0.0.1:8081'
 const aesKey = process.env.AES_KEY ?? process.env.NEXUSAI_AES_KEY ?? ''
 const aesIv = process.env.AES_IV ?? process.env.NEXUSAI_AES_IV ?? ''
 

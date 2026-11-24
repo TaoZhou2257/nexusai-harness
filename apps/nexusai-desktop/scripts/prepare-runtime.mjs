@@ -9,7 +9,8 @@
  * `supportedArchitectures` makes pnpm resolve the *target* platform's optional
  * dependencies, which is the only platform-sensitive part of the tree.
  *
- * Secrets never enter git. NEXUSAI_BASE_URL is written into the profile patch.
+ * Secrets never enter git. NEXUSAI_BASE_URL is written into the profile patch
+ * (when unset, defaults to http://127.0.0.1:8081 — set .env or CI secret for real deployments).
  * NEXUSAI_AES_KEY / NEXUSAI_AES_IV, when set, are written to cipher-seed.json
  * beside the profile; the shell copies that into the home credentials file.
  * Both come from the environment or a local, git-ignored `.env`.
@@ -109,8 +110,9 @@ function localEnv() {
   return out
 }
 
+const DEFAULT_BASE_URL = 'http://127.0.0.1:8081'
 const settings = { ...localEnv(), ...process.env }
-const baseUrl = settings.NEXUSAI_BASE_URL ?? ''
+const baseUrl = (settings.NEXUSAI_BASE_URL ?? '').trim() || DEFAULT_BASE_URL
 const aesKey = settings.NEXUSAI_AES_KEY ?? ''
 const aesIv = settings.NEXUSAI_AES_IV ?? ''
 // White-label selection: `--customer=<name>` or NEXUSAI_CUSTOMER picks
@@ -144,11 +146,8 @@ if (customer !== '') {
   // Absent = the shared nexusai-harness folder; a brand names its own.
   brandWorkspace = workspaceSegment(brand.workspaceDirectory)
 }
-if (baseUrl === '') {
-  throw new Error(
-    'NEXUSAI_BASE_URL is not set. Put it in apps/nexusai-desktop/.env (git-ignored) '
-    + 'or export it; add NEXUSAI_AES_KEY / NEXUSAI_AES_IV when the server encrypts login payloads.',
-  )
+if ((settings.NEXUSAI_BASE_URL ?? '').trim() === '') {
+  console.log(`==> NEXUSAI_BASE_URL unset; profile patch will use ${DEFAULT_BASE_URL}`)
 }
 
 // ── 0. sanity: the pinned dsh checkout is what upstream.json says ────────────

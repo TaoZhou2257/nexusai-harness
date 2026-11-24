@@ -11,7 +11,7 @@ name: build
 # starts what it installed (see scripts/ci/*). A tag publishes a Release.
 #
 # Required repository secrets:
-#   NEXUSAI_BASE_URL   e.g. http://agent.nexusai.net.cn:8081
+#   NEXUSAI_BASE_URL   optional; omit or leave empty to bake http://127.0.0.1:8081
 #   NEXUSAI_AES_KEY    login-payload decryption key
 #   NEXUSAI_AES_IV     login-payload decryption IV
 # They are baked into the bundled profile patch, so never commit them.
